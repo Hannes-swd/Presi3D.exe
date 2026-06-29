@@ -12,8 +12,9 @@
 #include <QCheckBox>
 #include <QScrollArea>
 #include <QColorDialog>
+#include <QToolButton>
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 static QDoubleSpinBox* makeSpin(double min, double max, double step = 1.0) {
     auto* s = new QDoubleSpinBox;
@@ -21,6 +22,56 @@ static QDoubleSpinBox* makeSpin(double min, double max, double step = 1.0) {
     s->setSingleStep(step);
     s->setDecimals(1);
     return s;
+}
+
+struct SectionWidgets {
+    QWidget* outer;
+    QWidget* content;
+};
+
+static SectionWidgets makeSection(const QString& title, bool open, QWidget* parent) {
+    auto* outer = new QWidget(parent);
+    auto* outerVBox = new QVBoxLayout(outer);
+    outerVBox->setContentsMargins(0, 2, 0, 0);
+    outerVBox->setSpacing(0);
+
+    auto* btn = new QToolButton(outer);
+    btn->setText(title);
+    btn->setCheckable(true);
+    btn->setChecked(open);
+    btn->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    btn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    btn->setStyleSheet(
+        "QToolButton {"
+        "  text-align: left; font-size: 10px; font-weight: bold;"
+        "  color: #374151; background: #f3f4f6;"
+        "  border: none; border-radius: 3px; padding: 3px 6px;"
+        "}"
+        "QToolButton:hover { background: #e5e7eb; }"
+    );
+
+    auto* content = new QWidget(outer);
+    content->setVisible(open);
+
+    outerVBox->addWidget(btn);
+    outerVBox->addWidget(content);
+
+    QObject::connect(btn, &QToolButton::toggled, [content, btn](bool on) {
+        content->setVisible(on);
+        btn->setArrowType(on ? Qt::DownArrow : Qt::RightArrow);
+    });
+
+    return { outer, content };
+}
+
+static QFormLayout* makeForm(QWidget* parent) {
+    auto* form = new QFormLayout(parent);
+    form->setLabelAlignment(Qt::AlignRight);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    form->setContentsMargins(4, 2, 4, 4);
+    form->setSpacing(4);
+    return form;
 }
 
 // ── Constructor ───────────────────────────────────────────────────────────────
@@ -56,14 +107,18 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 
 void PropertiesPanel::buildProjectGroup() {
     m_projectGroup = new QGroupBox("Präsentation", this);
-    auto* form = new QFormLayout(m_projectGroup);
-    form->setLabelAlignment(Qt::AlignRight);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    auto* gvbox = new QVBoxLayout(m_projectGroup);
+    gvbox->setContentsMargins(4, 8, 4, 4);
+    gvbox->setSpacing(2);
 
-    m_sceneBgBtn = new QPushButton(m_projectGroup);
+    // ── Grundeinstellungen (offen) ─────────────────────────────────────────────
+    auto sec1 = makeSection("Grundeinstellungen", true, m_projectGroup);
+    auto* form1 = makeForm(sec1.content);
+
+    m_sceneBgBtn = new QPushButton(sec1.content);
     m_sceneBgBtn->setFixedHeight(24);
     m_sceneBgBtn->setToolTip("Hintergrundfarbe hinter allen Folien");
-    form->addRow("Hintergrund:", m_sceneBgBtn);
+    form1->addRow("Hintergrund:", m_sceneBgBtn);
 
     auto* sizeRow = new QHBoxLayout;
     m_slideW = makeSpin(100, 9999, 10);  m_slideW->setValue(1920);
@@ -71,18 +126,22 @@ void PropertiesPanel::buildProjectGroup() {
     sizeRow->addWidget(m_slideW);
     sizeRow->addWidget(new QLabel("×"));
     sizeRow->addWidget(m_slideH);
-    form->addRow("Foliengröße:", sizeRow);
+    form1->addRow("Foliengröße:", sizeRow);
 
-    auto* sep = new QLabel("─── Standard Sichtbarkeit ───", m_projectGroup);
-    sep->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(sep);
+    gvbox->addWidget(sec1.outer);
+
+    // ── Standard Sichtbarkeit (eingeklappt) ────────────────────────────────────
+    auto sec2 = makeSection("Standard Sichtbarkeit", false, m_projectGroup);
+    auto* form2 = makeForm(sec2.content);
 
     m_defaultInactiveOpa = makeSpin(0.0, 1.0, 0.05);
     m_defaultInactiveOpa->setDecimals(2);
     m_defaultInactiveOpa->setValue(0.3);
     m_defaultInactiveOpa->setToolTip("Standard-Deckkraft für Folien ohne eigene Einstellung\n"
                                      "(gilt wenn keine per-Folie-Überschreibung gesetzt ist)");
-    form->addRow("Inaktiv Standard:", m_defaultInactiveOpa);
+    form2->addRow("Inaktiv Standard:", m_defaultInactiveOpa);
+
+    gvbox->addWidget(sec2.outer);
 
     connect(m_sceneBgBtn, &QPushButton::clicked, this, &PropertiesPanel::onSceneBgClicked);
     connect(m_slideW, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideSizeChanged(); });
@@ -93,49 +152,59 @@ void PropertiesPanel::buildProjectGroup() {
 
 void PropertiesPanel::buildSlideGroup() {
     m_slideGroup = new QGroupBox("Slide", this);
-    auto* form   = new QFormLayout(m_slideGroup);
-    form->setLabelAlignment(Qt::AlignRight);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    auto* gvbox = new QVBoxLayout(m_slideGroup);
+    gvbox->setContentsMargins(4, 8, 4, 4);
+    gvbox->setSpacing(2);
 
-    m_slideName = new QLineEdit(m_slideGroup);
-    form->addRow("Name:", m_slideName);
+    // ── Grundeinstellungen (offen) ─────────────────────────────────────────────
+    auto secBase = makeSection("Grundeinstellungen", true, m_slideGroup);
+    auto* formBase = makeForm(secBase.content);
 
-    m_bgColorBtn = new QPushButton(m_slideGroup);
+    m_slideName = new QLineEdit(secBase.content);
+    formBase->addRow("Name:", m_slideName);
+
+    m_bgColorBtn = new QPushButton(secBase.content);
     m_bgColorBtn->setFixedHeight(24);
-    form->addRow("Hintergrund:", m_bgColorBtn);
+    formBase->addRow("Hintergrund:", m_bgColorBtn);
 
-    auto* sep = new QLabel("─── 3D Position ───", m_slideGroup);
-    sep->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(sep);
+    gvbox->addWidget(secBase.outer);
+
+    // ── 3D Position (offen) ────────────────────────────────────────────────────
+    auto secPos = makeSection("3D Position", true, m_slideGroup);
+    auto* formPos = makeForm(secPos.content);
 
     m_posX = makeSpin(-99999, 99999, 100);
     m_posY = makeSpin(-99999, 99999, 100);
     m_posZ = makeSpin(-99999, 99999, 100);
-    form->addRow("X:", m_posX);
-    form->addRow("Y:", m_posY);
-    form->addRow("Z:", m_posZ);
+    formPos->addRow("X:", m_posX);
+    formPos->addRow("Y:", m_posY);
+    formPos->addRow("Z:", m_posZ);
 
-    auto* sep2 = new QLabel("─── Rotation (°) ───", m_slideGroup);
-    sep2->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(sep2);
+    gvbox->addWidget(secPos.outer);
+
+    // ── Rotation & Zoom (offen) ────────────────────────────────────────────────
+    auto secRot = makeSection("Rotation & Zoom", true, m_slideGroup);
+    auto* formRot = makeForm(secRot.content);
 
     m_rotX = makeSpin(-360, 360);
     m_rotY = makeSpin(-360, 360);
     m_rotZ = makeSpin(-360, 360);
-    form->addRow("Rot X:", m_rotX);
-    form->addRow("Rot Y:", m_rotY);
-    form->addRow("Rot Z:", m_rotZ);
+    formRot->addRow("Rot X:", m_rotX);
+    formRot->addRow("Rot Y:", m_rotY);
+    formRot->addRow("Rot Z:", m_rotZ);
 
     m_scale = makeSpin(0.01, 10.0, 0.1);
     m_scale->setToolTip("Zoom der Kamera auf dieser Folie:\n"
                         "1.0 = Folie füllt die Ansicht\n"
                         "< 1 = reinzoomen (weniger Kontext)\n"
                         "> 1 = rauszoomen (mehr Kontext)");
-    form->addRow("Zoom:", m_scale);
+    formRot->addRow("Zoom:", m_scale);
 
-    auto* sepView = new QLabel("─── Sichtfeld (nur 3D) ───", m_slideGroup);
-    sepView->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(sepView);
+    gvbox->addWidget(secRot.outer);
+
+    // ── Sichtfeld (eingeklappt) ────────────────────────────────────────────────
+    auto secView = makeSection("Sichtfeld (nur 3D)", false, m_slideGroup);
+    auto* formView = makeForm(secView.content);
 
     auto* viewOffRow = new QHBoxLayout;
     m_viewOffX = makeSpin(-9999, 9999, 50);
@@ -145,11 +214,13 @@ void PropertiesPanel::buildSlideGroup() {
     viewOffRow->addWidget(m_viewOffX);
     viewOffRow->addWidget(new QLabel("Y:"));
     viewOffRow->addWidget(m_viewOffY);
-    form->addRow("Offset X:", viewOffRow);
+    formView->addRow("Offset X:", viewOffRow);
 
-    auto* sepSize = new QLabel("─── Eigene Foliengröße ───", m_slideGroup);
-    sepSize->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(sepSize);
+    gvbox->addWidget(secView.outer);
+
+    // ── Eigene Foliengröße (eingeklappt) ──────────────────────────────────────
+    auto secSize = makeSection("Eigene Foliengröße", false, m_slideGroup);
+    auto* formSize = makeForm(secSize.content);
 
     auto* ownSizeRow = new QHBoxLayout;
     m_slideOwnW = makeSpin(0, 9999, 10);
@@ -161,26 +232,31 @@ void PropertiesPanel::buildSlideGroup() {
     ownSizeRow->addWidget(m_slideOwnW);
     ownSizeRow->addWidget(new QLabel("×"));
     ownSizeRow->addWidget(m_slideOwnH);
-    form->addRow("Größe:", ownSizeRow);
+    formSize->addRow("Größe:", ownSizeRow);
 
-    auto* sizeHint = new QLabel("(0 = Standard)", m_slideGroup);
+    auto* sizeHint = new QLabel("(0 = Standard)", secSize.content);
     sizeHint->setStyleSheet("color: #6b7280; font-size: 9px;");
-    form->addRow(sizeHint);
+    formSize->addRow(sizeHint);
 
-    // ── Per-slide visibility section ──────────────────────────────────────────
-    auto* sepVis = new QLabel("─── Sichtbarkeit anderer Folien ───", m_slideGroup);
-    sepVis->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(sepVis);
+    gvbox->addWidget(secSize.outer);
 
-    auto* visHint = new QLabel("Wenn diese Folie aktiv ist:", m_slideGroup);
+    // ── Sichtbarkeit anderer Folien (eingeklappt) ──────────────────────────────
+    auto secVis = makeSection("Sichtbarkeit anderer Folien", false, m_slideGroup);
+    auto* visVBox = new QVBoxLayout(secVis.content);
+    visVBox->setContentsMargins(4, 2, 4, 4);
+    visVBox->setSpacing(2);
+
+    auto* visHint = new QLabel("Wenn diese Folie aktiv ist:", secVis.content);
     visHint->setStyleSheet("color: #6b7280; font-size: 9px;");
-    form->addRow(visHint);
+    visVBox->addWidget(visHint);
 
-    m_visContainer = new QWidget(m_slideGroup);
+    m_visContainer = new QWidget(secVis.content);
     m_visLayout    = new QVBoxLayout(m_visContainer);
     m_visLayout->setContentsMargins(0, 2, 0, 2);
     m_visLayout->setSpacing(2);
-    form->addRow(m_visContainer);
+    visVBox->addWidget(m_visContainer);
+
+    gvbox->addWidget(secVis.outer);
 
     // Signals
     connect(m_slideName, &QLineEdit::editingFinished, this, [this]() {
@@ -193,7 +269,7 @@ void PropertiesPanel::buildSlideGroup() {
     connect(m_rotX, &QDoubleSpinBox::valueChanged, this, [this](double) { onRotChanged(); });
     connect(m_rotY, &QDoubleSpinBox::valueChanged, this, [this](double) { onRotChanged(); });
     connect(m_rotZ, &QDoubleSpinBox::valueChanged, this, [this](double) { onRotChanged(); });
-    connect(m_scale,      &QDoubleSpinBox::valueChanged, this, [this](double) { onScaleChanged(); });
+    connect(m_scale,     &QDoubleSpinBox::valueChanged, this, [this](double) { onScaleChanged(); });
     connect(m_slideOwnW, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideOwnSizeChanged(); });
     connect(m_slideOwnH, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideOwnSizeChanged(); });
     connect(m_viewOffX,  &QDoubleSpinBox::valueChanged, this, [this](double) { onViewOffsetChanged(); });
@@ -202,54 +278,97 @@ void PropertiesPanel::buildSlideGroup() {
 
 void PropertiesPanel::buildElementGroup() {
     m_elemGroup = new QGroupBox("Element", this);
-    auto* form  = new QFormLayout(m_elemGroup);
-    form->setLabelAlignment(Qt::AlignRight);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    auto* gvbox = new QVBoxLayout(m_elemGroup);
+    gvbox->setContentsMargins(4, 8, 4, 4);
+    gvbox->setSpacing(2);
 
-    m_elemType = new QLabel("—", m_elemGroup);
+    // ── Grundeinstellungen (offen) ─────────────────────────────────────────────
+    auto secBase = makeSection("Grundeinstellungen", true, m_elemGroup);
+    auto* formBase = makeForm(secBase.content);
+
+    m_elemType = new QLabel("—", secBase.content);
     m_elemType->setStyleSheet("color: #374151;");
-    form->addRow("Typ:", m_elemType);
+    formBase->addRow("Typ:", m_elemType);
 
-    m_elemContent = new QLineEdit(m_elemGroup);
-    form->addRow("Inhalt:", m_elemContent);
+    m_elemContent = new QLineEdit(secBase.content);
+    formBase->addRow("Inhalt:", m_elemContent);
 
     m_eX = makeSpin(-9999, 9999); m_eY = makeSpin(-9999, 9999);
     m_eW = makeSpin(1, 9999);     m_eH = makeSpin(1, 9999);
-    form->addRow("X:", m_eX);
-    form->addRow("Y:", m_eY);
-    form->addRow("Breite:", m_eW);
-    form->addRow("Höhe:",   m_eH);
+    formBase->addRow("X:", m_eX);
+    formBase->addRow("Y:", m_eY);
+    formBase->addRow("Breite:", m_eW);
+    formBase->addRow("Höhe:",   m_eH);
 
-    m_eColorBtn   = new QPushButton(m_elemGroup);  m_eColorBtn->setFixedHeight(24);
-    m_eBgColorBtn = new QPushButton(m_elemGroup);  m_eBgColorBtn->setFixedHeight(24);
-    form->addRow("Farbe:",       m_eColorBtn);
-    form->addRow("Hintergrund:", m_eBgColorBtn);
+    gvbox->addWidget(secBase.outer);
 
-    m_eFontSize = new QSpinBox(m_elemGroup);
+    // ── Darstellung (offen) ────────────────────────────────────────────────────
+    auto secStyle = makeSection("Darstellung", true, m_elemGroup);
+    auto* formStyle = makeForm(secStyle.content);
+
+    m_eColorBtn   = new QPushButton(secStyle.content); m_eColorBtn->setFixedHeight(24);
+    m_eBgColorBtn = new QPushButton(secStyle.content); m_eBgColorBtn->setFixedHeight(24);
+    formStyle->addRow("Farbe:",       m_eColorBtn);
+    formStyle->addRow("Hintergrund:", m_eBgColorBtn);
+
+    m_eFontSize = new QSpinBox(secStyle.content);
     m_eFontSize->setRange(6, 200);
     m_eFontSize->setValue(32);
-    form->addRow("Schriftgröße:", m_eFontSize);
+    formStyle->addRow("Schriftgröße:", m_eFontSize);
 
-    m_eAlign = new QComboBox(m_elemGroup);
+    m_eAlign = new QComboBox(secStyle.content);
     m_eAlign->addItems({"Links", "Zentriert", "Rechts"});
-    form->addRow("Ausrichtung:", m_eAlign);
+    formStyle->addRow("Ausrichtung:", m_eAlign);
 
-    // ── Shape-only controls ───────────────────────────────────────────────────
-    m_borderWLabel = new QLabel("Randbreite px:", m_elemGroup);
+    gvbox->addWidget(secStyle.outer);
+
+    // ── Form – nur für Shapes (offen, aber initial ausgeblendet) ──────────────
+    auto secForm = makeSection("Form", true, m_elemGroup);
+    auto* formForm = makeForm(secForm.content);
+
     m_eBorderW = makeSpin(0, 200, 1);
     m_eBorderW->setDecimals(0);
-    form->addRow(m_borderWLabel, m_eBorderW);
+    formForm->addRow("Randbreite px:", m_eBorderW);
 
-    m_borderColorLabel = new QLabel("Randfarbe:", m_elemGroup);
-    m_eBorderColorBtn  = new QPushButton(m_elemGroup);
+    m_eBorderColorBtn = new QPushButton(secForm.content);
     m_eBorderColorBtn->setFixedHeight(24);
-    form->addRow(m_borderColorLabel, m_eBorderColorBtn);
+    formForm->addRow("Randfarbe:", m_eBorderColorBtn);
 
-    m_cornerRadLabel = new QLabel("Eckenradius:", m_elemGroup);
-    m_eCornerRadius  = makeSpin(0, 999, 5);
+    m_eCornerRadius = makeSpin(0, 999, 5);
     m_eCornerRadius->setDecimals(0);
     m_eCornerRadius->setToolTip("Abrundung der Ecken in Folien-Pixeln (0 = keine Abrundung)");
-    form->addRow(m_cornerRadLabel, m_eCornerRadius);
+    formForm->addRow("Eckenradius:", m_eCornerRadius);
+
+    m_elemFormSection = secForm.outer;
+    gvbox->addWidget(secForm.outer);
+
+    // ── Animation (eingeklappt) ────────────────────────────────────────────────
+    auto secAnim = makeSection("Animation", false, m_elemGroup);
+    auto* formAnim = makeForm(secAnim.content);
+
+    m_eAnimType = new QComboBox(secAnim.content);
+    m_eAnimType->addItem("Keine",          "");
+    m_eAnimType->addItem("Einblenden",     "fadeIn");
+    m_eAnimType->addItem("Von links",      "slideLeft");
+    m_eAnimType->addItem("Von rechts",     "slideRight");
+    m_eAnimType->addItem("Von oben",       "slideUp");
+    m_eAnimType->addItem("Von unten",      "slideDown");
+    m_eAnimType->addItem("Zoom",           "zoomIn");
+    formAnim->addRow("Animation:", m_eAnimType);
+
+    m_animDelayLabel = new QLabel("Verzögerung (s):", secAnim.content);
+    m_eAnimDelay = makeSpin(0.0, 10.0, 0.1);
+    m_eAnimDelay->setDecimals(1);
+    m_eAnimDelay->setValue(0.3);
+    formAnim->addRow(m_animDelayLabel, m_eAnimDelay);
+
+    m_animDurLabel = new QLabel("Dauer (s):", secAnim.content);
+    m_eAnimDuration = makeSpin(0.05, 10.0, 0.1);
+    m_eAnimDuration->setDecimals(1);
+    m_eAnimDuration->setValue(0.5);
+    formAnim->addRow(m_animDurLabel, m_eAnimDuration);
+
+    gvbox->addWidget(secAnim.outer);
 
     // Signals
     connect(m_elemContent, &QLineEdit::editingFinished, this, [this]() {
@@ -266,43 +385,11 @@ void PropertiesPanel::buildElementGroup() {
     connect(m_eBorderW,        &QDoubleSpinBox::valueChanged, this, [this](double) { onElemBorderChanged(); });
     connect(m_eBorderColorBtn, &QPushButton::clicked,         this, &PropertiesPanel::onElemBorderColorClicked);
     connect(m_eCornerRadius,   &QDoubleSpinBox::valueChanged, this, [this](double) { onElemCornerRadiusChanged(); });
-
-    // ── Entrance animation ────────────────────────────────────────────────────
-    m_animSepLabel = new QLabel("─── Eingangs-Animation ───", m_elemGroup);
-    m_animSepLabel->setStyleSheet("color: #374151; font-size: 10px;");
-    form->addRow(m_animSepLabel);
-
-    m_eAnimType = new QComboBox(m_elemGroup);
-    m_eAnimType->addItem("Keine",          "");
-    m_eAnimType->addItem("Einblenden",     "fadeIn");
-    m_eAnimType->addItem("Von links",      "slideLeft");
-    m_eAnimType->addItem("Von rechts",     "slideRight");
-    m_eAnimType->addItem("Von oben",       "slideUp");
-    m_eAnimType->addItem("Von unten",      "slideDown");
-    m_eAnimType->addItem("Zoom",           "zoomIn");
-    form->addRow("Animation:", m_eAnimType);
-
-    m_animDelayLabel = new QLabel("Verzögerung (s):", m_elemGroup);
-    m_eAnimDelay = makeSpin(0.0, 10.0, 0.1);
-    m_eAnimDelay->setDecimals(1);
-    m_eAnimDelay->setValue(0.3);
-    form->addRow(m_animDelayLabel, m_eAnimDelay);
-
-    m_animDurLabel = new QLabel("Dauer (s):", m_elemGroup);
-    m_eAnimDuration = makeSpin(0.05, 10.0, 0.1);
-    m_eAnimDuration->setDecimals(1);
-    m_eAnimDuration->setValue(0.5);
-    form->addRow(m_animDurLabel, m_eAnimDuration);
-
     connect(m_eAnimType,     &QComboBox::currentIndexChanged, this, &PropertiesPanel::onElemAnimChanged);
     connect(m_eAnimDelay,    &QDoubleSpinBox::valueChanged,   this, [this](double v){ onElemAnimDelayChanged(v); });
     connect(m_eAnimDuration, &QDoubleSpinBox::valueChanged,   this, [this](double v){ onElemAnimDurationChanged(v); });
 
-    // Start hidden; shown when a Shape element is selected
-    m_borderWLabel->hide();    m_eBorderW->hide();
-    m_borderColorLabel->hide();m_eBorderColorBtn->hide();
-    m_cornerRadLabel->hide();  m_eCornerRadius->hide();
-
+    m_elemFormSection->setVisible(false);
     m_elemGroup->setEnabled(false);
 }
 
@@ -327,7 +414,6 @@ void PropertiesPanel::setSelectedElement(int elemIndex) {
 // ── Visibility section ────────────────────────────────────────────────────────
 
 void PropertiesPanel::rebuildVisibilitySection() {
-    // Clear old rows
     m_visRows.clear();
     while (QLayoutItem* item = m_visLayout->takeAt(0)) {
         if (QWidget* w = item->widget()) w->deleteLater();
@@ -343,7 +429,6 @@ void PropertiesPanel::rebuildVisibilitySection() {
     for (const Slide& other : m_pres->slides) {
         if (other.id == cur->id) continue;
 
-        // Determine current opacity for this other slide
         float opa = defOpa;
         if (cur->visibilityOverrides.contains(other.id))
             opa = cur->visibilityOverrides[other.id];
@@ -375,7 +460,6 @@ void PropertiesPanel::rebuildVisibilitySection() {
         vr.spin    = spin;
         m_visRows.append(vr);
 
-        // Capture index for the lambdas
         int rowIdx = m_visRows.size() - 1;
 
         connect(chk, &QCheckBox::toggled, this, [this, rowIdx](bool on) {
@@ -432,7 +516,6 @@ void PropertiesPanel::refreshSlide() {
     m_viewOffX->setValue(s->viewOffsetX);
     m_viewOffY->setValue(s->viewOffsetY);
 
-    // Refresh visibility rows
     float defOpa = m_pres->defaultInactiveOpacity;
     for (VisRow& vr : m_visRows) {
         float opa = s->visibilityOverrides.contains(vr.slideId)
@@ -457,7 +540,7 @@ void PropertiesPanel::refreshElement() {
     m_elemType->setText(typeNames[e.type]);
 
     m_elemContent->setEnabled(e.type != SlideElement::Shape);
-    m_elemContent->setText(e.type == SlideElement::Shape ? e.content : e.content);
+    m_elemContent->setText(e.content);
 
     m_eX->setValue(e.x);
     m_eY->setValue(e.y);
@@ -477,12 +560,7 @@ void PropertiesPanel::refreshElement() {
     m_eAlign->setCurrentIndex(alignIdx);
 
     bool isShape = (e.type == SlideElement::Shape);
-    m_borderWLabel->setVisible(isShape);
-    m_eBorderW->setVisible(isShape);
-    m_borderColorLabel->setVisible(isShape);
-    m_eBorderColorBtn->setVisible(isShape);
-    m_cornerRadLabel->setVisible(isShape);
-    m_eCornerRadius->setVisible(isShape);
+    m_elemFormSection->setVisible(isShape);
     if (isShape) {
         m_eBorderW->setValue(e.borderWidth);
         updateColorButton(m_eBorderColorBtn, e.borderColor.isValid()

@@ -12,6 +12,7 @@ class QGroupBox;
 class QComboBox;
 class QCheckBox;
 class QVBoxLayout;
+class QToolButton;
 
 class PropertiesPanel : public QWidget {
     Q_OBJECT
@@ -95,7 +96,7 @@ private:
     QVBoxLayout* m_visLayout   = nullptr;
 
     struct VisRow {
-        QString        slideId;  // UUID of the other slide
+        QString        slideId;
         QCheckBox*     check;
         QDoubleSpinBox* spin;
     };
@@ -111,22 +112,19 @@ private:
     QDoubleSpinBox* m_eH          = nullptr;
     QPushButton*    m_eColorBtn   = nullptr;
     QPushButton*    m_eBgColorBtn = nullptr;
-    QSpinBox*       m_eFontSize       = nullptr;
-    QComboBox*      m_eAlign          = nullptr;
+    QSpinBox*       m_eFontSize   = nullptr;
+    QComboBox*      m_eAlign      = nullptr;
 
-    // Shape-only controls (hidden for text/image)
-    QLabel*         m_borderWLabel    = nullptr;
+    // Shape-only section (hidden when a non-shape element is selected)
+    QWidget*        m_elemFormSection = nullptr;
     QDoubleSpinBox* m_eBorderW        = nullptr;
-    QLabel*         m_borderColorLabel= nullptr;
     QPushButton*    m_eBorderColorBtn = nullptr;
-    QLabel*         m_cornerRadLabel  = nullptr;
     QDoubleSpinBox* m_eCornerRadius   = nullptr;
 
     // Animation controls
-    QLabel*         m_animSepLabel    = nullptr;
-    QComboBox*      m_eAnimType       = nullptr;
-    QLabel*         m_animDelayLabel  = nullptr;
-    QDoubleSpinBox* m_eAnimDelay      = nullptr;
-    QLabel*         m_animDurLabel    = nullptr;
-    QDoubleSpinBox* m_eAnimDuration   = nullptr;
+    QComboBox*      m_eAnimType      = nullptr;
+    QLabel*         m_animDelayLabel = nullptr;
+    QDoubleSpinBox* m_eAnimDelay     = nullptr;
+    QLabel*         m_animDurLabel   = nullptr;
+    QDoubleSpinBox* m_eAnimDuration  = nullptr;
 };
