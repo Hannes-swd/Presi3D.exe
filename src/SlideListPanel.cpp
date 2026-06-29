@@ -16,8 +16,8 @@ SlideListPanel::SlideListPanel(QWidget* parent) : QWidget(parent) {
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(4);
 
-    auto* title = new QLabel("Slides", this);
-    title->setStyleSheet("font-weight: bold; font-size: 12px; padding: 4px 4px 2px 4px;");
+    auto* title = new QLabel("SLIDES", this);
+    title->setStyleSheet("font-weight: bold; font-size: 10px; color: #374151; padding: 8px 8px 4px 8px; letter-spacing: 1px;");
     layout->addWidget(title);
 
     m_list = new QListWidget(this);
@@ -25,8 +25,6 @@ SlideListPanel::SlideListPanel(QWidget* parent) : QWidget(parent) {
     m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     m_list->setIconSize(QSize(THUMB_W, THUMB_H));
     m_list->setSpacing(2);
-    m_list->setStyleSheet("QListWidget::item { padding: 4px; }"
-                          "QListWidget::item:selected { background: #0078d4; color: white; }");
     layout->addWidget(m_list, 1);
 
     auto* btnRow = new QHBoxLayout();

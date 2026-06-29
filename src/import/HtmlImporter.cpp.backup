@@ -1,10 +1,8 @@
-﻿#include "HtmlImporter.h"
+#include "HtmlImporter.h"
 #include <QFile>
 #include <QDir>
-#include <QMap>
 #include <QTextStream>
 #include <QRegularExpression>
-#include <QUuid>
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -38,59 +36,27 @@ static QColor parseCssColor(const QString& raw) {
     return col.isValid() ? col : Qt::transparent;
 }
 
-// Extract all <div class="step" ...>...</div> blocks from HTML (improved version)
-// Now more robust to malformed HTML and nested structures
+// Extract all <div class="step" ...>...</div> blocks from HTML (handles nesting)
 static QStringList extractStepBlocks(const QString& html) {
     QStringList out;
     int pos = 0;
     while (true) {
-        // Find the opening <div class="step"
         int start = html.indexOf("<div class=\"step\"", pos);
         if (start < 0) break;
-        
-        // Find the closing > of the opening tag
-        int openingTagEnd = html.indexOf('>', start);
-        if (openingTagEnd < 0) {
-            pos = start + 1;
-            continue;  // Malformed opening tag, skip
-        }
-        
-        // Now look for the matching closing </div>
         int depth = 0, i = start;
-        bool foundClosing = false;
-        
         while (i < html.size()) {
-            // Look for <div tag (must be followed by space, >, or newline)
             if (i + 4 <= html.size() && html.mid(i, 4) == "<div") {
-                // Check if it's a real tag opening
-                if (i + 4 < html.size()) {
-                    QChar next = html[i + 4];
-                    if (next == ' ' || next == '>' || next == '\n' || next == '\t') {
-                        ++depth;
-                        i += 4;
-                        continue;
-                    }
-                }
-            }
-            // Look for </div> closing
-            if (i + 6 <= html.size() && html.mid(i, 6) == "</div>") {
-                --depth;
-                if (depth <= 0) {
+                ++depth; i += 4;
+            } else if (i + 6 <= html.size() && html.mid(i, 6) == "</div>") {
+                if (--depth == 0) {
                     out.append(html.mid(start, i + 6 - start));
                     pos = i + 6;
-                    foundClosing = true;
                     break;
                 }
                 i += 6;
-                continue;
-            }
-            ++i;
+            } else { ++i; }
         }
-        
-        if (!foundClosing) {
-            // Could not find matching closing tag, stop processing
-            break;
-        }
+        if (depth != 0) break; // malformed HTML
     }
     return out;
 }
@@ -132,7 +98,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
     auto* pres = new Presentation();
     pres->exportPath = folderPath;
 
-    // ── Parse CSS: scene background and slide dimensions ──────────────────────
+    // ── Parse CSS ─────────────────────────────────────────────────────────────
     if (!css.isEmpty()) {
         QString bodyBlk = cssBlock(css, "body");
         if (!bodyBlk.isEmpty()) {
@@ -147,38 +113,43 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
             float h = cssProp(stepBlk, "height").remove("px").toFloat();
             if (w > 0) pres->slideWidth  = w;
             if (h > 0) pres->slideHeight = h;
+            float opa = cssProp(stepBlk, "opacity").toFloat();
+            if (opa > 0) pres->inactiveOpacity = opa;
         }
+
+        // .step.active / .step.present opacity
+        QRegularExpression reAct(R"(\.step\.(?:active|present)[^{]*\{([^}]*)\})",
+                                  QRegularExpression::DotMatchesEverythingOption);
+        auto mAct = reAct.match(css);
+        if (mAct.hasMatch()) {
+            float opa = cssProp(mAct.captured(1), "opacity").toFloat();
+            if (opa > 0) pres->activeOpacity = opa;
+        }
+
+        // noDimming: generated CSS has ".step { opacity: 1 !important; }"
+        if (css.contains("opacity: 1 !important") || css.contains("opacity:1 !important"))
+            pres->noDimming = true;
+
+        // lastSlideShowAll: generated CSS has "#impress.all-visible"
+        if (css.contains("all-visible"))
+            pres->lastSlideShowAll = true;
     }
 
-    // ── data-width / data-height / data-default-inactive-opacity from #impress ─
+    // ── data-width / data-height from #impress div ────────────────────────────
     {
         QRegularExpression re(R"(<div\s+id="impress"[^>]*>)",
                                QRegularExpression::DotMatchesEverythingOption);
         auto m = re.match(html);
         if (m.hasMatch()) {
-            QString tag = m.captured(0);
-            float dw = attrVal(tag, "data-width").toFloat();
-            float dh = attrVal(tag, "data-height").toFloat();
+            float dw = attrVal(m.captured(0), "data-width").toFloat();
+            float dh = attrVal(m.captured(0), "data-height").toFloat();
             if (dw > 0) pres->slideWidth  = dw;
             if (dh > 0) pres->slideHeight = dh;
-            QString defOpa = attrVal(tag, "data-default-inactive-opacity");
-            if (!defOpa.isEmpty()) pres->defaultInactiveOpacity = defOpa.toFloat();
         }
     }
 
     // ── Parse step blocks ─────────────────────────────────────────────────────
     QStringList steps = extractStepBlocks(html);
-
-    // Pre-pass: assign UUIDs for each HTML step id so that visibility cross-
-    // references between steps can be resolved after the main parse loop.
-    QMap<QString, QString> htmlIdToUuid; // "slide-N" → uuid
-    for (const QString& stepBlock : steps) {
-        int tagEnd = stepBlock.indexOf('>');
-        if (tagEnd < 0) continue;
-        QString sid = attrVal(stepBlock.left(tagEnd + 1), "id");
-        if (!sid.isEmpty() && !htmlIdToUuid.contains(sid))
-            htmlIdToUuid[sid] = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    }
     if (steps.isEmpty()) {
         errorMsg = "Keine Folien (class=\"step\") in index.html gefunden.";
         delete pres;
@@ -192,23 +163,11 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
 
         // Opening tag = up to first ">"
         int tagEnd  = stepBlock.indexOf('>');
-        
-        // CRITICAL FIX: Validate opening tag is properly formed
-        if (tagEnd < 0) {
-            // Malformed step block without closing >, add empty slide and skip
-            pres->slides.append(slide);
-            continue;
-        }
-        
         QString tag = stepBlock.left(tagEnd + 1);
-
-        // Assign the pre-computed UUID so visibility cross-references are stable
-        QString sid = attrVal(tag, "id");
-        if (!sid.isEmpty() && htmlIdToUuid.contains(sid))
-            slide.id = htmlIdToUuid[sid];
 
         // Slide name: prefer data-name, fall back to stripping "slide-" from id
         QString dname = attrVal(tag, "data-name");
+        QString sid   = attrVal(tag, "id");
         if (!dname.isEmpty())
             slide.name = dname;
         else if (!sid.isEmpty())
@@ -246,37 +205,13 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
         if (!sw.isEmpty()) slide.slideWidth  = sw.remove("px").toFloat();
         if (!sh.isEmpty()) slide.slideHeight = sh.remove("px").toFloat();
 
-        // Per-slide visibility overrides: "slide-2:0.50,slide-3:0.00"
-        QString visRaw = attrVal(tag, "data-vis-overrides");
-        if (!visRaw.isEmpty()) {
-            for (const QString& pair : visRaw.split(',')) {
-                QStringList kv = pair.split(':');
-                if (kv.size() == 2) {
-                    QString otherId = kv[0].trimmed();
-                    float   opa     = kv[1].trimmed().toFloat();
-                    if (htmlIdToUuid.contains(otherId))
-                        slide.visibilityOverrides[htmlIdToUuid[otherId]] = opa;
-                }
-            }
-        }
-
         // ── Child elements ────────────────────────────────────────────────────
-        // CRITICAL FIX: Validate closing tag exists and calculate safe length
         int closingPos = stepBlock.lastIndexOf("</div>");
-        if (closingPos < 0 || closingPos <= tagEnd) {
-            // Malformed step block: missing or misplaced closing tag
+        if (tagEnd < 0 || closingPos < 0 || closingPos <= tagEnd) {
             pres->slides.append(slide);
             continue;
         }
-        
-        int contentLen = closingPos - tagEnd - 1;
-        if (contentLen < 0) {
-            // Defensive check: should not happen, but prevents negative length
-            pres->slides.append(slide);
-            continue;
-        }
-        
-        QString content = stepBlock.mid(tagEnd + 1, contentLen);
+        QString content = stepBlock.mid(tagEnd + 1, closingPos - tagEnd - 1);
 
         for (const QString& rawLine : content.split('\n')) {
             QString line = rawLine.trimmed();
@@ -299,27 +234,10 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
             } else if (line.startsWith("<div")) {
                 // ── Text or Shape element ──────────────────────────────────────
                 int dTagEnd    = line.indexOf('>');
-                
-                // CRITICAL FIX: Validate element div tag is properly formed
-                if (dTagEnd < 0) {
-                    // Malformed element tag, skip this element
-                    continue;
-                }
-                
                 QString dTag   = line.left(dTagEnd + 1);
                 int cEnd       = line.lastIndexOf("</div>");
-                
-                // CRITICAL FIX: Validate and safely extract element content
-                QString elemTxt;
-                if (cEnd > dTagEnd) {
-                    int elemLen = cEnd - dTagEnd - 1;
-                    if (elemLen >= 0) {
-                        elemTxt = line.mid(dTagEnd + 1, elemLen);
-                    }
-                } else if (cEnd >= 0 && cEnd <= dTagEnd) {
-                    // Closing tag before opening tag - malformed
-                    elemTxt = QString();
-                }
+                QString elemTxt = (dTagEnd >= 0 && cEnd > dTagEnd)
+                                  ? line.mid(dTagEnd + 1, cEnd - dTagEnd - 1) : QString();
 
                 QString style  = attrVal(dTag, "style");
                 QString dtype  = attrVal(dTag, "data-type");

@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QMap>
 #include "models/DataModel.h"
 
 class HtmlExporter {
@@ -16,7 +17,9 @@ public:
 private:
     static QString generateHtml(const Presentation& pres);
     static QString generateCss(const Presentation& pres);
-    static QString slideToHtml(const Slide& slide, int index);
+    static QString slideToHtml(const Slide& slide, int index,
+                               const QMap<QString, QString>& uuidToHtmlId,
+                               const QMap<QString, QString>& uuidToVisString);
     static QString elementToHtml(const SlideElement& elem);
     static QString colorToCss(const QColor& c);
     static bool    copyImages(const Presentation& pres,

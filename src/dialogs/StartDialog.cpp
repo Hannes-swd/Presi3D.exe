@@ -45,18 +45,21 @@ void StartDialog::buildUi() {
     vbox->setSpacing(10);
     vbox->setContentsMargins(16, 16, 16, 16);
 
-    auto* title = new QLabel("<b>Presi 3D</b>", this);
-    title->setStyleSheet("font-size:16px;");
+    auto* title = new QLabel("Presi 3D", this);
+    title->setStyleSheet("font-size:22px; font-weight:bold; color:#111827; padding: 4px 0 8px 0;");
     vbox->addWidget(title);
 
     // Action buttons
     auto* newBtn  = new QPushButton("Neues Projekt erstellen", this);
     auto* openBtn = new QPushButton("Projekt öffnen...", this);
-    newBtn->setFixedHeight(32);
-    openBtn->setFixedHeight(32);
+    newBtn->setFixedHeight(34);
+    openBtn->setFixedHeight(34);
     newBtn->setStyleSheet(
-        "QPushButton { background:#0078d4; color:white; border:none; padding:4px 16px; }"
-        "QPushButton:hover { background:#106ebe; }");
+        "QPushButton { background:#2563eb; color:white; border:none; border-radius:4px; padding:4px 16px; font-size:12px; }"
+        "QPushButton:hover { background:#1d4ed8; }");
+    openBtn->setStyleSheet(
+        "QPushButton { background:#ffffff; color:#374151; border:1px solid #d1d5db; border-radius:4px; padding:4px 16px; font-size:12px; }"
+        "QPushButton:hover { background:#f9fafb; border-color:#9ca3af; }");
 
     vbox->addWidget(newBtn);
     vbox->addWidget(openBtn);
@@ -68,7 +71,7 @@ void StartDialog::buildUi() {
     vbox->addWidget(line);
 
     auto* recentLabel = new QLabel("Zuletzt bearbeitet:", this);
-    recentLabel->setStyleSheet("color:#888; font-size:11px;");
+    recentLabel->setStyleSheet("color:#374151; font-size:11px; font-weight:bold;");
     vbox->addWidget(recentLabel);
 
     m_recentList = new QListWidget(this);

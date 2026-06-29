@@ -2,6 +2,7 @@
 #include <QString>
 #include <QVector>
 #include <QColor>
+#include <QMap>
 #include <QUuid>
 
 struct SlideElement {
@@ -68,6 +69,12 @@ struct Slide {
     float viewOffsetX = 0.f;
     float viewOffsetY = 0.f;
 
+    // Per-slide visibility overrides: when this slide is the active step,
+    // what opacity should each other slide have?
+    // Key = other slide's UUID. Missing entry = use Presentation::defaultInactiveOpacity.
+    // 0.0 = completely hidden, 1.0 = fully visible.
+    QMap<QString, float> visibilityOverrides;
+
     Slide() : id(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 };
 
@@ -79,13 +86,10 @@ public:
     bool           modified = false;
 
     // Project-wide settings
-    QColor sceneBackground  = QColor(0x11, 0x11, 0x11); // background behind all slides
-    float  slideWidth       = 1920.f;
-    float  slideHeight      = 1080.f;
-    float  activeOpacity    = 1.0f;   // opacity of the active/current slide
-    float  inactiveOpacity  = 0.3f;   // opacity of all other slides
-    bool   noDimming        = false;  // when true, all slides stay at full opacity
-    bool   lastSlideShowAll = false;  // when true, last slide shows all at full opacity
+    QColor sceneBackground        = QColor(0x11, 0x11, 0x11);
+    float  slideWidth             = 1920.f;
+    float  slideHeight            = 1080.f;
+    float  defaultInactiveOpacity = 0.3f; // opacity applied to slides with no per-slide override
 
     void addSlide(const QString& name = {});
     void removeSlide(int index);

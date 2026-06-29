@@ -6,6 +6,7 @@
 #include "dialogs/ExportDialog.h"
 #include "dialogs/StartDialog.h"
 #include "import/HtmlImporter.h"
+#include "export/HtmlExporter.h"
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -67,19 +68,15 @@ void MainWindow::setupUI() {
 
 void MainWindow::setupMenuBar() {
     QMenu* fileMenu = menuBar()->addMenu("&Datei");
-    fileMenu->addAction("&Neu",           this, &MainWindow::newPresentation,    QKeySequence::New);
-    fileMenu->addAction("&Öffnen...",     this, &MainWindow::openPresentation,   QKeySequence::Open);
+    fileMenu->addAction("&Neu",               this, &MainWindow::newPresentation,    QKeySequence::New);
+    fileMenu->addAction("&Öffnen...",         this, &MainWindow::openPresentation,   QKeySequence::Open);
     fileMenu->addSeparator();
-    fileMenu->addAction("&Speichern",     this, &MainWindow::savePresentation,   QKeySequence::Save);
+    fileMenu->addAction("&Speichern",         this, &MainWindow::savePresentation,   QKeySequence::Save);
     fileMenu->addAction("Speichern &unter...", this, &MainWindow::savePresentationAs, QKeySequence::SaveAs);
     fileMenu->addSeparator();
-    fileMenu->addAction("&Exportieren...", this, &MainWindow::exportPresentation, QKeySequence("Ctrl+E"));
     fileMenu->addAction("Im &Browser öffnen", this, &MainWindow::openInBrowser, QKeySequence("Ctrl+B"));
     fileMenu->addSeparator();
-    fileMenu->addAction("&Beenden",       this, &QWidget::close,                 QKeySequence::Quit);
-
-    QMenu* editMenu = menuBar()->addMenu("&Bearbeiten");
-    Q_UNUSED(editMenu)
+    fileMenu->addAction("&Beenden",           this, &QWidget::close,                 QKeySequence::Quit);
 
     QMenu* helpMenu = menuBar()->addMenu("&Hilfe");
     helpMenu->addAction("&Über", this, [this]() {
@@ -97,8 +94,6 @@ void MainWindow::setupToolBar() {
     tb->addAction("Neu",          this, &MainWindow::newPresentation);
     tb->addAction("Öffnen",       this, &MainWindow::openPresentation);
     tb->addAction("Speichern",    this, &MainWindow::savePresentation);
-    tb->addSeparator();
-    tb->addAction("Exportieren",  this, &MainWindow::exportPresentation);
     tb->addSeparator();
     m_browserAction = tb->addAction("▷ Im Browser öffnen", this, &MainWindow::openInBrowser);
     m_browserAction->setToolTip("Exportierte Präsentation im Browser öffnen\n(F = Vollbild)");
@@ -282,18 +277,28 @@ void MainWindow::openPresentation() {
 }
 
 void MainWindow::savePresentation() {
-    if (m_presentation->filePath.isEmpty()) { savePresentationAs(); return; }
-    QMessageBox::information(this, "Speichern",
-        "Natives Speichern ist in Phase 2 geplant.\n"
-        "Nutzen Sie Datei → Exportieren um eine Impress.js HTML zu erzeugen.");
+    if (m_presentation->exportPath.isEmpty()) {
+        savePresentationAs();
+        return;
+    }
+    auto result = HtmlExporter::exportTo(*m_presentation, m_presentation->exportPath);
+    if (result.ok) {
+        m_presentation->modified = false;
+        updateTitle();
+        statusBar()->showMessage("Gespeichert: " + m_presentation->exportPath, 4000);
+    } else {
+        QMessageBox::warning(this, "Fehler beim Speichern", result.errorMessage);
+    }
 }
 
 void MainWindow::savePresentationAs() {
-    QString path = QFileDialog::getSaveFileName(this, "Präsentation speichern", {},
-        "Impress.js Präsentation (*.ije);;Alle Dateien (*)");
-    if (path.isEmpty()) return;
-    m_presentation->filePath = path;
-    savePresentation();
+    ExportDialog dlg(m_presentation, this);
+    dlg.exec();
+    if (!m_presentation->exportPath.isEmpty()) {
+        StartDialog::addRecentProject(m_presentation->exportPath);
+        m_presentation->modified = false;
+        updateTitle();
+    }
 }
 
 void MainWindow::exportPresentation() {

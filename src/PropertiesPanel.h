@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include <QVector>
 #include "models/DataModel.h"
 
 class QLineEdit;
@@ -10,6 +11,7 @@ class QLabel;
 class QGroupBox;
 class QComboBox;
 class QCheckBox;
+class QVBoxLayout;
 
 class PropertiesPanel : public QWidget {
     Q_OBJECT
@@ -22,14 +24,12 @@ public:
 signals:
     void slideModified();
     void elementModified();
-
-signals:
     void presentationSettingsModified();
 
 private slots:
     void onSceneBgClicked();
     void onSlideSizeChanged();
-    void onOpacityChanged();
+    void onDefaultInactiveOpaChanged();
     void onSlideNameChanged(const QString&);
     void onSlideOwnSizeChanged();
     void onViewOffsetChanged();
@@ -48,8 +48,6 @@ private slots:
     void onElemBorderColorClicked();
     void onElemBorderChanged();
     void onElemCornerRadiusChanged();
-    void onNoDimmingChanged(bool);
-    void onLastSlideShowAllChanged(bool);
     void onElemAnimChanged(int);
     void onElemAnimDelayChanged(double);
     void onElemAnimDurationChanged(double);
@@ -58,6 +56,7 @@ private:
     void buildProjectGroup();
     void buildSlideGroup();
     void buildElementGroup();
+    void rebuildVisibilitySection();
     void refreshProject();
     void refreshSlide();
     void refreshElement();
@@ -69,14 +68,11 @@ private:
     bool          m_updating   = false;
 
     // Project settings
-    QGroupBox*      m_projectGroup     = nullptr;
-    QPushButton*    m_sceneBgBtn       = nullptr;
-    QDoubleSpinBox* m_slideW           = nullptr;
-    QDoubleSpinBox* m_slideH           = nullptr;
-    QCheckBox*      m_noDimming        = nullptr;
-    QDoubleSpinBox* m_activeOpacity    = nullptr;
-    QDoubleSpinBox* m_inactiveOpacity  = nullptr;
-    QCheckBox*      m_lastSlideShowAll = nullptr;
+    QGroupBox*      m_projectGroup        = nullptr;
+    QPushButton*    m_sceneBgBtn          = nullptr;
+    QDoubleSpinBox* m_slideW              = nullptr;
+    QDoubleSpinBox* m_slideH              = nullptr;
+    QDoubleSpinBox* m_defaultInactiveOpa  = nullptr;
 
     // Slide properties
     QGroupBox*      m_slideGroup  = nullptr;
@@ -93,6 +89,17 @@ private:
     QDoubleSpinBox* m_slideOwnH   = nullptr;
     QDoubleSpinBox* m_viewOffX    = nullptr;
     QDoubleSpinBox* m_viewOffY    = nullptr;
+
+    // Per-slide visibility section (dynamic, rebuilt on every setSlide())
+    QWidget*    m_visContainer = nullptr;
+    QVBoxLayout* m_visLayout   = nullptr;
+
+    struct VisRow {
+        QString        slideId;  // UUID of the other slide
+        QCheckBox*     check;
+        QDoubleSpinBox* spin;
+    };
+    QVector<VisRow> m_visRows;
 
     // Element properties
     QGroupBox*      m_elemGroup   = nullptr;

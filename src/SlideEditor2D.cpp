@@ -8,15 +8,16 @@
 #include <QMimeData>
 #include <QApplication>
 #include <QClipboard>
-#include <QPlainTextEdit>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QDir>
 #include <QMenu>
-#include <QFrame>
+#include <QTextLayout>
 #include <QTextDocument>
 #include <QTextCursor>
 #include <QTextFormat>
+#include <QFocusEvent>
+#include <QTimer>
 #include <QUuid>
 #include <QImageWriter>
 
@@ -59,13 +60,12 @@ SlideEditor2D::SlideEditor2D(QWidget* parent) : QWidget(parent) {
 
     setAcceptDrops(true);
 
-    m_textEdit = new QPlainTextEdit(this);
-    m_textEdit->hide();
-    m_textEdit->setFrameShape(QFrame::NoFrame);
-    m_textEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_textEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_textEdit->setStyleSheet("background: rgba(255,255,200,220); font-size: 14px;");
-    m_textEdit->installEventFilter(this);
+    m_cursorBlink = new QTimer(this);
+    m_cursorBlink->setInterval(530);
+    connect(m_cursorBlink, &QTimer::timeout, this, [this]() {
+        m_cursorVisible = !m_cursorVisible;
+        if (m_editingElem >= 0) update();
+    });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -180,18 +180,10 @@ void SlideEditor2D::applyResize(SlideElement& e, int handle,
     e.x = nx; e.y = ny; e.width = nw; e.height = nh;
 }
 
-// ── Text edit event filter ────────────────────────────────────────────────────
+// ── Focus out: finish text edit ───────────────────────────────────────────────
 
-bool SlideEditor2D::eventFilter(QObject* obj, QEvent* event) {
-    if (obj == m_textEdit) {
-        if (event->type() == QEvent::KeyPress) {
-            auto* ke = static_cast<QKeyEvent*>(event);
-            if (ke->key() == Qt::Key_Escape) { finishTextEdit(); return true; }
-        } else if (event->type() == QEvent::FocusOut) {
-            if (m_editingElem >= 0) finishTextEdit();
-        }
-    }
-    return QWidget::eventFilter(obj, event);
+void SlideEditor2D::focusOutEvent(QFocusEvent*) {
+    if (m_editingElem >= 0) finishTextEdit();
 }
 
 // ── Snap / alignment guides ───────────────────────────────────────────────────
@@ -303,8 +295,12 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
 
     // Elements (clipped to slide)
     p.setClipRect(sr);
-    for (int i = 0; i < slide->elements.size(); ++i)
-        drawElement(p, slide->elements[i], i == m_selectedElem);
+    for (int i = 0; i < slide->elements.size(); ++i) {
+        bool showSel = (i == m_selectedElem) && (i != m_editingElem);
+        drawElement(p, slide->elements[i], showSel);
+        if (i == m_editingElem)
+            drawTextCursor(p, slide->elements[i]);
+    }
     p.setClipping(false);
 
     // Snap guides (drawn over the slide, no clipping)
@@ -471,7 +467,20 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
         return;
     }
 
-    if (m_editingElem >= 0) finishTextEdit();
+    // While editing text: click inside same element repositions cursor; elsewhere finishes edit
+    if (m_editingElem >= 0) {
+        Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        if (s && hitTest(e->position()) == m_editingElem) {
+            m_cursorPos    = textPositionAt(s->elements[m_editingElem], e->position());
+            m_selAnchor    = -1;
+            m_textSelecting = true;
+            m_cursorVisible = true;
+            m_cursorBlink->start();
+            update();
+            return;
+        }
+        finishTextEdit();
+    }
 
     // 1. Check if a resize handle of the selected element is hit
     int handle = hitHandle(e->position());
@@ -501,6 +510,19 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
 }
 
 void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
+    // Text drag-selection
+    if (m_editingElem >= 0 && m_textSelecting) {
+        Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        if (s) {
+            if (m_selAnchor < 0) m_selAnchor = m_cursorPos;
+            m_cursorPos = textPositionAt(s->elements[m_editingElem], e->position());
+            if (m_selAnchor == m_cursorPos) m_selAnchor = -1;
+            m_cursorVisible = true;
+            update();
+        }
+        return;
+    }
+
     QPointF curSlide = widgetToSlide(e->position());
 
     // Resize mode
@@ -551,6 +573,7 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
 
 void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
+        m_textSelecting  = false;
         m_dragging       = false;
         m_resizingHandle = -1;
         m_snapGuides.clear();
@@ -564,11 +587,11 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
     Slide* s = m_pres->slideAt(m_slideIndex);
     if (!s) return;
     if (s->elements[hit].type == SlideElement::Text)
-        startTextEdit(hit);
+        startTextEdit(hit, e->position());
 }
 
 void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
-    if (m_editingElem >= 0) { QWidget::keyPressEvent(e); return; }
+    if (m_editingElem >= 0) { handleTextEditKey(e); return; }
 
     const bool ctrl = e->modifiers() & Qt::ControlModifier;
 
@@ -785,32 +808,276 @@ void SlideEditor2D::sendToBack() {
     update(); emit presentationModified(); emit elementSelected(m_selectedElem);
 }
 
-// ── Inline text edit ──────────────────────────────────────────────────────────
+// ── Inline text edit (WYSIWYG — direct canvas cursor, no overlay widget) ─────
 
-void SlideEditor2D::startTextEdit(int idx) {
+// Build a QTextLayout for a text element at widget scale and do line layout.
+// The layout origin is at (0,0); add elemToWidget(e).topLeft() to get widget coords.
+static void buildLayout(QTextLayout& layout, const SlideElement& e,
+                        const QFont& font, float width) {
+    layout.setFont(font);
+    QTextOption opt;
+    if      (e.textAlignment == "center") opt.setAlignment(Qt::AlignHCenter);
+    else if (e.textAlignment == "right")  opt.setAlignment(Qt::AlignRight);
+    else                                  opt.setAlignment(Qt::AlignLeft);
+    opt.setWrapMode(QTextOption::WordWrap);
+    layout.setTextOption(opt);
+    layout.beginLayout();
+    float y = 0;
+    for (;;) {
+        QTextLine line = layout.createLine();
+        if (!line.isValid()) break;
+        line.setLineWidth(width);
+        line.setPosition(QPointF(0, y));
+        y += line.height();
+    }
+    layout.endLayout();
+}
+
+static QFont elemFont(const SlideElement& e, float scaleY) {
+    QFont f(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
+    f.setBold(e.bold); f.setItalic(e.italic);
+    return f;
+}
+
+void SlideEditor2D::startTextEdit(int idx, QPointF clickPos) {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || idx < 0 || idx >= s->elements.size()) return;
+    if (s->elements[idx].type != SlideElement::Text) return;
     finishTextEdit();
     m_editingElem = idx;
-    SlideElement& e = s->elements[idx];
-    QRectF wr = elemToWidget(e);
-    m_textEdit->setGeometry(wr.toRect());
-    m_textEdit->setPlainText(e.content);
-    float sy = slideRect().height() / SLIDE_H_DEFAULT;
-    m_textEdit->setFont(QFont(e.fontFamily, qMax(8, (int)(e.fontSize * sy))));
-    m_textEdit->show();
-    m_textEdit->setFocus();
-    m_textEdit->selectAll();
+
+    if (clickPos.x() >= 0)
+        m_cursorPos = textPositionAt(s->elements[idx], clickPos);
+    else
+        m_cursorPos = s->elements[idx].content.length();
+
+    m_selAnchor     = -1;
+    m_cursorVisible = true;
+    m_cursorBlink->start();
+    setFocus();
+    update();
 }
 
 void SlideEditor2D::finishTextEdit() {
     if (m_editingElem < 0) return;
-    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
-    if (s && m_editingElem < s->elements.size()) {
-        s->elements[m_editingElem].content = m_textEdit->toPlainText();
-        emit presentationModified();
-    }
-    m_editingElem = -1;
-    m_textEdit->hide();
+    m_cursorBlink->stop();
+    m_editingElem    = -1;
+    m_cursorPos      = 0;
+    m_selAnchor      = -1;
+    m_textSelecting  = false;
+    m_cursorVisible  = false;
     update();
+}
+
+void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_editingElem < 0 || m_editingElem >= s->elements.size()) return;
+    SlideElement& elem = s->elements[m_editingElem];
+    QString& text = elem.content;
+
+    m_cursorVisible = true;
+    m_cursorBlink->start();
+
+    const bool alt      = ke->modifiers() & Qt::AltModifier;
+    const bool ctrl     = ke->modifiers() & Qt::ControlModifier;
+    const bool shift    = ke->modifiers() & Qt::ShiftModifier;
+    const bool ctrlOnly = ctrl && !alt; // true Ctrl, NOT AltGr (which is Ctrl+Alt on Windows)
+
+    // Helper: delete the current selection and reset anchor
+    auto deleteSelection = [&]() {
+        if (m_selAnchor < 0 || m_selAnchor == m_cursorPos) return;
+        int lo = qMin(m_cursorPos, m_selAnchor);
+        int hi = qMax(m_cursorPos, m_selAnchor);
+        text.remove(lo, hi - lo);
+        m_cursorPos = lo;
+        m_selAnchor = -1;
+    };
+
+    // Helper: build layout for Up/Down movement
+    auto makeLayout = [&]() -> std::pair<QTextLayout*, float> {
+        QRectF wr = elemToWidget(elem);
+        float sy = slideRect().height() / SLIDE_H_DEFAULT;
+        QFont font = elemFont(elem, sy);
+        auto* layout = new QTextLayout(text, font);
+        buildLayout(*layout, elem, font, float(wr.width()));
+        return {layout, float(wr.height())};
+    };
+
+    if (ke->key() == Qt::Key_Escape) { finishTextEdit(); return; }
+
+    // ── Ctrl+A ───────────────────────────────────────────────────────────
+    if (ctrlOnly && ke->key() == Qt::Key_A) {
+        m_selAnchor = 0; m_cursorPos = text.length(); update(); return;
+    }
+
+    // ── Navigation (Left / Right) ─────────────────────────────────────────
+    if (ke->key() == Qt::Key_Left) {
+        if (shift) {
+            if (m_selAnchor < 0) m_selAnchor = m_cursorPos;
+            if (m_cursorPos > 0) m_cursorPos--;
+            if (m_selAnchor == m_cursorPos) m_selAnchor = -1;
+        } else {
+            // If selection exists, jump to lower bound; else move left
+            if (m_selAnchor >= 0) { m_cursorPos = qMin(m_cursorPos, m_selAnchor); m_selAnchor = -1; }
+            else if (m_cursorPos > 0) m_cursorPos--;
+        }
+        update(); return;
+    }
+    if (ke->key() == Qt::Key_Right) {
+        if (shift) {
+            if (m_selAnchor < 0) m_selAnchor = m_cursorPos;
+            if (m_cursorPos < text.length()) m_cursorPos++;
+            if (m_selAnchor == m_cursorPos) m_selAnchor = -1;
+        } else {
+            if (m_selAnchor >= 0) { m_cursorPos = qMax(m_cursorPos, m_selAnchor); m_selAnchor = -1; }
+            else if (m_cursorPos < text.length()) m_cursorPos++;
+        }
+        update(); return;
+    }
+    if (ke->key() == Qt::Key_Home) {
+        if (shift) { if (m_selAnchor < 0) m_selAnchor = m_cursorPos; m_cursorPos = 0; if (m_selAnchor == m_cursorPos) m_selAnchor = -1; }
+        else { m_selAnchor = -1; m_cursorPos = 0; }
+        update(); return;
+    }
+    if (ke->key() == Qt::Key_End) {
+        if (shift) { if (m_selAnchor < 0) m_selAnchor = m_cursorPos; m_cursorPos = text.length(); if (m_selAnchor == m_cursorPos) m_selAnchor = -1; }
+        else { m_selAnchor = -1; m_cursorPos = text.length(); }
+        update(); return;
+    }
+
+    // ── Up / Down ─────────────────────────────────────────────────────────
+    if (ke->key() == Qt::Key_Up || ke->key() == Qt::Key_Down) {
+        auto [layout, elemH] = makeLayout();
+        QTextLine cur = layout->lineForTextPosition(m_cursorPos);
+        if (cur.isValid()) {
+            float cx = cur.cursorToX(m_cursorPos);
+            int ln = cur.lineNumber() + (ke->key() == Qt::Key_Down ? 1 : -1);
+            int newPos;
+            if (ln >= 0 && ln < layout->lineCount())
+                newPos = layout->lineAt(ln).xToCursor(cx, QTextLine::CursorBetweenCharacters);
+            else
+                newPos = (ke->key() == Qt::Key_Up) ? 0 : text.length();
+            if (shift) { if (m_selAnchor < 0) m_selAnchor = m_cursorPos; m_cursorPos = newPos; if (m_selAnchor == m_cursorPos) m_selAnchor = -1; }
+            else { m_selAnchor = -1; m_cursorPos = newPos; }
+        }
+        delete layout; update(); return;
+    }
+
+    // ── Backspace / Delete ────────────────────────────────────────────────
+    if (ke->key() == Qt::Key_Backspace) {
+        if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) deleteSelection();
+        else if (m_cursorPos > 0) { text.remove(m_cursorPos - 1, 1); m_cursorPos--; }
+        emit presentationModified(); update(); return;
+    }
+    if (ke->key() == Qt::Key_Delete) {
+        if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) deleteSelection();
+        else if (m_cursorPos < text.length()) text.remove(m_cursorPos, 1);
+        emit presentationModified(); update(); return;
+    }
+
+    // ── Enter ─────────────────────────────────────────────────────────────
+    if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+        if (m_selAnchor >= 0) deleteSelection();
+        text.insert(m_cursorPos, '\n'); m_cursorPos++;
+        emit presentationModified(); update(); return;
+    }
+
+    // ── Printable character (incl. AltGr combos) ─────────────────────────
+    QString ch = ke->text();
+    if (!ch.isEmpty() && ch[0].isPrint()) {
+        if (m_selAnchor >= 0) deleteSelection();
+        text.insert(m_cursorPos, ch);
+        m_cursorPos += ch.length();
+        emit presentationModified(); update(); return;
+    }
+
+    // ── Other Ctrl shortcuts → parent window (Ctrl+S, Ctrl+Z …) ─────────
+    if (ctrlOnly) QWidget::keyPressEvent(ke);
+}
+
+// Compute vertical offset caused by middle/bottom alignment of text within element rect.
+static float textVOff(const QTextLayout& layout, float elemH, const QString& vAlign) {
+    if (layout.lineCount() == 0 || vAlign.isEmpty() || vAlign == "top") return 0;
+    QTextLine last = layout.lineAt(layout.lineCount() - 1);
+    float totalH = float(last.y() + last.height());
+    if (vAlign == "middle") return qMax(0.f, (elemH - totalH) * 0.5f);
+    if (vAlign == "bottom") return qMax(0.f, elemH - totalH);
+    return 0;
+}
+
+void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
+    QRectF wr = elemToWidget(e);
+    p.save();
+
+    // Blue editing border
+    p.setPen(QPen(QColor(37, 99, 235), 1.5));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(wr);
+
+    float sy = slideRect().height() / SLIDE_H_DEFAULT;
+    QFont font = elemFont(e, sy);
+    QTextLayout layout(e.content, font);
+    buildLayout(layout, e, font, float(wr.width()));
+
+    float vOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
+
+    // ── Selection highlight ───────────────────────────────────────────────
+    if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) {
+        int selLo = qMin(m_cursorPos, m_selAnchor);
+        int selHi = qMax(m_cursorPos, m_selAnchor);
+        QColor selColor(37, 99, 235, 80);
+        for (int i = 0; i < layout.lineCount(); ++i) {
+            QTextLine ln = layout.lineAt(i);
+            int lnStart = ln.textStart();
+            int lnEnd   = lnStart + ln.textLength();
+            if (lnEnd <= selLo || lnStart >= selHi) continue;
+            float x1 = float(ln.cursorToX(qMax(selLo, lnStart)));
+            float x2 = float(ln.cursorToX(qMin(selHi, lnEnd)));
+            float ry  = float(wr.y()) + vOff + float(ln.y());
+            p.fillRect(QRectF(wr.x() + x1, ry, x2 - x1, ln.height()), selColor);
+        }
+    }
+
+    // ── Cursor line ───────────────────────────────────────────────────────
+    if (m_cursorVisible) {
+        int pos = qBound(0, m_cursorPos, e.content.length());
+        QTextLine line = layout.lineForTextPosition(pos);
+        if (!line.isValid() && layout.lineCount() > 0)
+            line = layout.lineAt(layout.lineCount() - 1);
+        if (line.isValid()) {
+            float cx = float(wr.x()) + float(line.cursorToX(pos));
+            float cy = float(wr.y()) + vOff + float(line.y());
+            float ch = float(line.height());
+            QColor cursorColor = e.color.isValid() ? e.color : Qt::black;
+            p.setPen(QPen(cursorColor, 2));
+            p.drawLine(QPointF(cx, cy + 1), QPointF(cx, cy + ch - 1));
+        }
+    }
+
+    p.restore();
+}
+
+int SlideEditor2D::textPositionAt(const SlideElement& e, QPointF widgetPos) const {
+    QRectF wr = elemToWidget(e);
+    float sy = slideRect().height() / SLIDE_H_DEFAULT;
+    QFont font = elemFont(e, sy);
+    QTextLayout layout(e.content, font);
+    buildLayout(layout, e, font, float(wr.width()));
+
+    float vOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
+
+    // Adjust click position by vertical alignment offset
+    QPointF local = widgetPos - wr.topLeft();
+    local.setY(local.y() - vOff);
+
+    int bestLine = layout.lineCount() > 0 ? 0 : -1;
+    float bestDist = 1e9f;
+    for (int i = 0; i < layout.lineCount(); ++i) {
+        QTextLine ln = layout.lineAt(i);
+        float mid = float(ln.y() + ln.height() * 0.5f);
+        float d   = qAbs(float(local.y()) - mid);
+        if (d < bestDist) { bestDist = d; bestLine = i; }
+    }
+    if (bestLine < 0) return 0;
+    return layout.lineAt(bestLine).xToCursor(float(local.x()), QTextLine::CursorBetweenCharacters);
 }

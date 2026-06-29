@@ -61,19 +61,6 @@ QString HtmlExporter::generateCss(const Presentation& pres) {
     int sw = int(pres.slideWidth  > 0 ? pres.slideWidth  : 1920);
     int sh = int(pres.slideHeight > 0 ? pres.slideHeight : 1080);
 
-    double activeOpa   = qBound(0.0, double(pres.activeOpacity),   1.0);
-    double inactiveOpa = qBound(0.0, double(pres.inactiveOpacity), 1.0);
-
-    QString noDimmingCss;
-    if (pres.noDimming) {
-        noDimmingCss = ".step { opacity: 1 !important; }\n";
-    }
-
-    QString lastSlideCss;
-    if (pres.lastSlideShowAll) {
-        lastSlideCss = "#impress.all-visible .step { opacity: 1 !important; transition: none; }\n";
-    }
-
     return QString(R"css(
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -88,13 +75,17 @@ body {
     width: %2px;
     height: %3px;
     overflow: hidden;
-    opacity: %4;
-    transition: opacity 0.8s ease-in-out;
+    transition: opacity 0.6s ease-in-out;
 }
 
-.step.active,
-.step.present {
-    opacity: %5;
+/* Opacity is managed via JavaScript for per-slide control */
+
+/* Fix: prevent GPU sub-pixel blur on images during 3D CSS transforms */
+.step img {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transform: translateZ(0);
+    image-rendering: -webkit-optimize-contrast;
 }
 
 /* Entrance animations */
@@ -113,15 +104,38 @@ body {
 @keyframes impressSlideDown { from{transform:translateY(60px);opacity:0}  to{transform:none;opacity:1} }
 @keyframes impressZoomIn    { from{transform:scale(0.4);opacity:0}        to{transform:none;opacity:1} }
 )css"
-    + noDimmingCss + lastSlideCss
-    ).arg(bg).arg(sw).arg(sh)
-     .arg(inactiveOpa, 0, 'f', 2)
-     .arg(activeOpa,   0, 'f', 2);
+    ).arg(bg).arg(sw).arg(sh);
+}
+
+// Build uuid→htmlId map and per-slide visibility override strings
+static void buildVisibilityData(const Presentation& pres,
+                                 QMap<QString, QString>& uuidToHtmlId,
+                                 QMap<QString, QString>& uuidToVisString)
+{
+    for (int i = 0; i < pres.slides.size(); ++i)
+        uuidToHtmlId[pres.slides[i].id] = QString("slide-%1").arg(i + 1);
+
+    for (const Slide& s : pres.slides) {
+        if (s.visibilityOverrides.isEmpty()) continue;
+        QStringList pairs;
+        for (auto it = s.visibilityOverrides.cbegin(); it != s.visibilityOverrides.cend(); ++it) {
+            if (!uuidToHtmlId.contains(it.key())) continue;
+            pairs << uuidToHtmlId[it.key()] + ':' + QString::number(it.value(), 'f', 2);
+        }
+        if (!pairs.isEmpty())
+            uuidToVisString[s.id] = pairs.join(',');
+    }
 }
 
 QString HtmlExporter::generateHtml(const Presentation& pres) {
+    QMap<QString, QString> uuidToHtmlId;
+    QMap<QString, QString> uuidToVisString;
+    buildVisibilityData(pres, uuidToHtmlId, uuidToVisString);
+
     QString html;
     QTextStream out(&html);
+
+    double defOpa = qBound(0.0, double(pres.defaultInactiveOpacity), 1.0);
 
     out << "<!DOCTYPE html>\n"
         << "<html lang=\"de\">\n"
@@ -136,27 +150,54 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "     data-width=\""  << int(pres.slideWidth  > 0 ? pres.slideWidth  : 1920) << "\"\n"
         << "     data-height=\"" << int(pres.slideHeight > 0 ? pres.slideHeight : 1080) << "\"\n"
         << "     data-max-scale=\"3\"\n"
-        << "     data-min-scale=\"0\">\n\n";
+        << "     data-min-scale=\"0\"\n"
+        << "     data-default-inactive-opacity=\""
+        << QString::number(defOpa, 'f', 2) << "\">\n\n";
 
     for (int i = 0; i < pres.slides.size(); ++i)
-        out << slideToHtml(pres.slides[i], i + 1) << "\n\n";
+        out << slideToHtml(pres.slides[i], i + 1, uuidToHtmlId, uuidToVisString) << "\n\n";
 
     out << "</div>\n\n"
         << "<script src=\"impress.js\"></script>\n"
         << "<script>\n"
         << "var api = impress();\n"
         << "api.init();\n"
-        << "var steps = document.querySelectorAll('.step');\n"
-        << "document.addEventListener('impress:stepenter', function(e) {\n"
-        << "  var i = Array.from(steps).indexOf(e.target) + 1;\n"
-        << "  var el = document.getElementById('slide-counter');\n"
-        << "  if (el) el.textContent = i + ' / ' + steps.length;\n"
-        << (pres.lastSlideShowAll
-            ? QString("  var imp = document.getElementById('impress');\n"
-                      "  if (i === steps.length) imp.classList.add('all-visible');\n"
-                      "  else imp.classList.remove('all-visible');\n")
-            : QString())
+        << "var steps = Array.from(document.querySelectorAll('.step'));\n"
+        << "var impEl = document.getElementById('impress');\n"
+        << "var defaultInactiveOpacity = parseFloat(impEl.dataset.defaultInactiveOpacity || 0.3);\n"
+        << "\n"
+        << "// Build per-slide visibility map from data-vis-overrides attributes\n"
+        << "var slideVisibility = {};\n"
+        << "steps.forEach(function(step) {\n"
+        << "  var raw = step.dataset.visOverrides || '';\n"
+        << "  if (!raw) return;\n"
+        << "  var map = {};\n"
+        << "  raw.split(',').forEach(function(pair) {\n"
+        << "    var kv = pair.split(':');\n"
+        << "    if (kv.length === 2) map[kv[0].trim()] = parseFloat(kv[1]);\n"
+        << "  });\n"
+        << "  slideVisibility[step.id] = map;\n"
         << "});\n"
+        << "\n"
+        << "// Set initial opacities\n"
+        << "steps.forEach(function(step) { step.style.opacity = defaultInactiveOpacity; });\n"
+        << "\n"
+        << "document.addEventListener('impress:stepenter', function(e) {\n"
+        << "  var activeId = e.target.id;\n"
+        << "  var overrides = slideVisibility[activeId] || {};\n"
+        << "  steps.forEach(function(step) {\n"
+        << "    if (step.id === activeId) {\n"
+        << "      step.style.opacity = '1';\n"
+        << "    } else {\n"
+        << "      var opa = (step.id in overrides) ? overrides[step.id] : defaultInactiveOpacity;\n"
+        << "      step.style.opacity = String(opa);\n"
+        << "    }\n"
+        << "  });\n"
+        << "  var el = document.getElementById('slide-counter');\n"
+        << "  var i = steps.indexOf(e.target) + 1;\n"
+        << "  if (el) el.textContent = i + ' / ' + steps.length;\n"
+        << "});\n"
+        << "\n"
         << "document.addEventListener('keydown', function(e) {\n"
         << "  if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) {\n"
         << "    if (!document.fullscreenElement) {\n"
@@ -177,14 +218,15 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
     return html;
 }
 
-QString HtmlExporter::slideToHtml(const Slide& s, int index) {
+QString HtmlExporter::slideToHtml(const Slide& s, int index,
+                                   const QMap<QString, QString>& uuidToHtmlId,
+                                   const QMap<QString, QString>& uuidToVisString) {
     QString html;
     QTextStream out(&html);
 
     QString bg = colorToCss(s.backgroundColor);
     QString slideId = QString("slide-%1").arg(index);
 
-    // Build inline style: background + optional per-slide size override
     QString stepStyle = "background:" + bg + ";";
     if (s.slideWidth > 0 && s.slideHeight > 0)
         stepStyle += QString("width:%1px;height:%2px;").arg(int(s.slideWidth)).arg(int(s.slideHeight));
@@ -204,8 +246,13 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index) {
         << "       data-rotate=\""    << s.rotZ << "\"\n"
         << "       data-scale=\""     << s.scale << "\"\n"
         << "       data-view-offset-x=\"" << s.viewOffsetX << "\"\n"
-        << "       data-view-offset-y=\"" << s.viewOffsetY << "\"\n"
-        << "       style=\""          << stepStyle << "\">\n";
+        << "       data-view-offset-y=\"" << s.viewOffsetY << "\"\n";
+
+    // Per-slide visibility overrides (written as data-vis-overrides="id:opa,id:opa")
+    if (uuidToVisString.contains(s.id))
+        out << "       data-vis-overrides=\"" << uuidToVisString[s.id] << "\"\n";
+
+    out << "       style=\""          << stepStyle << "\">\n";
 
     for (const auto& elem : s.elements)
         out << "    " << elementToHtml(elem) << "\n";
@@ -233,7 +280,6 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
         if (e.italic)        style += "font-style:italic;";
         if (e.backgroundColor != Qt::transparent)
             style += "background:" + colorToCss(e.backgroundColor) + ";";
-        // text-decoration
         QStringList decos;
         if (e.underline)     decos << "underline";
         if (e.strikethrough) decos << "line-through";

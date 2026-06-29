@@ -38,8 +38,8 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     vbox->setContentsMargins(6, 6, 6, 6);
     vbox->setSpacing(8);
 
-    auto* title = new QLabel("Eigenschaften", inner);
-    title->setStyleSheet("font-weight: bold; font-size: 12px; padding: 4px;");
+    auto* title = new QLabel("EIGENSCHAFTEN", inner);
+    title->setStyleSheet("font-weight: bold; font-size: 10px; color: #374151; padding: 8px 8px 4px 8px; letter-spacing: 1px;");
     vbox->addWidget(title);
 
     buildProjectGroup();
@@ -73,37 +73,22 @@ void PropertiesPanel::buildProjectGroup() {
     sizeRow->addWidget(m_slideH);
     form->addRow("Foliengröße:", sizeRow);
 
-    auto* sepOpa = new QLabel("─── Folien-Sichtbarkeit ───", m_projectGroup);
-    sepOpa->setStyleSheet("color: #888; font-size: 10px;");
-    form->addRow(sepOpa);
+    auto* sep = new QLabel("─── Standard Sichtbarkeit ───", m_projectGroup);
+    sep->setStyleSheet("color: #374151; font-size: 10px;");
+    form->addRow(sep);
 
-    m_noDimming = new QCheckBox("Kein Dimming (alle immer 100%)", m_projectGroup);
-    m_noDimming->setToolTip("Alle Folien bleiben immer vollständig sichtbar – kein Abdunkeln");
-    form->addRow(m_noDimming);
-
-    m_activeOpacity = makeSpin(0.0, 1.0, 0.05);
-    m_activeOpacity->setDecimals(2);
-    m_activeOpacity->setValue(1.0);
-    m_activeOpacity->setToolTip("Deckkraft der aktuell angezeigten Folie");
-    form->addRow("Aktiv:", m_activeOpacity);
-
-    m_inactiveOpacity = makeSpin(0.0, 1.0, 0.05);
-    m_inactiveOpacity->setDecimals(2);
-    m_inactiveOpacity->setValue(0.3);
-    m_inactiveOpacity->setToolTip("Deckkraft aller anderen Folien");
-    form->addRow("Inaktiv:", m_inactiveOpacity);
-
-    m_lastSlideShowAll = new QCheckBox("Letzte Folie: alle sichtbar", m_projectGroup);
-    m_lastSlideShowAll->setToolTip("Auf der letzten Folie werden alle Folien voll sichtbar\n(z.B. für Abschluss-Übersicht)");
-    form->addRow(m_lastSlideShowAll);
+    m_defaultInactiveOpa = makeSpin(0.0, 1.0, 0.05);
+    m_defaultInactiveOpa->setDecimals(2);
+    m_defaultInactiveOpa->setValue(0.3);
+    m_defaultInactiveOpa->setToolTip("Standard-Deckkraft für Folien ohne eigene Einstellung\n"
+                                     "(gilt wenn keine per-Folie-Überschreibung gesetzt ist)");
+    form->addRow("Inaktiv Standard:", m_defaultInactiveOpa);
 
     connect(m_sceneBgBtn, &QPushButton::clicked, this, &PropertiesPanel::onSceneBgClicked);
     connect(m_slideW, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideSizeChanged(); });
     connect(m_slideH, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideSizeChanged(); });
-    connect(m_noDimming,        &QCheckBox::toggled, this, &PropertiesPanel::onNoDimmingChanged);
-    connect(m_lastSlideShowAll, &QCheckBox::toggled, this, &PropertiesPanel::onLastSlideShowAllChanged);
-    connect(m_activeOpacity,   &QDoubleSpinBox::valueChanged, this, [this](double) { onOpacityChanged(); });
-    connect(m_inactiveOpacity, &QDoubleSpinBox::valueChanged, this, [this](double) { onOpacityChanged(); });
+    connect(m_defaultInactiveOpa, &QDoubleSpinBox::valueChanged,
+            this, [this](double) { onDefaultInactiveOpaChanged(); });
 }
 
 void PropertiesPanel::buildSlideGroup() {
@@ -120,7 +105,7 @@ void PropertiesPanel::buildSlideGroup() {
     form->addRow("Hintergrund:", m_bgColorBtn);
 
     auto* sep = new QLabel("─── 3D Position ───", m_slideGroup);
-    sep->setStyleSheet("color: #888; font-size: 10px;");
+    sep->setStyleSheet("color: #374151; font-size: 10px;");
     form->addRow(sep);
 
     m_posX = makeSpin(-99999, 99999, 100);
@@ -131,7 +116,7 @@ void PropertiesPanel::buildSlideGroup() {
     form->addRow("Z:", m_posZ);
 
     auto* sep2 = new QLabel("─── Rotation (°) ───", m_slideGroup);
-    sep2->setStyleSheet("color: #888; font-size: 10px;");
+    sep2->setStyleSheet("color: #374151; font-size: 10px;");
     form->addRow(sep2);
 
     m_rotX = makeSpin(-360, 360);
@@ -149,7 +134,7 @@ void PropertiesPanel::buildSlideGroup() {
     form->addRow("Zoom:", m_scale);
 
     auto* sepView = new QLabel("─── Sichtfeld (nur 3D) ───", m_slideGroup);
-    sepView->setStyleSheet("color: #888; font-size: 10px;");
+    sepView->setStyleSheet("color: #374151; font-size: 10px;");
     form->addRow(sepView);
 
     auto* viewOffRow = new QHBoxLayout;
@@ -163,7 +148,7 @@ void PropertiesPanel::buildSlideGroup() {
     form->addRow("Offset X:", viewOffRow);
 
     auto* sepSize = new QLabel("─── Eigene Foliengröße ───", m_slideGroup);
-    sepSize->setStyleSheet("color: #888; font-size: 10px;");
+    sepSize->setStyleSheet("color: #374151; font-size: 10px;");
     form->addRow(sepSize);
 
     auto* ownSizeRow = new QHBoxLayout;
@@ -179,8 +164,23 @@ void PropertiesPanel::buildSlideGroup() {
     form->addRow("Größe:", ownSizeRow);
 
     auto* sizeHint = new QLabel("(0 = Standard)", m_slideGroup);
-    sizeHint->setStyleSheet("color: #888; font-size: 9px;");
+    sizeHint->setStyleSheet("color: #6b7280; font-size: 9px;");
     form->addRow(sizeHint);
+
+    // ── Per-slide visibility section ──────────────────────────────────────────
+    auto* sepVis = new QLabel("─── Sichtbarkeit anderer Folien ───", m_slideGroup);
+    sepVis->setStyleSheet("color: #374151; font-size: 10px;");
+    form->addRow(sepVis);
+
+    auto* visHint = new QLabel("Wenn diese Folie aktiv ist:", m_slideGroup);
+    visHint->setStyleSheet("color: #6b7280; font-size: 9px;");
+    form->addRow(visHint);
+
+    m_visContainer = new QWidget(m_slideGroup);
+    m_visLayout    = new QVBoxLayout(m_visContainer);
+    m_visLayout->setContentsMargins(0, 2, 0, 2);
+    m_visLayout->setSpacing(2);
+    form->addRow(m_visContainer);
 
     // Signals
     connect(m_slideName, &QLineEdit::editingFinished, this, [this]() {
@@ -207,7 +207,7 @@ void PropertiesPanel::buildElementGroup() {
     form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     m_elemType = new QLabel("—", m_elemGroup);
-    m_elemType->setStyleSheet("color: #888;");
+    m_elemType->setStyleSheet("color: #374151;");
     form->addRow("Typ:", m_elemType);
 
     m_elemContent = new QLineEdit(m_elemGroup);
@@ -269,7 +269,7 @@ void PropertiesPanel::buildElementGroup() {
 
     // ── Entrance animation ────────────────────────────────────────────────────
     m_animSepLabel = new QLabel("─── Eingangs-Animation ───", m_elemGroup);
-    m_animSepLabel->setStyleSheet("color: #888; font-size: 10px;");
+    m_animSepLabel->setStyleSheet("color: #374151; font-size: 10px;");
     form->addRow(m_animSepLabel);
 
     m_eAnimType = new QComboBox(m_elemGroup);
@@ -313,6 +313,7 @@ void PropertiesPanel::setSlide(Presentation* pres, int slideIndex) {
     m_slideIdx = slideIndex;
     m_elemIdx  = -1;
     m_elemGroup->setEnabled(false);
+    rebuildVisibilitySection();
     refreshProject();
     refreshSlide();
 }
@@ -323,6 +324,83 @@ void PropertiesPanel::setSelectedElement(int elemIndex) {
     refreshElement();
 }
 
+// ── Visibility section ────────────────────────────────────────────────────────
+
+void PropertiesPanel::rebuildVisibilitySection() {
+    // Clear old rows
+    m_visRows.clear();
+    while (QLayoutItem* item = m_visLayout->takeAt(0)) {
+        if (QWidget* w = item->widget()) w->deleteLater();
+        delete item;
+    }
+
+    if (!m_pres) return;
+    const Slide* cur = m_pres->slideAt(m_slideIdx);
+    if (!cur) return;
+
+    float defOpa = m_pres->defaultInactiveOpacity;
+
+    for (const Slide& other : m_pres->slides) {
+        if (other.id == cur->id) continue;
+
+        // Determine current opacity for this other slide
+        float opa = defOpa;
+        if (cur->visibilityOverrides.contains(other.id))
+            opa = cur->visibilityOverrides[other.id];
+
+        auto* row = new QWidget(m_visContainer);
+        auto* hl  = new QHBoxLayout(row);
+        hl->setContentsMargins(0, 0, 0, 0);
+        hl->setSpacing(4);
+
+        auto* chk = new QCheckBox(other.name.isEmpty() ? other.id.left(8) : other.name, row);
+        chk->setChecked(opa > 0.0f);
+        chk->setStyleSheet("font-size: 10px;");
+
+        auto* spin = new QDoubleSpinBox(row);
+        spin->setRange(0.01, 1.0);
+        spin->setSingleStep(0.05);
+        spin->setDecimals(2);
+        spin->setValue(opa > 0.0f ? opa : defOpa);
+        spin->setFixedWidth(60);
+        spin->setEnabled(opa > 0.0f);
+
+        hl->addWidget(chk, 1);
+        hl->addWidget(spin);
+        m_visLayout->addWidget(row);
+
+        VisRow vr;
+        vr.slideId = other.id;
+        vr.check   = chk;
+        vr.spin    = spin;
+        m_visRows.append(vr);
+
+        // Capture index for the lambdas
+        int rowIdx = m_visRows.size() - 1;
+
+        connect(chk, &QCheckBox::toggled, this, [this, rowIdx](bool on) {
+            if (m_updating) return;
+            m_visRows[rowIdx].spin->setEnabled(on);
+            Slide* s = m_pres ? m_pres->slideAt(m_slideIdx) : nullptr;
+            if (!s) return;
+            if (on)
+                s->visibilityOverrides[m_visRows[rowIdx].slideId] =
+                    float(m_visRows[rowIdx].spin->value());
+            else
+                s->visibilityOverrides[m_visRows[rowIdx].slideId] = 0.0f;
+            emit slideModified();
+        });
+
+        connect(spin, &QDoubleSpinBox::valueChanged, this, [this, rowIdx](double v) {
+            if (m_updating) return;
+            Slide* s = m_pres ? m_pres->slideAt(m_slideIdx) : nullptr;
+            if (!s || !m_visRows[rowIdx].check->isChecked()) return;
+            s->visibilityOverrides[m_visRows[rowIdx].slideId] = float(v);
+            emit slideModified();
+        });
+    }
+}
+
 // ── Refresh helpers ───────────────────────────────────────────────────────────
 
 void PropertiesPanel::refreshProject() {
@@ -331,12 +409,7 @@ void PropertiesPanel::refreshProject() {
     updateColorButton(m_sceneBgBtn, m_pres->sceneBackground);
     m_slideW->setValue(m_pres->slideWidth);
     m_slideH->setValue(m_pres->slideHeight);
-    m_noDimming->setChecked(m_pres->noDimming);
-    m_activeOpacity->setValue(m_pres->activeOpacity);
-    m_activeOpacity->setEnabled(!m_pres->noDimming);
-    m_inactiveOpacity->setValue(m_pres->inactiveOpacity);
-    m_inactiveOpacity->setEnabled(!m_pres->noDimming);
-    m_lastSlideShowAll->setChecked(m_pres->lastSlideShowAll);
+    m_defaultInactiveOpa->setValue(m_pres->defaultInactiveOpacity);
     m_updating = false;
 }
 
@@ -358,6 +431,18 @@ void PropertiesPanel::refreshSlide() {
     m_slideOwnH->setValue(s->slideHeight);
     m_viewOffX->setValue(s->viewOffsetX);
     m_viewOffY->setValue(s->viewOffsetY);
+
+    // Refresh visibility rows
+    float defOpa = m_pres->defaultInactiveOpacity;
+    for (VisRow& vr : m_visRows) {
+        float opa = s->visibilityOverrides.contains(vr.slideId)
+                    ? s->visibilityOverrides[vr.slideId]
+                    : defOpa;
+        vr.check->setChecked(opa > 0.0f);
+        vr.spin->setValue(opa > 0.0f ? opa : defOpa);
+        vr.spin->setEnabled(opa > 0.0f);
+    }
+
     m_updating = false;
 }
 
@@ -391,7 +476,6 @@ void PropertiesPanel::refreshElement() {
                  : (e.textAlignment == "right")  ? 2 : 0;
     m_eAlign->setCurrentIndex(alignIdx);
 
-    // Shape-specific controls
     bool isShape = (e.type == SlideElement::Shape);
     m_borderWLabel->setVisible(isShape);
     m_eBorderW->setVisible(isShape);
@@ -406,7 +490,6 @@ void PropertiesPanel::refreshElement() {
         m_eCornerRadius->setValue(e.cornerRadius);
     }
 
-    // Animation controls
     int animIdx = 0;
     for (int i = 0; i < m_eAnimType->count(); ++i) {
         if (m_eAnimType->itemData(i).toString() == e.entranceAnim) { animIdx = i; break; }
@@ -455,10 +538,9 @@ void PropertiesPanel::onSlideSizeChanged() {
     emit presentationSettingsModified();
 }
 
-void PropertiesPanel::onOpacityChanged() {
+void PropertiesPanel::onDefaultInactiveOpaChanged() {
     if (m_updating || !m_pres) return;
-    m_pres->activeOpacity   = float(m_activeOpacity->value());
-    m_pres->inactiveOpacity = float(m_inactiveOpacity->value());
+    m_pres->defaultInactiveOpacity = float(m_defaultInactiveOpa->value());
     emit presentationSettingsModified();
 }
 
@@ -477,7 +559,6 @@ void PropertiesPanel::onBgColorClicked() {
     if (!s) return;
     QColor init = (s->backgroundColor.isValid() && s->backgroundColor != Qt::transparent)
                   ? s->backgroundColor : Qt::white;
-    // ShowAlphaChannel: alpha=0 → vollständig transparent (kein Hintergrund)
     QColor c = QColorDialog::getColor(init, this, "Folienhintergrund (Alpha=0 → transparent)",
                                       QColorDialog::ShowAlphaChannel);
     if (c.isValid()) {
@@ -632,20 +713,6 @@ void PropertiesPanel::onElemCornerRadiusChanged() {
         e->cornerRadius = float(m_eCornerRadius->value());
         emit elementModified();
     }
-}
-
-void PropertiesPanel::onNoDimmingChanged(bool on) {
-    if (m_updating || !m_pres) return;
-    m_pres->noDimming = on;
-    m_activeOpacity->setEnabled(!on);
-    m_inactiveOpacity->setEnabled(!on);
-    emit presentationSettingsModified();
-}
-
-void PropertiesPanel::onLastSlideShowAllChanged(bool on) {
-    if (m_updating || !m_pres) return;
-    m_pres->lastSlideShowAll = on;
-    emit presentationSettingsModified();
 }
 
 void PropertiesPanel::onElemAnimChanged(int idx) {

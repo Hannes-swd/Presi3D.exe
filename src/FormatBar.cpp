@@ -9,24 +9,23 @@
 #include <QFrame>
 #include <QColorDialog>
 
-// Light, system-native styles (FormatBar lives inside a QToolBar)
 static const QString ALIGN_BTN =
-    "QPushButton { border:1px solid #bbb; padding:2px 5px; min-width:26px; font-size:12px; background:#f0f0f0; }"
-    "QPushButton:hover  { background:#ddd; }"
-    "QPushButton:checked { background:#0078d4; color:white; border-color:#005a9e; }"
-    "QPushButton:disabled { color:#aaa; }";
+    "QPushButton { border:1px solid #d1d5db; padding:2px 5px; min-width:26px; font-size:12px; background:#ffffff; color:#111827; }"
+    "QPushButton:hover   { background:#f3f4f6; border-color:#9ca3af; }"
+    "QPushButton:checked { background:#eff6ff; color:#2563eb; border-color:#2563eb; }"
+    "QPushButton:disabled { color:#9ca3af; }";
 
 static QFrame* makeSep(QWidget* parent) {
     auto* sep = new QFrame(parent);
     sep->setFrameShape(QFrame::VLine);
     sep->setFixedWidth(1);
-    sep->setStyleSheet("color:#bbb;");
+    sep->setStyleSheet("color:#e5e7eb;");
     return sep;
 }
 
 static QLabel* lbl(const QString& t, QWidget* p) {
     auto* l = new QLabel(t, p);
-    l->setStyleSheet("color:#555; font-size:10px;");
+    l->setStyleSheet("color:#9ca3af; font-size:10px;");
     return l;
 }
 
@@ -153,10 +152,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     m_fmtPainterBtn = new QPushButton("◈ Format", m_textGroup);
     m_fmtPainterBtn->setToolTip("Format auf anderes Element übertragen");
     m_fmtPainterBtn->setFixedWidth(80);
-    m_fmtPainterBtn->setStyleSheet(
-        "QPushButton { background:#3a3a5c; color:#bbb; border:1px solid #666; padding:2px 5px; }"
-        "QPushButton:hover { background:#4a4a7c; }"
-        "QPushButton:disabled { opacity:0.4; }");
+    m_fmtPainterBtn->setStyleSheet(ALIGN_BTN);
     tr->addWidget(m_fmtPainterBtn);
 
     row->addWidget(m_textGroup);
@@ -288,16 +284,16 @@ void FormatBar::refresh() {
 }
 
 void FormatBar::updateColorSwatch(QPushButton* btn, const QColor& c) {
-    QColor col = (c.isValid() && c != Qt::transparent) ? c : QColor(240, 240, 240);
+    QColor col = (c.isValid() && c != Qt::transparent) ? c : QColor(248, 248, 248);
     QString hex = QString("#%1%2%3")
         .arg(col.red(),   2, 16, QChar('0'))
         .arg(col.green(), 2, 16, QChar('0'))
         .arg(col.blue(),  2, 16, QChar('0'));
     QString fg = col.lightnessF() > 0.5f ? "#000" : "#fff";
     btn->setStyleSheet(
-        QString("QPushButton { background:%1; color:%2; border:1px solid #888; "
-                "padding:2px 5px; min-width:28px; font-weight:bold; }"
-                "QPushButton:hover { border:1px solid #555; }"
+        QString("QPushButton { background:%1; color:%2; border:1px solid #d1d5db; "
+                "padding:2px 5px; min-width:28px; font-weight:bold; border-radius:4px; }"
+                "QPushButton:hover { border:1px solid #9ca3af; }"
                 "QPushButton:disabled { opacity:0.4; }").arg(hex, fg));
 }
 

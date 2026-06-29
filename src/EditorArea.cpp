@@ -17,7 +17,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     // ── Top bar: mode toggle ──────────────────────────────────────────
     auto* topBar = new QWidget(this);
     topBar->setFixedHeight(38);
-    topBar->setStyleSheet("border-bottom: 1px solid palette(mid);");
+    topBar->setStyleSheet("background:#ffffff; border-bottom:1px solid #e5e7eb;");
     auto* topRow = new QHBoxLayout(topBar);
     topRow->setContentsMargins(8, 4, 8, 4);
 
@@ -26,9 +26,6 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     for (auto* b : {m_btn2D, m_btn3D}) {
         b->setCheckable(true);
         b->setFixedWidth(90);
-        b->setStyleSheet(
-            "QPushButton { padding:3px 8px; }"
-            "QPushButton:checked { background:#0078d4; color:white; border:1px solid #0055a0; }");
     }
     m_btn2D->setChecked(true);
 
@@ -41,7 +38,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     // ── Element toolbar (2D only) ─────────────────────────────────────
     m_elemToolbar = new QWidget(this);
     m_elemToolbar->setFixedHeight(36);
-    m_elemToolbar->setStyleSheet("border-bottom: 1px solid palette(mid);");
+    m_elemToolbar->setStyleSheet("background:#f9fafb; border-bottom:1px solid #e5e7eb;");
     auto* tbRow = new QHBoxLayout(m_elemToolbar);
     tbRow->setContentsMargins(8, 3, 8, 3);
     tbRow->setSpacing(6);
@@ -50,7 +47,6 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         auto* b = new QPushButton(text, m_elemToolbar);
         b->setToolTip(tip);
         b->setFixedWidth(80);
-        b->setStyleSheet("QPushButton { padding:3px; }");
         tbRow->addWidget(b);
         return b;
     };
@@ -65,11 +61,17 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     tbRow->addWidget(sep);
 
     // Layer buttons (smaller)
+    static const char* LAYER_BTN_SS =
+        "QPushButton { padding:1px 3px; min-height:0; font-size:13px; color:#111827; "
+        "              background:#ffffff; border:1px solid #d1d5db; border-radius:4px; }"
+        "QPushButton:hover   { background:#f3f4f6; }"
+        "QPushButton:pressed { background:#eff6ff; color:#2563eb; }";
+
     auto mkLayerBtn = [&](const QString& text, const QString& tip) {
         auto* b = new QPushButton(text, m_elemToolbar);
         b->setToolTip(tip);
-        b->setFixedWidth(28);
-        b->setStyleSheet("QPushButton { padding:2px; font-size:11px; }");
+        b->setFixedWidth(32);
+        b->setStyleSheet(LAYER_BTN_SS);
         tbRow->addWidget(b);
         return b;
     };
@@ -80,14 +82,15 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
 
     tbRow->addStretch();
     m_btnDelete = mkBtn("× Löschen", "Ausgewähltes Element löschen");
-    m_btnDelete->setStyleSheet("QPushButton { background:#c0392b; color:white; border:1px solid #962d22; padding:3px; }"
-                               "QPushButton:hover { background:#e74c3c; }");
+    m_btnDelete->setStyleSheet(
+        "QPushButton { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:3px; border-radius:4px; }"
+        "QPushButton:hover { background:#fee2e2; border-color:#f87171; }");
     mainLayout->addWidget(m_elemToolbar);
 
     // ── 3D Gizmo toolbar (shown only in 3D mode) ──────────────────────
     m_gizmoToolbar = new QWidget(this);
     m_gizmoToolbar->setFixedHeight(36);
-    m_gizmoToolbar->setStyleSheet("background: #3a3a3a; border-bottom: 1px solid #555;");
+    m_gizmoToolbar->setStyleSheet("background:#f9fafb; border-bottom:1px solid #e5e7eb;");
     auto* gRow = new QHBoxLayout(m_gizmoToolbar);
     gRow->setContentsMargins(8, 3, 8, 3);
     gRow->setSpacing(6);
@@ -97,10 +100,6 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         b->setToolTip(tip);
         b->setCheckable(true);
         b->setFixedWidth(110);
-        b->setStyleSheet(
-            "QPushButton { background:#555; color:#eee; border:1px solid #777; padding:3px; }"
-            "QPushButton:checked { background:#0078d4; color:white; border-color:#0078d4; }"
-            "QPushButton:hover { background:#666; }");
         gRow->addWidget(b);
         return b;
     };
@@ -112,7 +111,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
 
     // Camera distance control
     auto* distLbl = new QLabel("Abstand:", m_gizmoToolbar);
-    distLbl->setStyleSheet("color:#aaa; font-size:9px;");
+    distLbl->setStyleSheet("color:#9ca3af; font-size:9px;");
     gRow->addWidget(distLbl);
     m_distanceSpin = new QDoubleSpinBox(m_gizmoToolbar);
     m_distanceSpin->setRange(200.0, 100000.0);
@@ -121,12 +120,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_distanceSpin->setDecimals(0);
     m_distanceSpin->setFixedWidth(90);
     m_distanceSpin->setToolTip("Kamera-Abstand (Mausrad ändert auch den Abstand)");
-    m_distanceSpin->setStyleSheet("QDoubleSpinBox { background:#555; color:#eee; border:1px solid #777; padding:1px; }");
     gRow->addWidget(m_distanceSpin);
 
     gRow->addSpacing(12);
     auto* hint = new QLabel("L-Drag: Orbit  |  R-Drag: Pan  |  Scroll: Zoom", m_gizmoToolbar);
-    hint->setStyleSheet("color:#888; font-size:9px;");
+    hint->setStyleSheet("color:#9ca3af; font-size:9px;");
     gRow->addWidget(hint);
 
     m_gizmoToolbar->setVisible(false); // hidden until 3D mode

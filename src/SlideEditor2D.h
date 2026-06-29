@@ -4,10 +4,11 @@
 #include <QPixmap>
 #include "models/DataModel.h"
 
-class QPlainTextEdit;
+class QTimer;
 class QContextMenuEvent;
 class QDragEnterEvent;
 class QDropEvent;
+class QPainter;
 
 class SlideEditor2D : public QWidget {
     Q_OBJECT
@@ -44,7 +45,7 @@ protected:
     void keyPressEvent(QKeyEvent*) override;
     void resizeEvent(QResizeEvent*) override;
     void contextMenuEvent(QContextMenuEvent*) override;
-    bool eventFilter(QObject*, QEvent*) override;
+    void focusOutEvent(QFocusEvent*) override;
     void dragEnterEvent(QDragEnterEvent*) override;
     void dropEvent(QDropEvent*) override;
 
@@ -66,15 +67,18 @@ private:
     // Drawing
     void drawElement(QPainter&, const SlideElement&, bool selected) const;
     void drawHandles(QPainter&, const QRectF&) const;
+    void drawTextCursor(QPainter&, const SlideElement&) const;
 
     // Snap / alignment guides
     struct SnapGuide { bool vertical; float pos; }; // vertical=X guide, else Y guide
     QVector<SnapGuide> m_snapGuides;
     void applySnapAndGuides(SlideElement& e);
 
-    // Inline text editing
-    void startTextEdit(int elemIndex);
+    // Inline text editing (direct WYSIWYG — no overlay widget)
+    void startTextEdit(int elemIndex, QPointF clickPos = {-1,-1});
     void finishTextEdit();
+    void handleTextEditKey(QKeyEvent*);
+    int  textPositionAt(const SlideElement&, QPointF widgetPos) const;
 
     Presentation* m_pres         = nullptr;
     int           m_slideIndex   = -1;
@@ -98,8 +102,13 @@ private:
     static SlideElement s_clipboard;
     static bool         s_hasClipboard;
 
-    QPlainTextEdit* m_textEdit    = nullptr;
-    int             m_editingElem = -1;
+    // Inline text editing state
+    int     m_editingElem    = -1;
+    int     m_cursorPos      = 0;
+    int     m_selAnchor      = -1;  // -1 = no selection
+    bool    m_cursorVisible  = false;
+    bool    m_textSelecting  = false; // mouse drag for selection
+    QTimer* m_cursorBlink    = nullptr;
 
     mutable QHash<QString, QPixmap> m_pixmapCache;
 };
