@@ -1,4 +1,4 @@
-#include "HtmlImporter.h"
+﻿#include "HtmlImporter.h"
 #include <QFile>
 #include <QDir>
 #include <QTextStream>
@@ -36,27 +36,59 @@ static QColor parseCssColor(const QString& raw) {
     return col.isValid() ? col : Qt::transparent;
 }
 
-// Extract all <div class="step" ...>...</div> blocks from HTML (handles nesting)
+// Extract all <div class="step" ...>...</div> blocks from HTML (improved version)
+// Now more robust to malformed HTML and nested structures
 static QStringList extractStepBlocks(const QString& html) {
     QStringList out;
     int pos = 0;
     while (true) {
+        // Find the opening <div class="step"
         int start = html.indexOf("<div class=\"step\"", pos);
         if (start < 0) break;
+        
+        // Find the closing > of the opening tag
+        int openingTagEnd = html.indexOf('>', start);
+        if (openingTagEnd < 0) {
+            pos = start + 1;
+            continue;  // Malformed opening tag, skip
+        }
+        
+        // Now look for the matching closing </div>
         int depth = 0, i = start;
+        bool foundClosing = false;
+        
         while (i < html.size()) {
+            // Look for <div tag (must be followed by space, >, or newline)
             if (i + 4 <= html.size() && html.mid(i, 4) == "<div") {
-                ++depth; i += 4;
-            } else if (i + 6 <= html.size() && html.mid(i, 6) == "</div>") {
-                if (--depth == 0) {
+                // Check if it's a real tag opening
+                if (i + 4 < html.size()) {
+                    QChar next = html[i + 4];
+                    if (next == ' ' || next == '>' || next == '\n' || next == '\t') {
+                        ++depth;
+                        i += 4;
+                        continue;
+                    }
+                }
+            }
+            // Look for </div> closing
+            if (i + 6 <= html.size() && html.mid(i, 6) == "</div>") {
+                --depth;
+                if (depth <= 0) {
                     out.append(html.mid(start, i + 6 - start));
                     pos = i + 6;
+                    foundClosing = true;
                     break;
                 }
                 i += 6;
-            } else { ++i; }
+                continue;
+            }
+            ++i;
         }
-        if (depth != 0) break; // malformed HTML
+        
+        if (!foundClosing) {
+            // Could not find matching closing tag, stop processing
+            break;
+        }
     }
     return out;
 }
@@ -163,6 +195,14 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
 
         // Opening tag = up to first ">"
         int tagEnd  = stepBlock.indexOf('>');
+        
+        // CRITICAL FIX: Validate opening tag is properly formed
+        if (tagEnd < 0) {
+            // Malformed step block without closing >, add empty slide and skip
+            pres->slides.append(slide);
+            continue;
+        }
+        
         QString tag = stepBlock.left(tagEnd + 1);
 
         // Slide name: prefer data-name, fall back to stripping "slide-" from id
@@ -206,8 +246,22 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
         if (!sh.isEmpty()) slide.slideHeight = sh.remove("px").toFloat();
 
         // ── Child elements ────────────────────────────────────────────────────
-        QString content = stepBlock.mid(tagEnd + 1,
-                              stepBlock.lastIndexOf("</div>") - tagEnd - 1);
+        // CRITICAL FIX: Validate closing tag exists and calculate safe length
+        int closingPos = stepBlock.lastIndexOf("</div>");
+        if (closingPos < 0 || closingPos <= tagEnd) {
+            // Malformed step block: missing or misplaced closing tag
+            pres->slides.append(slide);
+            continue;
+        }
+        
+        int contentLen = closingPos - tagEnd - 1;
+        if (contentLen < 0) {
+            // Defensive check: should not happen, but prevents negative length
+            pres->slides.append(slide);
+            continue;
+        }
+        
+        QString content = stepBlock.mid(tagEnd + 1, contentLen);
 
         for (const QString& rawLine : content.split('\n')) {
             QString line = rawLine.trimmed();
@@ -230,10 +284,27 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
             } else if (line.startsWith("<div")) {
                 // ── Text or Shape element ──────────────────────────────────────
                 int dTagEnd    = line.indexOf('>');
+                
+                // CRITICAL FIX: Validate element div tag is properly formed
+                if (dTagEnd < 0) {
+                    // Malformed element tag, skip this element
+                    continue;
+                }
+                
                 QString dTag   = line.left(dTagEnd + 1);
                 int cEnd       = line.lastIndexOf("</div>");
-                QString elemTxt = (dTagEnd >= 0 && cEnd > dTagEnd)
-                                  ? line.mid(dTagEnd + 1, cEnd - dTagEnd - 1) : QString();
+                
+                // CRITICAL FIX: Validate and safely extract element content
+                QString elemTxt;
+                if (cEnd > dTagEnd) {
+                    int elemLen = cEnd - dTagEnd - 1;
+                    if (elemLen >= 0) {
+                        elemTxt = line.mid(dTagEnd + 1, elemLen);
+                    }
+                } else if (cEnd >= 0 && cEnd <= dTagEnd) {
+                    // Closing tag before opening tag - malformed
+                    elemTxt = QString();
+                }
 
                 QString style  = attrVal(dTag, "style");
                 QString dtype  = attrVal(dTag, "data-type");
