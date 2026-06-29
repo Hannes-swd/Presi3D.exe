@@ -1,0 +1,172 @@
+#include "ExportDialog.h"
+#include "export/HtmlExporter.h"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFormLayout>
+#include <QLineEdit>
+#include <QLabel>
+#include <QPushButton>
+#include <QFileDialog>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QDir>
+
+ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
+    : QDialog(parent), m_pres(pres)
+{
+    setWindowTitle("Präsentation exportieren");
+    setMinimumWidth(520);
+
+    auto* vbox = new QVBoxLayout(this);
+    vbox->setSpacing(10);
+
+    auto* title = new QLabel("<b>Präsentation exportieren</b>", this);
+    title->setStyleSheet("font-size:14px;");
+    vbox->addWidget(title);
+
+    auto* info = new QLabel(
+        "Erstellt einen Ordner mit <b>index.html</b>, CSS und Assets.\n"
+        "Impress.js wird automatisch über CDN eingebunden – einfach index.html im Browser öffnen.", this);
+    info->setWordWrap(true);
+    info->setStyleSheet("color:#888; font-size:11px;");
+    vbox->addWidget(info);
+
+    // Form
+    auto* form = new QFormLayout;
+    form->setSpacing(8);
+
+    m_nameEdit = new QLineEdit(this);
+    m_nameEdit->setPlaceholderText("meine-praesentation");
+
+    // Pre-fill from last export path, or suggest a name from the first slide
+    QString initParent = QDir::homePath();
+    QString initName;
+    if (pres && !pres->exportPath.isEmpty()) {
+        QFileInfo fi(pres->exportPath);
+        initParent = fi.absolutePath();
+        initName   = fi.fileName();
+    }
+    if (initName.isEmpty() && pres && !pres->slides.isEmpty())
+        initName = pres->slides.first().name.toLower().replace(' ', '-');
+    if (initName.isEmpty()) initName = "praesentation";
+    m_nameEdit->setText(initName);
+    form->addRow("Ordnername:", m_nameEdit);
+
+    auto* row = new QHBoxLayout;
+    m_parentEdit = new QLineEdit(initParent, this);
+    auto* browseBtn = new QPushButton("...", this);
+    browseBtn->setFixedWidth(32);
+    row->addWidget(m_parentEdit);
+    row->addWidget(browseBtn);
+    form->addRow("Speicherort:", row);
+
+    vbox->addLayout(form);
+
+    // Preview
+    m_previewLbl = new QLabel(this);
+    m_previewLbl->setStyleSheet(
+        "background:#222; border:1px solid #555; padding:6px; font-family:monospace; font-size:11px;");
+    m_previewLbl->setWordWrap(true);
+    vbox->addWidget(m_previewLbl);
+
+    // Status
+    m_status = new QLabel("", this);
+    m_status->setWordWrap(true);
+    m_status->setMinimumHeight(40);
+    vbox->addWidget(m_status);
+
+    vbox->addStretch();
+
+    // Open button (hidden until export succeeds)
+    m_openBtn = new QPushButton("Ordner öffnen", this);
+    m_openBtn->setVisible(false);
+    vbox->addWidget(m_openBtn);
+
+    // Bottom buttons
+    auto* btnRow = new QHBoxLayout;
+    m_expBtn = new QPushButton("Exportieren", this);
+    m_expBtn->setDefault(true);
+    m_expBtn->setStyleSheet(
+        "QPushButton { background:#0078d4; color:white; border:none; padding:6px 20px; }"
+        "QPushButton:hover { background:#106ebe; }");
+    auto* closeBtn = new QPushButton("Schließen", this);
+    btnRow->addStretch();
+    btnRow->addWidget(m_expBtn);
+    btnRow->addWidget(closeBtn);
+    vbox->addLayout(btnRow);
+
+    connect(browseBtn,   &QPushButton::clicked,      this, &ExportDialog::browseFolder);
+    connect(m_expBtn,    &QPushButton::clicked,      this, &ExportDialog::doExport);
+    connect(closeBtn,    &QPushButton::clicked,      this, &QDialog::accept);
+    connect(m_nameEdit,  &QLineEdit::textChanged,    this, &ExportDialog::updatePreview);
+    connect(m_parentEdit,&QLineEdit::textChanged,    this, &ExportDialog::updatePreview);
+
+    updatePreview();
+}
+
+void ExportDialog::browseFolder() {
+    QString dir = QFileDialog::getExistingDirectory(this, "Speicherort wählen",
+        m_parentEdit->text().isEmpty() ? QDir::homePath() : m_parentEdit->text());
+    if (!dir.isEmpty())
+        m_parentEdit->setText(dir);
+}
+
+void ExportDialog::updatePreview() {
+    QString parent = m_parentEdit->text().trimmed();
+    QString name   = m_nameEdit->text().trimmed();
+    if (parent.isEmpty()) parent = QDir::homePath();
+    if (name.isEmpty()) name = "praesentation";
+
+    QString full = QDir(parent).filePath(name);
+    m_previewLbl->setText(
+        QString("<span style='color:#888;'>Erstellt:</span> <span style='color:#4af;'>%1</span><br>"
+                "<span style='color:#888;'>    ├── index.html</span><br>"
+                "<span style='color:#888;'>    ├── styles.css</span><br>"
+                "<span style='color:#888;'>    └── assets/</span>").arg(full));
+}
+
+void ExportDialog::doExport() {
+    QString parent = m_parentEdit->text().trimmed();
+    QString name   = m_nameEdit->text().trimmed();
+
+    if (parent.isEmpty() || name.isEmpty()) {
+        m_status->setStyleSheet("color: red;");
+        m_status->setText("Bitte Ordnernamen und Speicherort angeben.");
+        return;
+    }
+    if (!m_pres || m_pres->slides.isEmpty()) {
+        m_status->setStyleSheet("color: red;");
+        m_status->setText("Keine Slides vorhanden.");
+        return;
+    }
+
+    QString outDir = QDir(parent).filePath(name);
+    QDir().mkpath(outDir);
+
+    m_expBtn->setEnabled(false);
+    m_status->setStyleSheet("color: orange;");
+    m_status->setText("Exportiere…");
+    repaint();
+
+    auto result = HtmlExporter::exportTo(*m_pres, outDir);
+
+    m_expBtn->setEnabled(true);
+    if (result.ok) {
+        // Remember the export path on the presentation object
+        if (m_pres) m_pres->exportPath = outDir;
+
+        m_status->setStyleSheet("color: #4c4;");
+        QString msg = QString("✓ Erfolgreich exportiert nach:\n%1").arg(outDir);
+        if (!result.errorMessage.isEmpty()) msg += result.errorMessage;
+        m_status->setText(msg);
+
+        m_openBtn->setVisible(true);
+        disconnect(m_openBtn, nullptr, nullptr, nullptr);
+        connect(m_openBtn, &QPushButton::clicked, this, [outDir]() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(outDir));
+        });
+    } else {
+        m_status->setStyleSheet("color: red;");
+        m_status->setText("Fehler: " + result.errorMessage);
+    }
+}
