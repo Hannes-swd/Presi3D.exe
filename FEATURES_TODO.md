@@ -1,6 +1,6 @@
 # Feature-Roadmap – Impress.js Editor
 
-> Bereits implementiert (MVP): Slides erstellen/löschen/duplizieren, 2D-Editor (Text/Rechteck/Kreis/Bild), 3D-Ansicht (OpenGL), Properties Panel, HTML-Export
+> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export)
 
 ---
 
@@ -14,7 +14,6 @@
 | **Tastaturkürzel** | Vollständiges Shortcut-System (Kopieren, Einfügen, Auswählen, Löschen …) |
 | **Mehrfachauswahl** | Mehrere Elemente gleichzeitig markieren, verschieben, löschen |
 | **Gruppenbildung** | Elemente zu Gruppen zusammenfassen und gemeinsam bearbeiten |
-| **Snap / Ausrichtungshilfen** | Magnetisches Einrasten an Raster, anderen Elementen, Mittellinien |
 | **Lineale und Führungslinien** | Einblendbare Lineale, ziehbare Hilfslinien |
 | **Zoom im 2D-Editor** | Ctrl+Mausrad zum Rein-/Rauszoomen in die Arbeitsfläche |
 
@@ -24,9 +23,7 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Mehr Grundformen** | Dreieck, Stern, Pfeil, Raute, Polygon, Freihand-Zeichnen |
-| **Linien und Pfeile** | Gerade Linien, gebogene Linien, Pfeilspitzen beidseitig konfigurierbar |
-| **Tabellen** | Zeilen/Spalten-Editor, Zellen zusammenführen, Zellenfarben |
+| **Linien als eigenes Element** | Gerade Linien mit konfigurierbaren Pfeilspitzen an beiden Enden |
 | **Code-Block** | Monospace-Box mit Syntax-Highlighting (C++, Python, JS usw.) |
 | **Gleichungen / Mathe** | LaTeX-Eingabe, gerenderte Formeldarstellung |
 | **Icons** | Eingebaute Icon-Bibliothek (z. B. Material Icons, Font Awesome), SVG-Import |
@@ -44,14 +41,11 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Rich Text** | Bold, Italic, Underline, Strikethrough, Hochstellung, Tiefstellung |
-| **Aufzählungslisten** | Bullets und nummerierte Listen, verschachtelt |
-| **Textausrichtung** | Links, Mitte, Rechts, Blocksatz |
 | **Zeilenabstand / Zeichenabstand** | Einstellbar im Properties Panel |
-| **Schriftarten** | Lokale Systemschriften + Google Fonts Integration |
+| **Google Fonts** | Google Fonts Integration (lokale Systemschriften bereits vorhanden) |
 | **Gradient-Text** | Text mit Farbverlauf füllen |
 | **Text-Schatten** | Konfigurierbare Schatten hinter Text |
-| **Emoji-Unterstützung** | Emoji-Picker im Texteditor |
+| **Emoji-Picker** | Emoji-Auswahldialog im Texteditor |
 
 ---
 
@@ -65,30 +59,18 @@
 | **Hintergrundverläufe** | Linearer und radialer Gradient als Folienhintergrund |
 | **Hintergrundbilder** | Bild als Folienhintergrund, mit Deckkraft und Positionsoptionen |
 | **Animierte Hintergründe** | Partikelsysteme, CSS-Animationen (Wellen, Sterne usw.) |
-| **Schatten und Rahmen** | Für alle Elemente: Box-Shadow, Border, Border-Radius |
-| **Deckkraft / Transparenz** | Alpha-Wert für jedes Element einstellbar |
+| **Box-Shadow** | Konfigurierbare Schatten hinter Elementen |
+| **Deckkraft / Transparenz** | Dedizierter Opacity-Slider pro Element |
 | **Farben mit Dropper** | Farbe direkt von der Folie aufnehmen (Color-Picker mit Pipette) |
 
 ---
 
-## Priorität 5 – Diagramme *(wichtiges Feature)*
+## Priorität 5 – Diagramm-Erweiterungen
 
-| Diagrammtyp | Beschreibung |
+| Feature | Beschreibung |
 |---|---|
-| **Balkendiagramm** | Vertikal und horizontal, mit Beschriftungen und Farben |
-| **Liniendiagramm** | Kurven oder gerade Linien, mehrere Datenreihen |
-| **Kreisdiagramm / Donut** | Prozentuale Verteilung, konfigurierbare Segmente |
-| **Flächendiagramm** | Wie Liniendiagramm aber gefüllt |
-| **Streudiagramm** | XY-Punkte plotten |
-| **Flussdiagramm** | Knoten + Pfeile, Verbindungen ziehen, Formen wählen (Raute = Entscheidung usw.) |
-| **Mindmap** | Baumstruktur ausgehend von einer Mitte, Knoten hinzufügen/löschen |
-| **Organigramm** | Hierarchische Baumstruktur für Teams/Strukturen |
-| **Zeitstrahl / Timeline** | Horizontale oder vertikale Timeline mit Ereignispunkten |
-| **Gantt-Chart** | Aufgabenbalken über Zeitachse, für Projektplanung |
-| **UML-Klassendiagramm** | Klassen, Attribute, Methoden, Beziehungspfeile |
-| **Venn-Diagramm** | Überlappende Kreise mit Labels |
-
-Diagramm-Daten können direkt im Editor eingegeben oder aus CSV importiert werden.
+| **CSV-Import für Diagramme** | Diagramm-Daten direkt aus CSV-Dateien laden |
+| **Dynamische Diagramme** | Diagramm-Daten können Variablen als Quelle nutzen |
 
 ---
 
@@ -105,8 +87,6 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 | **Berechnungen** | Einfache Formeln: `{{preis * 1.19}}`, `{{a + b}}`, `{{max - min}}` |
 | **Datum-Variablen** | `{{heute}}`, `{{jetzt}}` – aktuelles Datum/Uhrzeit beim Präsentieren |
 | **Import aus CSV/JSON** | Variablenwerte aus externer Datei laden (z. B. aktuelle Verkaufszahlen) |
-| **Dynamische Diagramme** | Diagramm-Daten können Variablen als Quelle nutzen |
-| **Variablen-Typen: Farbe** | `{{akzentfarbe}}` → kann als Füllfarbe von Elementen genutzt werden |
 | **Globale vs. lokale Variablen** | Global = gilt für die ganze Präsentation; lokal = nur diese Folie |
 | **Bedingte Sichtbarkeit** | Element nur anzeigen wenn `{{zeige_abschnitt}} == true` |
 
@@ -116,9 +96,9 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 | Feature | Beschreibung |
 |---|---|
-| **Eintrittsanimationen** | Fade In, Slide In, Zoom In, Bounce, Flip usw. für jedes Element |
+| **Animations-UI** | UI zum Setzen von Eintrittanimationstyp, Delay und Dauer pro Element (Daten + HTML bereits vorhanden) |
 | **Austrittsanimationen** | Fade Out, Slide Out, Shrink usw. |
-| **Folienübergänge** | Impress.js-Übergänge nutzen (bereits im HTML, UI fehlt) |
+| **Folienübergänge (UI)** | Impress.js-Übergänge konfigurieren (bereits im HTML, UI fehlt) |
 | **Timeline-Editor** | Visuelle Timeline pro Folie: Wann startet welche Animation? |
 | **Trigger** | Animation startet bei Klick, nach X Sekunden, oder wenn vorherige endet |
 | **Loop-Animationen** | Elemente dauerhaft animieren (pulsieren, rotieren) |
@@ -138,7 +118,7 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 | **Laserpointer** | Maus als Pointer darstellen (roter Kreis) |
 | **Zoom-Geste** | In eine Folie reinzoomen während der Präsentation |
 | **Nicht-lineare Navigation** | Verlinkungen zwischen beliebigen Folien (Verzweigungen) |
-| **Foliensortieransicht** | Überblick aller Folien, per Drag & Drop neu anordnen |
+| **Foliensortieransicht** | Tabellarischer Überblick aller Folien, per Drag & Drop anordnen |
 
 ---
 
@@ -151,7 +131,7 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 | **PowerPoint-Import (.pptx)** | PPTX einlesen und in das interne Format umwandeln |
 | **PowerPoint-Export (.pptx)** | Presentation als PPTX speichern |
 | **Keynote-Import (.key)** | Apple Keynote importieren |
-| **HTML-Import** | Vorhandene Impress.js-HTML-Dateien öffnen (HtmlImporter.h bereits vorhanden) |
+| **HTML-Import** | Vorhandene Impress.js-HTML-Dateien öffnen (HtmlImporter bereits vorhanden) |
 | **Zip-Export** | HTML + Assets als fertige ZIP-Datei |
 | **Thumbnail-Export** | Alle Folien als kleines Vorschaubild exportieren |
 
@@ -195,10 +175,10 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 ---
 
-## Zusammenfassung: Die wichtigsten einzigartigen Features
+## Zusammenfassung: Die wichtigsten noch fehlenden Features
 
 1. **Variablen ohne Code** – absolutes Alleinstellungsmerkmal, kein Konkurrent hat das
-2. **Echter 3D-Raum** – Impress.js-Positionierung direkt im OpenGL-Editor
-3. **Diagramme nativ** – kein Umweg über externe Tools
-4. **Variablen-gesteuerte Diagramme** – Daten ändern → Diagramm aktualisiert sich automatisch
-5. **Dynamische Variablen** (Datum/Uhrzeit live) – Präsentation bleibt immer aktuell
+2. **Datei speichern / öffnen** – grundlegende Voraussetzung für produktiven Einsatz
+3. **Undo / Redo** – essentiell für fehlerfreies Arbeiten
+4. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
+5. **Animations-UI** – Infrastruktur (Daten + HTML-Export) bereits vorhanden

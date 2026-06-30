@@ -20,6 +20,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QProcess>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_presentation = new Presentation();
@@ -32,6 +33,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_presentation->addSlide("Slide 1");
     refreshAll();
     onSlideSelected(0);
+
+    m_undoDebounce = new QTimer(this);
+    m_undoDebounce->setSingleShot(true);
+    connect(m_undoDebounce, &QTimer::timeout, this, &MainWindow::commitPendingUndo);
+    resetUndoHistory();
 
     updateTitle();
     resize(1440, 860);
@@ -78,6 +84,10 @@ void MainWindow::setupMenuBar() {
     fileMenu->addSeparator();
     fileMenu->addAction("&Beenden",           this, &QWidget::close,                 QKeySequence::Quit);
 
+    QMenu* editMenu = menuBar()->addMenu("&Bearbeiten");
+    m_undoAction = editMenu->addAction("&Rückgängig", this, &MainWindow::undo, QKeySequence::Undo);
+    m_redoAction = editMenu->addAction("&Wiederholen", this, &MainWindow::redo, QKeySequence::Redo);
+
     QMenu* helpMenu = menuBar()->addMenu("&Hilfe");
     helpMenu->addAction("&Über", this, [this]() {
         QMessageBox::about(this, "Über Presi 3D",
@@ -91,6 +101,13 @@ void MainWindow::setupToolBar() {
     // ── Datei-Toolbar ──
     QToolBar* tb = addToolBar("Datei");
     tb->setMovable(false);
+    tb->addAction(m_undoAction);
+    m_undoAction->setText("↶");
+    m_undoAction->setToolTip("Rückgängig (Strg+Z)");
+    tb->addAction(m_redoAction);
+    m_redoAction->setText("↷");
+    m_redoAction->setToolTip("Wiederholen (Strg+Y)");
+    tb->addSeparator();
     tb->addAction("Neu",          this, &MainWindow::newPresentation);
     tb->addAction("Öffnen",       this, &MainWindow::openPresentation);
     tb->addAction("Speichern",    this, &MainWindow::savePresentation);
@@ -141,10 +158,12 @@ void MainWindow::onSlideSelected(int index) {
 }
 
 void MainWindow::onSlideAdded() {
+    pushUndoStep();
     m_presentation->addSlide();
     int idx = m_presentation->slides.size() - 1;
     m_slidePanel->setPresentation(m_presentation);
     onSlideSelected(idx);
+    m_undoBaseline = *m_presentation;
 }
 
 void MainWindow::onSlideRemoved(int index) {
@@ -153,31 +172,39 @@ void MainWindow::onSlideRemoved(int index) {
                              "Die letzte Slide kann nicht gelöscht werden.");
         return;
     }
+    pushUndoStep();
     m_presentation->removeSlide(index);
     m_slidePanel->setPresentation(m_presentation);
     int newSel = qMin(index, m_presentation->slides.size() - 1);
     onSlideSelected(newSel);
+    m_undoBaseline = *m_presentation;
 }
 
 void MainWindow::onSlideDuplicated(int index) {
+    pushUndoStep();
     m_presentation->duplicateSlide(index);
     m_slidePanel->setPresentation(m_presentation);
     onSlideSelected(index + 1);
+    m_undoBaseline = *m_presentation;
 }
 
 void MainWindow::onSlideRenamed(int index, const QString& name) {
     if (Slide* s = m_presentation->slideAt(index)) {
+        pushUndoStep();
         s->name = name;
         m_presentation->modified = true;
         m_slidePanel->setPresentation(m_presentation);
         updateTitle();
+        m_undoBaseline = *m_presentation;
     }
 }
 
 void MainWindow::onSlideMoved(int from, int to) {
+    pushUndoStep();
     m_presentation->moveSlide(from, to);
     m_slidePanel->setPresentation(m_presentation);
     onSlideSelected(to);
+    m_undoBaseline = *m_presentation;
 }
 
 void MainWindow::onPresentationModified() {
@@ -188,6 +215,95 @@ void MainWindow::onPresentationModified() {
     // Refresh PropertiesPanel if an element is selected
     if (m_selectedElem >= 0)
         m_propPanel->setSelectedElement(m_selectedElem);
+
+    // Snapshot for undo: batched/debounced so continuous edits (dragging an
+    // element, holding a spinbox arrow, ...) collapse into a single undo step.
+    m_undoDirty = true;
+    m_undoDebounce->start(kUndoDebounceMs);
+}
+
+void MainWindow::pushUndoStep() {
+    commitPendingUndo(); // flush any earlier in-progress edit as its own step first
+    m_undoStack.push_back(m_undoBaseline);
+    if ((int)m_undoStack.size() > kMaxUndoSteps)
+        m_undoStack.pop_front();
+    m_redoStack.clear();
+    updateUndoRedoActions();
+}
+
+void MainWindow::commitPendingUndo() {
+    if (!m_undoDirty) return;
+    m_undoDebounce->stop();
+    m_undoDirty = false;
+    m_undoStack.push_back(m_undoBaseline);
+    if ((int)m_undoStack.size() > kMaxUndoSteps)
+        m_undoStack.pop_front();
+    m_redoStack.clear();
+    m_undoBaseline = *m_presentation;
+    updateUndoRedoActions();
+}
+
+void MainWindow::resetUndoHistory() {
+    m_undoDebounce->stop();
+    m_undoDirty = false;
+    m_undoStack.clear();
+    m_redoStack.clear();
+    m_undoBaseline = *m_presentation;
+    updateUndoRedoActions();
+}
+
+void MainWindow::updateUndoRedoActions() {
+    if (m_undoAction) m_undoAction->setEnabled(!m_undoStack.empty());
+    if (m_redoAction) m_redoAction->setEnabled(!m_redoStack.empty());
+}
+
+void MainWindow::undo() {
+    commitPendingUndo(); // make sure an in-progress edit is undoable too
+    if (m_undoStack.empty()) return;
+
+    Presentation prev = m_undoStack.back();
+    m_undoStack.pop_back();
+    m_redoStack.push_back(*m_presentation);
+    if ((int)m_redoStack.size() > kMaxUndoSteps)
+        m_redoStack.pop_front();
+
+    QString filePath   = m_presentation->filePath;
+    QString exportPath = m_presentation->exportPath;
+    *m_presentation = prev;
+    m_presentation->filePath   = filePath;
+    m_presentation->exportPath = exportPath;
+    m_presentation->modified   = true;
+    m_undoBaseline = *m_presentation;
+
+    m_selectedSlide = qBound(0, m_selectedSlide, m_presentation->slides.size() - 1);
+    refreshAll();
+    onSlideSelected(m_selectedSlide);
+    updateTitle();
+    updateUndoRedoActions();
+}
+
+void MainWindow::redo() {
+    if (m_redoStack.empty()) return;
+
+    Presentation next = m_redoStack.back();
+    m_redoStack.pop_back();
+    m_undoStack.push_back(*m_presentation);
+    if ((int)m_undoStack.size() > kMaxUndoSteps)
+        m_undoStack.pop_front();
+
+    QString filePath   = m_presentation->filePath;
+    QString exportPath = m_presentation->exportPath;
+    *m_presentation = next;
+    m_presentation->filePath   = filePath;
+    m_presentation->exportPath = exportPath;
+    m_presentation->modified   = true;
+    m_undoBaseline = *m_presentation;
+
+    m_selectedSlide = qBound(0, m_selectedSlide, m_presentation->slides.size() - 1);
+    refreshAll();
+    onSlideSelected(m_selectedSlide);
+    updateTitle();
+    updateUndoRedoActions();
 }
 
 void MainWindow::onElementSelected(int elemIndex) {
@@ -243,6 +359,7 @@ void MainWindow::newPresentation() {
     m_selectedElem  = -1;
     refreshAll();
     onSlideSelected(0);
+    resetUndoHistory();
     updateTitle();
 }
 
@@ -262,6 +379,7 @@ void MainWindow::openPresentationFromFolder(const QString& folder) {
     m_selectedElem  = -1;
     refreshAll();
     onSlideSelected(0);
+    resetUndoHistory();
     updateTitle();
     StartDialog::addRecentProject(folder);
     statusBar()->showMessage(

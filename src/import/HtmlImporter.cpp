@@ -527,6 +527,13 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                             ce.width     = cssProp(style, "width").remove("px").toFloat();
                             ce.height    = cssProp(style, "height").remove("px").toFloat();
                             ce.chartData = ChartData::fromJson(doc.object());
+                            // Chart rotation
+                            QString chartTransform = cssProp(style, "transform");
+                            if (chartTransform.contains("rotate")) {
+                                QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                                auto rotM = rotRe.match(chartTransform);
+                                if (rotM.hasMatch()) ce.rotation = rotM.captured(1).toFloat();
+                            }
                             slide.elements.append(ce);
                         }
                     }
@@ -542,6 +549,17 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 e.y      = cssProp(style, "top").remove("px").toFloat();
                 e.width  = cssProp(style, "width").remove("px").toFloat();
                 e.height = cssProp(style, "height").remove("px").toFloat();
+
+                // Element rotation: transform:rotate(Ndeg)
+                {
+                    QString transform = cssProp(style, "transform");
+                    if (transform.contains("rotate")) {
+                        QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                        auto rotM = rotRe.match(transform);
+                        if (rotM.hasMatch())
+                            e.rotation = rotM.captured(1).toFloat();
+                    }
+                }
 
                 if (isText) {
                     e.type = SlideElement::Text;
@@ -611,6 +629,33 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     QString brad = cssProp(style, "border-radius");
                     if (!brad.isEmpty() && brad != "50%")
                         e.cornerRadius = brad.remove("px").toFloat();
+                    // Shape text from inner <span>
+                    if (!elemTxt.isEmpty()) {
+                        QRegularExpression spanRe(
+                            R"rx(<span[^>]*style="([^"]*)"[^>]*>(.*?)</span>)rx",
+                            QRegularExpression::DotMatchesEverythingOption);
+                        auto sm = spanRe.match(elemTxt);
+                        if (sm.hasMatch()) {
+                            QString spanStyle   = sm.captured(1);
+                            QString spanContent = sm.captured(2);
+                            // Font properties from span style
+                            QString ff2 = cssProp(spanStyle, "font-family");
+                            ff2.remove('\'').remove('"').remove(' ');
+                            if (!ff2.isEmpty()) e.fontFamily = ff2;
+                            QString fs2 = cssProp(spanStyle, "font-size").remove("px");
+                            if (!fs2.isEmpty()) e.fontSize = fs2.toInt();
+                            QColor fc2 = parseCssColor(cssProp(spanStyle, "color"));
+                            if (fc2.isValid()) e.color = fc2;
+                            e.bold   = cssProp(spanStyle, "font-weight").trimmed() == "bold";
+                            e.italic = cssProp(spanStyle, "font-style").trimmed() == "italic";
+                            // Decode text
+                            spanContent.replace("<br>", "\n")
+                                       .replace("&amp;", "&").replace("&lt;", "<")
+                                       .replace("&gt;",  ">").replace("&quot;", "\"")
+                                       .replace("&#39;", "'");
+                            e.shapeText = spanContent;
+                        }
+                    }
                 }
                 // Entrance animation
                 if (!danim.isEmpty()) {

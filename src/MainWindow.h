@@ -1,12 +1,14 @@
 #pragma once
 #include <QMainWindow>
 #include <QAction>
+#include <deque>
 #include "models/DataModel.h"
 
 class SlideListPanel;
 class EditorArea;
 class PropertiesPanel;
 class FormatBar;
+class QTimer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -37,6 +39,9 @@ private slots:
     void onElementSelected(int elemIndex);
     void onFormatPainterRequested();
 
+    void undo();
+    void redo();
+
 private:
     void setupUI();
     void setupMenuBar();
@@ -45,6 +50,14 @@ private:
     void updateTitle();
     bool maybeSave();
     void refreshAll();
+
+    // ── Undo/Redo (snapshot-based; Qt's implicit-sharing containers keep
+    //    unmodified slides/elements shared between snapshots, so this stays
+    //    cheap even on weak hardware) ────────────────────────────────────
+    void pushUndoStep();        // call BEFORE a discrete, one-shot mutation
+    void commitPendingUndo();   // flushes a batch of debounced changes (e.g. dragging)
+    void resetUndoHistory();    // call when a different document is loaded
+    void updateUndoRedoActions();
 
     Presentation*    m_presentation  = nullptr;
     int              m_selectedSlide = -1;
@@ -56,4 +69,14 @@ private:
     FormatBar*       m_formatBar     = nullptr;
 
     int              m_selectedElem  = -1;
+
+    std::deque<Presentation> m_undoStack;
+    std::deque<Presentation> m_redoStack;
+    Presentation              m_undoBaseline;
+    bool                      m_undoDirty = false;
+    QTimer*                   m_undoDebounce = nullptr;
+    QAction*                  m_undoAction   = nullptr;
+    QAction*                  m_redoAction   = nullptr;
+    static constexpr int      kMaxUndoSteps  = 50;
+    static constexpr int      kUndoDebounceMs = 500;
 };
