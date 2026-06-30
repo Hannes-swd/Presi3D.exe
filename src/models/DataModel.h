@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QMap>
 #include <QUuid>
+#include "models/ChartData.h"
 
 struct TableCell {
     QString text;
@@ -18,7 +19,7 @@ struct TableCell {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table };
+    enum Type { Text, Shape, Image, Table, Chart };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
@@ -68,6 +69,9 @@ struct SlideElement {
     QString tableFontFamily  = "Arial";
     QColor  tableDefaultBg   = Qt::white;
     QColor  tableDefaultText = Qt::black;
+
+    // ── Chart (only when type == Chart) ──────────────────────────────────────
+    ChartData chartData;
 
     void initTable(int rows, int cols) {
         type      = Table;

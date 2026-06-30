@@ -1,8 +1,13 @@
 #include "HtmlExporter.h"
+#include "rendering/ChartRenderer.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
+#include <QImage>
+#include <QPainter>
+#include <QBuffer>
+#include <QJsonDocument>
 
 // Bundled impress.js — copied from local installation
 static const char* IMPRESS_JS_SRC =
@@ -416,6 +421,36 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
 
         html += "</table></div>";
         return html;
+
+    } else if (e.type == SlideElement::Chart) {
+        // Render preview image
+        int iw = qMax(4, int(e.width));
+        int ih = qMax(4, int(e.height));
+        QImage img(iw, ih, QImage::Format_ARGB32);
+        img.fill(Qt::white);
+        QPainter painter(&img);
+        painter.setRenderHint(QPainter::Antialiasing);
+        ChartRenderer::paint(painter, QRectF(0, 0, iw, ih), e.chartData);
+        painter.end();
+
+        QByteArray imgBa;
+        QBuffer buf(&imgBa);
+        buf.open(QIODevice::WriteOnly);
+        img.save(&buf, "PNG");
+
+        // Embed the full chart data as base64-encoded JSON for lossless reload
+        QByteArray jsonBa = QJsonDocument(e.chartData.toJson()).toJson(QJsonDocument::Compact);
+        QString chartDataB64 = jsonBa.toBase64();
+
+        QString b64img = imgBa.toBase64();
+        QString title  = e.chartData.title.isEmpty() ? ChartRenderer::typeName(e.chartData.type)
+                                                      : e.chartData.title;
+        return QString(
+            "<div data-type=\"chart\" data-chart-type=\"%1\" data-chart=\"%2\" style=\"%3\">"
+            "<img src=\"data:image/png;base64,%4\" "
+            "style=\"width:100%;height:100%;object-fit:contain;\" alt=\"%5\">"
+            "</div>")
+            .arg(e.chartData.type, chartDataB64, base, b64img, title.toHtmlEscaped());
     }
     return {};
 }

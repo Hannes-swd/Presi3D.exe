@@ -1,4 +1,6 @@
 #include "PropertiesPanel.h"
+#include "rendering/ChartRenderer.h"
+#include "dialogs/ChartEditorDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -101,10 +103,12 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     buildSlideGroup();
     buildElementGroup();
     buildTableGroup();
+    buildChartGroup();
     vbox->addWidget(m_projectGroup);
     vbox->addWidget(m_slideGroup);
     vbox->addWidget(m_elemGroup);
     vbox->addWidget(m_tableGroup);
+    vbox->addWidget(m_chartGroup);
     vbox->addStretch();
 
     scroll->setWidget(inner);
@@ -542,6 +546,8 @@ void PropertiesPanel::setSlide(Presentation* pres, int slideIndex) {
     m_elemGroup->setVisible(true);
     m_tableGroup->setEnabled(false);
     m_tableGroup->setVisible(false);
+    m_chartGroup->setEnabled(false);
+    m_chartGroup->setVisible(false);
     rebuildVisibilitySection();
     refreshProject();
     refreshSlide();
@@ -554,13 +560,18 @@ void PropertiesPanel::setSelectedElement(int elemIndex) {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIdx) : nullptr;
     bool isTable = s && elemIndex >= 0 && elemIndex < s->elements.size()
                    && s->elements[elemIndex].type == SlideElement::Table;
-    m_elemGroup->setEnabled(elemIndex >= 0 && !isTable);
-    m_elemGroup->setVisible(!isTable || elemIndex < 0);
+    bool isChart = s && elemIndex >= 0 && elemIndex < s->elements.size()
+                   && s->elements[elemIndex].type == SlideElement::Chart;
+    m_elemGroup->setEnabled(elemIndex >= 0 && !isTable && !isChart);
+    m_elemGroup->setVisible(!isTable && !isChart || elemIndex < 0);
     m_tableGroup->setEnabled(isTable);
     m_tableGroup->setVisible(isTable);
+    m_chartGroup->setEnabled(isChart);
+    m_chartGroup->setVisible(isChart);
     m_cellSection->setVisible(false);
-    if (isTable) refreshTable();
-    else         refreshElement();
+    if (isTable)       refreshTable();
+    else if (isChart)  refreshChart();
+    else               refreshElement();
 }
 
 void PropertiesPanel::setSelectedTableCell(int row, int col) {
@@ -1136,4 +1147,53 @@ void PropertiesPanel::onCellAlignChanged(int idx) {
         cell->textAlign = idx == 1 ? "center" : idx == 2 ? "right" : "left";
         emit elementModified();
     }
+}
+
+// ── Chart group ───────────────────────────────────────────────────────────────
+
+void PropertiesPanel::buildChartGroup() {
+    m_chartGroup = new QGroupBox("Diagramm", this);
+    auto* vbox = new QVBoxLayout(m_chartGroup);
+    vbox->setContentsMargins(8, 8, 8, 8);
+    vbox->setSpacing(6);
+
+    auto* form = new QFormLayout;
+    form->setLabelAlignment(Qt::AlignRight);
+    form->setSpacing(4);
+
+    m_chartTypeLabel  = new QLabel(this);
+    m_chartTitleLabel = new QLabel(this);
+    m_chartTitleLabel->setWordWrap(true);
+    form->addRow("Typ:", m_chartTypeLabel);
+    form->addRow("Titel:", m_chartTitleLabel);
+    vbox->addLayout(form);
+
+    m_chartEditBtn = new QPushButton("Diagramm bearbeiten...", this);
+    m_chartEditBtn->setStyleSheet(
+        "QPushButton { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; "
+        "              border-radius:4px; padding:4px 8px; }"
+        "QPushButton:hover { background:#dbeafe; }");
+    vbox->addWidget(m_chartEditBtn);
+
+    m_chartGroup->setEnabled(false);
+    m_chartGroup->setVisible(false);
+
+    connect(m_chartEditBtn, &QPushButton::clicked, this, [this]() {
+        auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+        if (!e || e->type != SlideElement::Chart) return;
+        ChartEditorDialog dlg(e->chartData, this);
+        if (dlg.exec() == QDialog::Accepted) {
+            e->chartData = dlg.chartData();
+            refreshChart();
+            emit elementModified();
+        }
+    });
+}
+
+void PropertiesPanel::refreshChart() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Chart) return;
+    m_chartTypeLabel->setText(ChartRenderer::typeName(e->chartData.type));
+    m_chartTitleLabel->setText(e->chartData.title.isEmpty()
+                               ? "(kein Titel)" : e->chartData.title);
 }

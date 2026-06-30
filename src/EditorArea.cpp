@@ -2,6 +2,7 @@
 #include "SlideEditor2D.h"
 #include "SlideEditor3D.h"
 #include "dialogs/InsertTableDialog.h"
+#include "dialogs/InsertChartDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -56,6 +57,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnCircle = mkBtn("○ Kreis",    "Kreis hinzufügen");
     m_btnImage  = mkBtn("□ Bild",     "Bild importieren");
     m_btnTable  = mkBtn("⊞ Tabelle",  "Tabelle einfügen");
+    m_btnChart  = mkBtn("📊 Diagramm","Diagramm einfügen");
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -153,6 +155,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         InsertTableDialog dlg(this);
         if (dlg.exec() == QDialog::Accepted)
             m_editor2D->addTableElement(dlg.rows(), dlg.cols());
+    });
+    connect(m_btnChart,    &QPushButton::clicked, this, [this]() {
+        InsertChartDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted)
+            m_editor2D->addChartElement(dlg.selectedType());
     });
     connect(m_btnDelete,   &QPushButton::clicked, m_editor2D, &SlideEditor2D::deleteSelectedElement);
     connect(m_btnFront,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringToFront);

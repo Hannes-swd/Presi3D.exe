@@ -1,4 +1,5 @@
 #include "SlideListPanel.h"
+#include "rendering/ChartRenderer.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -159,6 +160,9 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
                 p.setBrush(Qt::NoBrush);
                 p.drawRect(r);
             }
+        } else if (elem.type == SlideElement::Chart) {
+            p.fillRect(r, Qt::white);
+            ChartRenderer::paint(p, r, elem.chartData);
         }
     }
 

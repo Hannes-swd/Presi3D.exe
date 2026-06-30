@@ -1,4 +1,6 @@
 #include "SlideEditor2D.h"
+#include "rendering/ChartRenderer.h"
+#include "dialogs/ChartEditorDialog.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -397,6 +399,27 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.setPen(Qt::darkGray);
         p.drawText(wr, Qt::AlignCenter,
                    e.content.isEmpty() ? "[Bild]" : QFileInfo(e.content).fileName());
+
+    } else if (e.type == SlideElement::Chart) {
+        // White background for chart
+        p.fillRect(wr, Qt::white);
+        ChartRenderer::paint(p, wr, e.chartData);
+        // Thin border
+        p.setPen(QPen(QColor(200, 200, 200), 0.5));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(wr);
+
+        // "Double-click to edit" hint when selected
+        if (selected) {
+            p.save();
+            p.setPen(QColor(37, 99, 235, 200));
+            p.setFont(QFont("Arial", qMax(6, int(9 * sr.height() / SLIDE_H_DEFAULT))));
+            p.drawText(QRectF(wr.x(), wr.bottom() - 18 * sr.height()/SLIDE_H_DEFAULT,
+                              wr.width(), 18 * sr.height()/SLIDE_H_DEFAULT),
+                       Qt::AlignCenter, "Doppelklick zum Bearbeiten");
+            p.restore();
+        }
+        goto done;
     }
 
 done:
@@ -956,7 +979,11 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
     if (!s) return;
     const SlideElement& elem = s->elements[hit];
 
-    if (elem.type == SlideElement::Text) {
+    if (elem.type == SlideElement::Chart) {
+        m_selectedElem = hit;
+        openChartEditor();
+        return;
+    } else if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Table) {
         m_selectedElem  = hit;
@@ -1200,6 +1227,35 @@ void SlideEditor2D::addTableElement(int rows, int cols) {
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::addChartElement(const QString& chartType) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type = SlideElement::Chart;
+    e.chartData = ChartData::createDefault(chartType);
+    e.x = 160.f; e.y = 160.f;
+    e.width = 900.f; e.height = 560.f;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::openChartEditor() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Chart) return;
+
+    ChartEditorDialog dlg(e.chartData, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        e.chartData = dlg.chartData();
+        update();
+        emit presentationModified();
+    }
 }
 
 void SlideEditor2D::addImageElement() {

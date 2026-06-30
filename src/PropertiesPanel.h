@@ -74,12 +74,14 @@ private:
     void buildSlideGroup();
     void buildElementGroup();
     void buildTableGroup();
+    void buildChartGroup();
     void rebuildVisibilitySection();
     void refreshProject();
     void refreshSlide();
     void refreshElement();
     void refreshTable();
     void refreshTableCell();
+    void refreshChart();
     void updateColorButton(QPushButton*, const QColor&);
 
     Presentation* m_pres       = nullptr;
@@ -148,6 +150,12 @@ private:
     QDoubleSpinBox* m_eAnimDelay     = nullptr;
     QLabel*         m_animDurLabel   = nullptr;
     QDoubleSpinBox* m_eAnimDuration  = nullptr;
+
+    // Chart properties
+    QGroupBox*      m_chartGroup        = nullptr;
+    QLabel*         m_chartTypeLabel    = nullptr;
+    QLabel*         m_chartTitleLabel   = nullptr;
+    QPushButton*    m_chartEditBtn      = nullptr;
 
     // Table-wide properties
     QGroupBox*      m_tableGroup        = nullptr;

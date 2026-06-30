@@ -1,4 +1,5 @@
 #include "SlideEditor3D.h"
+#include "rendering/ChartRenderer.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
@@ -447,6 +448,9 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                 p.setBrush(Qt::NoBrush);
                 p.drawRect(r);
             }
+        } else if (elem.type == SlideElement::Chart) {
+            p.fillRect(r, Qt::white);
+            ChartRenderer::paint(p, r, elem.chartData);
         }
     }
     p.end();

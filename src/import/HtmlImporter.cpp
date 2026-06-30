@@ -1,10 +1,13 @@
 ﻿#include "HtmlImporter.h"
+#include "models/ChartData.h"
 #include <QFile>
 #include <QDir>
 #include <QMap>
 #include <QTextStream>
 #include <QRegularExpression>
 #include <QUuid>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -102,6 +105,182 @@ static QString cssBlock(const QString& css, const QString& selector) {
                           QRegularExpression::DotMatchesEverythingOption);
     auto m = re.match(css);
     return m.hasMatch() ? m.captured(1) : QString();
+}
+
+// ── Table element parser ──────────────────────────────────────────────────────
+// The exporter writes each table element as a single long line:
+//   <div data-type="table" style="..."><table ...><colgroup>...</colgroup><tr ...><td ...>text</td></tr>...</table></div>
+static SlideElement parseTableDiv(const QString& line) {
+    SlideElement e;
+    e.type = SlideElement::Table;
+
+    // Outer div: position / size / font
+    int divEnd = line.indexOf('>');
+    if (divEnd < 0) return e;
+    QString divTag    = line.left(divEnd + 1);
+    QString outerSt   = attrVal(divTag, "style");
+    e.x      = cssProp(outerSt, "left"  ).remove("px").toFloat();
+    e.y      = cssProp(outerSt, "top"   ).remove("px").toFloat();
+    e.width  = cssProp(outerSt, "width" ).remove("px").toFloat();
+    e.height = cssProp(outerSt, "height").remove("px").toFloat();
+    {
+        QString ff = cssProp(outerSt, "font-family"); ff.remove('\'').remove('"');
+        if (!ff.isEmpty()) e.tableFontFamily = ff;
+        QString fs = cssProp(outerSt, "font-size").remove("px");
+        if (!fs.isEmpty()) e.tableFontSize = fs.toInt();
+    }
+
+    // <table> tag: border
+    {
+        QRegularExpression re(R"(<table\s([^>]*)>)");
+        auto m = re.match(line);
+        if (m.hasMatch()) {
+            QString ts  = attrVal("<table " + m.captured(1) + ">", "style");
+            QString bdr = cssProp(ts, "border");
+            QRegularExpression bRe(R"(([\d.]+)px\s+solid\s+(\S+))");
+            auto bm = bRe.match(bdr);
+            if (bm.hasMatch()) {
+                e.tableBorderWidth = bm.captured(1).toFloat();
+                e.tableBorderColor = parseCssColor(bm.captured(2));
+            }
+        }
+    }
+
+    // <colgroup>: column fracs
+    {
+        QRegularExpression re(R"(<colgroup>(.*?)</colgroup>)");
+        auto m = re.match(line);
+        if (m.hasMatch()) {
+            QRegularExpression cRe(R"(width:([\d.]+)%)");
+            auto it = cRe.globalMatch(m.captured(1));
+            while (it.hasNext())
+                e.tableColFracs.append(it.next().captured(1).toFloat() / 100.f);
+        }
+    }
+    e.tableCols = e.tableColFracs.size();
+    if (e.tableCols == 0) return e;
+
+    // <tr> rows — track spans with an occupancy grid
+    QVector<QVector<bool>> occ; // occ[row][col] = covered by a span
+    auto ensureOcc = [&](int r) {
+        while (occ.size() <= r) occ.append(QVector<bool>(e.tableCols, false));
+    };
+
+    QRegularExpression trRe(R"(<tr\b([^>]*)>(.*?)</tr>)");
+    auto trIt = trRe.globalMatch(line);
+    int rowIdx = 0;
+    while (trIt.hasNext()) {
+        auto trm = trIt.next();
+        QString trAttrs  = trm.captured(1);
+        QString trContent = trm.captured(2);
+
+        // Row height → fraction of element height
+        QString trStyle;
+        { QRegularExpression sr("style=\"([^\"]*)\""); auto sm = sr.match(trAttrs); if (sm.hasMatch()) trStyle = sm.captured(1); }
+        float rowH   = cssProp(trStyle, "height").remove("px").toFloat();
+        float rowFrac = (e.height > 0 && rowH > 0) ? rowH / e.height : 0.f;
+        e.tableRowFracs.append(rowFrac);
+
+        ensureOcc(rowIdx);
+        QVector<TableCell> row(e.tableCols); // default-constructed cells
+        // Pre-mark cells occupied by rowspan from earlier rows
+        for (int c = 0; c < e.tableCols; ++c)
+            if (occ[rowIdx][c]) row[c].merged = true;
+
+        // Parse cells
+        QRegularExpression cellRe(R"(<(th|td)((?:\s+[^>]*)?)>(.*?)</(th|td)>)");
+        auto cellIt = cellRe.globalMatch(trContent);
+        int colCursor = 0;
+        while (cellIt.hasNext()) {
+            auto cm  = cellIt.next();
+            bool isth = (cm.captured(1) == "th");
+            QString cellAttrs   = cm.captured(2);
+            QString cellContent = cm.captured(3);
+
+            // Advance past already-occupied columns
+            while (colCursor < e.tableCols && occ[rowIdx][colCursor]) ++colCursor;
+            if (colCursor >= e.tableCols) break;
+
+            // Style
+            QString cellStyle;
+            { QRegularExpression sr("style=\"([^\"]*)\""); auto sm = sr.match(cellAttrs); if (sm.hasMatch()) cellStyle = sm.captured(1); }
+
+            // Colspan / rowspan
+            int cs = 1, rs = 1;
+            { QRegularExpression r2("\\bcolspan=\"(\\d+)\""); auto m2 = r2.match(cellAttrs); if (m2.hasMatch()) cs = m2.captured(1).toInt(); }
+            { QRegularExpression r2("\\browspan=\"(\\d+)\""); auto m2 = r2.match(cellAttrs); if (m2.hasMatch()) rs = m2.captured(1).toInt(); }
+            cs = qMax(1, qMin(cs, e.tableCols - colCursor));
+
+            // Mark occupancy grid
+            for (int dr = 0; dr < rs; ++dr) {
+                ensureOcc(rowIdx + dr);
+                for (int dc = 0; dc < cs; ++dc) {
+                    if (dr == 0 && dc == 0) continue;
+                    int nc = colCursor + dc;
+                    if (nc < e.tableCols) occ[rowIdx + dr][nc] = true;
+                }
+            }
+
+            TableCell cell;
+            cell.colspan = cs;
+            cell.rowspan = rs;
+            cell.merged  = false;
+
+            QColor bg = parseCssColor(cssProp(cellStyle, "background"));
+            QColor fg = parseCssColor(cssProp(cellStyle, "color"));
+
+            if (rowIdx == 0 && isth) {
+                if (!e.tableHasHeader) {
+                    e.tableHasHeader = true;
+                    if (bg.isValid() && bg != Qt::transparent) e.tableHeaderBg   = bg;
+                    if (fg.isValid())                          e.tableHeaderText  = fg;
+                }
+                // Don't store header colors as cell overrides
+            } else {
+                if (bg.isValid() && bg != Qt::transparent) cell.bgColor   = bg;
+                if (fg.isValid())                          cell.textColor = fg;
+            }
+
+            cell.textAlign = cssProp(cellStyle, "text-align").trimmed();
+            if (cell.textAlign.isEmpty()) cell.textAlign = "left";
+            cell.bold   = cssProp(cellStyle, "font-weight").trimmed() == "bold";
+            cell.italic = cssProp(cellStyle, "font-style").trimmed()  == "italic";
+
+            // Decode HTML entities and <br>
+            cellContent.replace("<br>", "\n");
+            cellContent.replace("&amp;","&").replace("&lt;","<").replace("&gt;",">")
+                       .replace("&quot;","\"").replace("&#39;","'");
+            cell.text = cellContent;
+
+            row[colCursor] = cell;
+            // Mark same-row merged cells (colspan)
+            for (int dc = 1; dc < cs && colCursor + dc < e.tableCols; ++dc)
+                row[colCursor + dc].merged = true;
+
+            colCursor += cs;
+        }
+        e.tableCells.append(row);
+        ++rowIdx;
+    }
+    e.tableRows = e.tableCells.size();
+
+    // Normalize fracs to sum = 1
+    auto norm = [](QVector<float>& v) {
+        float s = 0; for (float f : v) s += f;
+        if (s > 0.f && qAbs(s - 1.f) > 0.01f) for (float& f : v) f /= s;
+    };
+    norm(e.tableColFracs);
+    norm(e.tableRowFracs);
+
+    // If fracs are all zero (export had no explicit heights), distribute evenly
+    auto evenIfZero = [](QVector<float>& v, int n) {
+        float s = 0; for (float f : v) s += f;
+        if (s < 0.001f && n > 0) { v.fill(1.f / n); }
+    };
+    evenIfZero(e.tableColFracs, e.tableCols);
+    evenIfZero(e.tableRowFracs, e.tableRows);
+
+    return e;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -325,6 +504,34 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 QString dtype  = attrVal(dTag, "data-type");
                 QString dshape = attrVal(dTag, "data-shape");
                 QString danim  = attrVal(dTag, "data-anim");
+
+                // Table element: parse the full line (exporter writes it on one line)
+                if (dtype == "table") {
+                    SlideElement te = parseTableDiv(line);
+                    if (te.tableRows > 0 && te.tableCols > 0)
+                        slide.elements.append(te);
+                    continue;
+                }
+
+                // Chart element: restore from base64-encoded JSON in data-chart attr
+                if (dtype == "chart") {
+                    QString chartB64 = attrVal(dTag, "data-chart");
+                    if (!chartB64.isEmpty()) {
+                        QByteArray jsonBa = QByteArray::fromBase64(chartB64.toLatin1());
+                        QJsonDocument doc = QJsonDocument::fromJson(jsonBa);
+                        if (doc.isObject()) {
+                            SlideElement ce;
+                            ce.type      = SlideElement::Chart;
+                            ce.x         = cssProp(style, "left").remove("px").toFloat();
+                            ce.y         = cssProp(style, "top").remove("px").toFloat();
+                            ce.width     = cssProp(style, "width").remove("px").toFloat();
+                            ce.height    = cssProp(style, "height").remove("px").toFloat();
+                            ce.chartData = ChartData::fromJson(doc.object());
+                            slide.elements.append(ce);
+                        }
+                    }
+                    continue;
+                }
 
                 // Classify: prefer explicit data-type, fall back to style inspection
                 bool isText = (dtype == "text") ||

@@ -17,11 +17,15 @@ set(SOURCES
     src/SlideEditor3D.cpp
     src/PropertiesPanel.cpp
     src/models/Presentation.cpp
+    src/models/ChartData.cpp
+    src/rendering/ChartRenderer.cpp
     src/export/HtmlExporter.cpp
     src/import/HtmlImporter.cpp
     src/dialogs/ExportDialog.cpp
     src/dialogs/StartDialog.cpp
     src/dialogs/InsertTableDialog.cpp
+    src/dialogs/InsertChartDialog.cpp
+    src/dialogs/ChartEditorDialog.cpp
     src/FormatBar.cpp
 )
 

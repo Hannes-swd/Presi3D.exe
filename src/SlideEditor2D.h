@@ -27,6 +27,8 @@ public slots:
     void addShapeElement(const QString& shapeType = "rect");
     void addImageElement();
     void addTableElement(int rows, int cols);
+    void addChartElement(const QString& chartType);
+    void openChartEditor();  // open editor for selected chart element
     void deleteSelectedElement();
     void copySelectedElement();
     void pasteElement();
