@@ -21,6 +21,7 @@ public:
 
     void setSlide(Presentation* pres, int slideIndex);
     void setSelectedElement(int elemIndex);
+    void setSelectedTableCell(int row, int col);
 
 signals:
     void slideModified();
@@ -28,6 +29,21 @@ signals:
     void presentationSettingsModified();
 
 private slots:
+    void onTableBorderColorClicked();
+    void onTableHeaderBgClicked();
+    void onTableHeaderTextClicked();
+    void onTableDefaultBgClicked();
+    void onTableDefaultTextClicked();
+    void onTableAddRow();
+    void onTableDelRow();
+    void onTableAddCol();
+    void onTableDelCol();
+    void onCellBgColorClicked();
+    void onCellTextColorClicked();
+    void onCellBoldChanged(bool);
+    void onCellItalicChanged(bool);
+    void onCellAlignChanged(int);
+
     void onSceneBgClicked();
     void onSlideSizeChanged();
     void onDefaultInactiveOpaChanged();
@@ -57,15 +73,20 @@ private:
     void buildProjectGroup();
     void buildSlideGroup();
     void buildElementGroup();
+    void buildTableGroup();
     void rebuildVisibilitySection();
     void refreshProject();
     void refreshSlide();
     void refreshElement();
+    void refreshTable();
+    void refreshTableCell();
     void updateColorButton(QPushButton*, const QColor&);
 
     Presentation* m_pres       = nullptr;
     int           m_slideIdx   = -1;
     int           m_elemIdx    = -1;
+    int           m_cellRow    = -1;
+    int           m_cellCol    = -1;
     bool          m_updating   = false;
 
     // Project settings
@@ -127,4 +148,23 @@ private:
     QDoubleSpinBox* m_eAnimDelay     = nullptr;
     QLabel*         m_animDurLabel   = nullptr;
     QDoubleSpinBox* m_eAnimDuration  = nullptr;
+
+    // Table-wide properties
+    QGroupBox*      m_tableGroup        = nullptr;
+    QPushButton*    m_tBorderColorBtn   = nullptr;
+    QDoubleSpinBox* m_tBorderWidth      = nullptr;
+    QSpinBox*       m_tFontSize         = nullptr;
+    QPushButton*    m_tDefaultBgBtn     = nullptr;
+    QPushButton*    m_tDefaultTextBtn   = nullptr;
+    QCheckBox*      m_tHasHeader        = nullptr;
+    QPushButton*    m_tHeaderBgBtn      = nullptr;
+    QPushButton*    m_tHeaderTextBtn    = nullptr;
+
+    // Selected-cell overrides
+    QWidget*        m_cellSection       = nullptr;
+    QPushButton*    m_cellBgBtn         = nullptr;
+    QPushButton*    m_cellTextBtn       = nullptr;
+    QCheckBox*      m_cellBoldChk       = nullptr;
+    QCheckBox*      m_cellItalicChk     = nullptr;
+    QComboBox*      m_cellAlignCombo    = nullptr;
 };

@@ -15,6 +15,7 @@ public:
     explicit FormatBar(QWidget* parent = nullptr);
 
     void setContext(Presentation* pres, int slideIdx, int elemIdx);
+    void setTableCell(int row, int col);
 
 signals:
     void modified();
@@ -48,10 +49,13 @@ private:
     void refresh();
     void updateColorSwatch(QPushButton*, const QColor&);
     SlideElement* currentElem();
+    TableCell*    currentCell();
 
     Presentation* m_pres      = nullptr;
     int           m_slideIdx  = -1;
     int           m_elemIdx   = -1;
+    int           m_cellRow   = -1;
+    int           m_cellCol   = -1;
     bool          m_updating  = false;
 
     // Text group

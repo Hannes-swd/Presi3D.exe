@@ -112,6 +112,53 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
                 p.drawRect(r);
         } else if (elem.type == SlideElement::Image) {
             p.fillRect(r, QColor(200, 200, 220));
+        } else if (elem.type == SlideElement::Table) {
+            p.fillRect(r, elem.tableDefaultBg);
+            int fontPx = qMax(1, int(elem.tableFontSize * sy));
+            float rowY = float(r.y());
+            for (int row = 0; row < elem.tableRows && row < elem.tableCells.size(); ++row) {
+                float rowH = elem.tableRowFracs[row] * float(r.height());
+                float colX = float(r.x());
+                for (int col = 0; col < elem.tableCols && col < elem.tableCells[row].size(); ++col) {
+                    float colW = elem.tableColFracs[col] * float(r.width());
+                    const TableCell& cell = elem.tableCells[row][col];
+                    if (cell.merged) { colX += colW; continue; }
+                    // Span
+                    int cs = qMax(1, qMin(cell.colspan, elem.tableCols - col));
+                    int rs = qMax(1, qMin(cell.rowspan, elem.tableRows - row));
+                    float cw = 0, rh = 0;
+                    for (int c2 = col; c2 < col + cs && c2 < elem.tableCols; ++c2)
+                        cw += elem.tableColFracs[c2] * float(r.width());
+                    for (int r2 = row; r2 < row + rs && r2 < elem.tableRows; ++r2)
+                        rh += elem.tableRowFracs[r2] * float(r.height());
+                    QRectF cr(colX, rowY, cw, rh);
+                    bool isHdr = row == 0 && elem.tableHasHeader;
+                    QColor bg = isHdr ? elem.tableHeaderBg
+                              : (cell.bgColor.isValid() ? cell.bgColor : elem.tableDefaultBg);
+                    p.fillRect(cr, bg);
+                    if (elem.tableBorderWidth > 0) {
+                        p.setPen(QPen(elem.tableBorderColor, 0.5));
+                        p.setBrush(Qt::NoBrush);
+                        p.drawRect(cr);
+                    }
+                    QColor tc = isHdr ? elem.tableHeaderText
+                               : (cell.textColor.isValid() ? cell.textColor : elem.tableDefaultText);
+                    QFont f(elem.tableFontFamily, fontPx);
+                    f.setBold(cell.bold || isHdr);
+                    p.setFont(f);
+                    p.setPen(tc);
+                    p.drawText(cr.adjusted(2,1,-2,-1),
+                               int(Qt::AlignVCenter | Qt::AlignLeft | Qt::TextWordWrap),
+                               cell.text);
+                    colX += colW;
+                }
+                rowY += rowH;
+            }
+            if (elem.tableBorderWidth > 0) {
+                p.setPen(QPen(elem.tableBorderColor, 1));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(r);
+            }
         }
     }
 

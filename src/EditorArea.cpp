@@ -1,6 +1,7 @@
 #include "EditorArea.h"
 #include "SlideEditor2D.h"
 #include "SlideEditor3D.h"
+#include "dialogs/InsertTableDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -54,6 +55,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnRect   = mkBtn("▭ Rechteck", "Rechteck hinzufügen");
     m_btnCircle = mkBtn("○ Kreis",    "Kreis hinzufügen");
     m_btnImage  = mkBtn("□ Bild",     "Bild importieren");
+    m_btnTable  = mkBtn("⊞ Tabelle",  "Tabelle einfügen");
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -147,6 +149,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_btnRect,     &QPushButton::clicked, this, [this]() { m_editor2D->addShapeElement("rect"); });
     connect(m_btnCircle,   &QPushButton::clicked, this, [this]() { m_editor2D->addShapeElement("circle"); });
     connect(m_btnImage,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::addImageElement);
+    connect(m_btnTable,    &QPushButton::clicked, this, [this]() {
+        InsertTableDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted)
+            m_editor2D->addTableElement(dlg.rows(), dlg.cols());
+    });
     connect(m_btnDelete,   &QPushButton::clicked, m_editor2D, &SlideEditor2D::deleteSelectedElement);
     connect(m_btnFront,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringToFront);
     connect(m_btnForward,  &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringForward);
@@ -171,6 +178,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
             m_editor3D, &SlideEditor3D::markAllDirty);
     connect(m_editor2D, &SlideEditor2D::elementSelected,
             this, &EditorArea::elementSelected);
+    connect(m_editor2D, &SlideEditor2D::tableCellSelected,
+            this, &EditorArea::tableCellSelected);
 
     connect(m_editor3D, &SlideEditor3D::presentationModified,
             this, &EditorArea::presentationModified);

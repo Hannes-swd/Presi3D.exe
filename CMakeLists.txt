@@ -21,6 +21,7 @@ set(SOURCES
     src/import/HtmlImporter.cpp
     src/dialogs/ExportDialog.cpp
     src/dialogs/StartDialog.cpp
+    src/dialogs/InsertTableDialog.cpp
     src/FormatBar.cpp
 )
 

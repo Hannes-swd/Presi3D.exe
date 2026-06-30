@@ -20,6 +20,7 @@ public:
 signals:
     void presentationModified();
     void elementSelected(int elemIndex);
+    void tableCellSelected(int row, int col);
 
 private slots:
     void switchTo2D();
@@ -41,6 +42,7 @@ private:
     QPushButton*     m_btnRect     = nullptr;
     QPushButton*     m_btnCircle   = nullptr;
     QPushButton*     m_btnImage    = nullptr;
+    QPushButton*     m_btnTable    = nullptr;
     QPushButton*     m_btnDelete   = nullptr;
     // Layer buttons
     QPushButton*     m_btnFront    = nullptr;

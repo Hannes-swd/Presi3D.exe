@@ -394,6 +394,59 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                 p.drawRect(r);
                 p.drawText(r, int(Qt::AlignCenter), QFileInfo(elem.content).fileName());
             }
+
+        } else if (elem.type == SlideElement::Table) {
+            p.fillRect(r, elem.tableDefaultBg);
+            int fontPx = qMax(1, int(elem.tableFontSize * sy));
+            float rowY = float(r.y());
+            for (int row = 0; row < elem.tableRows && row < elem.tableCells.size(); ++row) {
+                float rowH = elem.tableRowFracs[row] * float(r.height());
+                float colX = float(r.x());
+                for (int col = 0; col < elem.tableCols && col < elem.tableCells[row].size(); ++col) {
+                    float colW = elem.tableColFracs[col] * float(r.width());
+                    const TableCell& cell = elem.tableCells[row][col];
+                    if (cell.merged) { colX += colW; continue; }
+                    int cs = qMax(1, qMin(cell.colspan, elem.tableCols - col));
+                    int rs = qMax(1, qMin(cell.rowspan, elem.tableRows - row));
+                    float cw = 0, rh = 0;
+                    for (int c2 = col; c2 < col + cs && c2 < elem.tableCols; ++c2)
+                        cw += elem.tableColFracs[c2] * float(r.width());
+                    for (int r2 = row; r2 < row + rs && r2 < elem.tableRows; ++r2)
+                        rh += elem.tableRowFracs[r2] * float(r.height());
+                    QRectF cr(colX, rowY, cw, rh);
+                    bool isHdr = row == 0 && elem.tableHasHeader;
+                    QColor bg = isHdr ? elem.tableHeaderBg
+                              : (cell.bgColor.isValid() ? cell.bgColor : elem.tableDefaultBg);
+                    p.fillRect(cr, bg);
+                    if (elem.tableBorderWidth > 0) {
+                        p.setPen(QPen(elem.tableBorderColor, elem.tableBorderWidth * sx));
+                        p.setBrush(Qt::NoBrush);
+                        p.drawRect(cr);
+                    }
+                    QColor tc = isHdr ? elem.tableHeaderText
+                               : (cell.textColor.isValid() ? cell.textColor : elem.tableDefaultText);
+                    QFont f(elem.tableFontFamily, fontPx);
+                    f.setBold(cell.bold || isHdr);
+                    f.setItalic(cell.italic);
+                    p.setFont(f);
+                    p.setPen(tc);
+                    p.save();
+                    p.setClipRect(cr, Qt::IntersectClip);
+                    Qt::Alignment align = Qt::AlignLeft;
+                    if (cell.textAlign == "center") align = Qt::AlignHCenter;
+                    else if (cell.textAlign == "right") align = Qt::AlignRight;
+                    p.drawText(cr.adjusted(4*sx,2*sy,-4*sx,-2*sy),
+                               int(Qt::AlignVCenter | align | Qt::TextWordWrap), cell.text);
+                    p.restore();
+                    colX += colW;
+                }
+                rowY += rowH;
+            }
+            if (elem.tableBorderWidth > 0) {
+                p.setPen(QPen(elem.tableBorderColor, elem.tableBorderWidth * sx + 0.5f));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(r);
+            }
         }
     }
     p.end();

@@ -72,11 +72,13 @@ SlideEditor2D::SlideEditor2D(QWidget* parent) : QWidget(parent) {
 
 void SlideEditor2D::setSlide(Presentation* pres, int slideIndex) {
     finishTextEdit();
+    exitTableEditMode();
     if (pres != m_pres) m_pixmapCache.clear();
-    m_pres         = pres;
-    m_slideIndex   = slideIndex;
-    m_selectedElem = -1;
+    m_pres           = pres;
+    m_slideIndex     = slideIndex;
+    m_selectedElem   = -1;
     m_resizingHandle = -1;
+    m_dragDivider    = {};
     update();
     emit elementSelected(-1);
 }
@@ -380,6 +382,10 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         else if (rx > 0 || ry > 0)      p.drawRoundedRect(wr, rx, ry);
         else                            p.drawRect(wr);
 
+    } else if (e.type == SlideElement::Table) {
+        drawTableElement(p, e, selected);
+        return; // table draws its own selection outline
+
     } else if (e.type == SlideElement::Image) {
         if (!e.content.isEmpty()) {
             if (!m_pixmapCache.contains(e.content))
@@ -399,6 +405,243 @@ done:
         p.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
         p.setBrush(Qt::NoBrush);
         p.drawRect(wr);
+    }
+}
+
+// ── Table helpers ─────────────────────────────────────────────────────────────
+
+QRectF SlideEditor2D::cellRect(const SlideElement& e, int row, int col) const {
+    QRectF wr = elemToWidget(e);
+    float cx = float(wr.x());
+    for (int c = 0; c < col; ++c) cx += e.tableColFracs[c] * float(wr.width());
+    float cy = float(wr.y());
+    for (int r = 0; r < row; ++r) cy += e.tableRowFracs[r] * float(wr.height());
+
+    // Account for colspan/rowspan
+    int cs = 1, rs = 1;
+    if (row < e.tableCells.size() && col < e.tableCells[row].size()) {
+        cs = qMax(1, qMin(e.tableCells[row][col].colspan, e.tableCols - col));
+        rs = qMax(1, qMin(e.tableCells[row][col].rowspan, e.tableRows - row));
+    }
+    float cw = 0, rh = 0;
+    for (int c = col; c < col + cs && c < e.tableCols; ++c)
+        cw += e.tableColFracs[c] * float(wr.width());
+    for (int r = row; r < row + rs && r < e.tableRows; ++r)
+        rh += e.tableRowFracs[r] * float(wr.height());
+    return QRectF(cx, cy, cw, rh);
+}
+
+SlideEditor2D::CellPos SlideEditor2D::hitTableCell(int elemIdx, QPointF wpos) const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || elemIdx < 0 || elemIdx >= s->elements.size()) return {};
+    const SlideElement& e = s->elements[elemIdx];
+    if (e.type != SlideElement::Table) return {};
+    QRectF wr = elemToWidget(e);
+    if (!wr.contains(wpos)) return {};
+
+    float rx = float(wpos.x() - wr.x());
+    float ry = float(wpos.y() - wr.y());
+
+    int col = e.tableCols - 1;
+    float cx = 0;
+    for (int c = 0; c < e.tableCols; ++c) {
+        cx += e.tableColFracs[c] * float(wr.width());
+        if (rx < cx) { col = c; break; }
+    }
+    int row = e.tableRows - 1;
+    float cy = 0;
+    for (int r = 0; r < e.tableRows; ++r) {
+        cy += e.tableRowFracs[r] * float(wr.height());
+        if (ry < cy) { row = r; break; }
+    }
+
+    // If this cell is covered by a span, find the spanning cell
+    if (row >= 0 && row < e.tableCells.size() &&
+        col >= 0 && col < e.tableCells[row].size() &&
+        e.tableCells[row][col].merged) {
+        for (int r = 0; r <= row; ++r) {
+            for (int c = 0; c <= col; ++c) {
+                if (r < e.tableCells.size() && c < e.tableCells[r].size()) {
+                    const TableCell& tc = e.tableCells[r][c];
+                    if (!tc.merged && r + tc.rowspan > row && c + tc.colspan > col)
+                        return {r, c};
+                }
+            }
+        }
+    }
+    return {row, col};
+}
+
+SlideEditor2D::DividerHit SlideEditor2D::hitTableDivider(int elemIdx, QPointF wpos) const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || elemIdx < 0 || elemIdx >= s->elements.size()) return {};
+    const SlideElement& e = s->elements[elemIdx];
+    if (e.type != SlideElement::Table) return {};
+    QRectF wr = elemToWidget(e);
+    if (!wr.adjusted(-6, -6, 6, 6).contains(wpos)) return {};
+
+    const float THRESH = 5.f;
+
+    // Column dividers
+    float cx = float(wr.x());
+    for (int c = 0; c < e.tableCols - 1; ++c) {
+        cx += e.tableColFracs[c] * float(wr.width());
+        if (qAbs(float(wpos.x()) - cx) <= THRESH) {
+            float ry = float(wpos.y());
+            if (ry >= wr.y() && ry <= wr.bottom())
+                return {true, true, c};
+        }
+    }
+    // Row dividers
+    float ry = float(wr.y());
+    for (int r = 0; r < e.tableRows - 1; ++r) {
+        ry += e.tableRowFracs[r] * float(wr.height());
+        if (qAbs(float(wpos.y()) - ry) <= THRESH) {
+            float rx = float(wpos.x());
+            if (rx >= wr.x() && rx <= wr.right())
+                return {true, false, r};
+        }
+    }
+    return {};
+}
+
+void SlideEditor2D::drawTableElement(QPainter& p, const SlideElement& e, bool selected) const {
+    QRectF wr = elemToWidget(e);
+    QRectF sr = slideRect();
+    float  sy = sr.height() / SLIDE_H_DEFAULT;
+    int baseFontPx = qMax(6, int(e.tableFontSize * sy));
+
+    // Multi-cell selection bounds
+    int selR1 = -1, selC1 = -1, selR2 = -1, selC2 = -1;
+    bool hasMultiSel = m_tableEditMode && selected && m_cellSelAnchorRow >= 0 && m_selTableRow >= 0
+        && (m_cellSelAnchorRow != m_selTableRow || m_cellSelAnchorCol != m_selTableCol);
+    if (hasMultiSel || (m_tableEditMode && selected && m_cellSelAnchorRow >= 0)) {
+        selR1 = qMin(m_cellSelAnchorRow, m_selTableRow);
+        selC1 = qMin(m_cellSelAnchorCol, m_selTableCol);
+        selR2 = qMax(m_cellSelAnchorRow, m_selTableRow);
+        selC2 = qMax(m_cellSelAnchorCol, m_selTableCol);
+    }
+
+    // Fill outer rect (catches rounding gaps)
+    p.fillRect(wr, e.tableDefaultBg);
+
+    // Draw cells
+    float rowY = float(wr.y());
+    for (int r = 0; r < e.tableRows; ++r) {
+        float rowH = e.tableRowFracs[r] * float(wr.height());
+        float colX = float(wr.x());
+        for (int c = 0; c < e.tableCols; ++c) {
+            float colW = e.tableColFracs[c] * float(wr.width());
+
+            const TableCell& cell = e.tableCells[r][c];
+
+            if (cell.merged) {
+                // This cell is covered by a span — skip drawing
+                colX += colW;
+                continue;
+            }
+
+            // Compute spanning rect
+            QRectF cr = cellRect(e, r, c);
+            bool isHeader = r == 0 && e.tableHasHeader;
+
+            // Background
+            QColor bg = isHeader ? e.tableHeaderBg
+                      : (cell.bgColor.isValid() ? cell.bgColor : e.tableDefaultBg);
+            p.fillRect(cr, bg);
+
+            // Text color
+            QColor tc = isHeader ? e.tableHeaderText
+                       : (cell.textColor.isValid() ? cell.textColor : e.tableDefaultText);
+
+            // Font
+            QFont font(e.tableFontFamily, baseFontPx);
+            font.setBold(cell.bold || isHeader);
+            font.setItalic(cell.italic);
+
+            Qt::Alignment align = Qt::AlignLeft;
+            if (cell.textAlign == "center") align = Qt::AlignHCenter;
+            else if (cell.textAlign == "right") align = Qt::AlignRight;
+
+            QRectF tr = cr.adjusted(4, 2, -4, -2);
+            p.save();
+            p.setFont(font);
+            p.setPen(tc);
+            p.setClipRect(cr, Qt::IntersectClip);
+
+            bool isCurCell = m_tableEditMode && selected
+                          && r == m_selTableRow && c == m_selTableCol;
+
+            if (isCurCell && m_tableCellEditing) {
+                // Text selection highlight
+                const QString& txt = cell.text;
+                if (m_tableSelAnchor >= 0 && m_tableSelAnchor != m_tableCursorPos) {
+                    int lo = qMin(m_tableCursorPos, m_tableSelAnchor);
+                    int hi = qMax(m_tableCursorPos, m_tableSelAnchor);
+                    QFontMetrics fm(font);
+                    float x1 = float(tr.x()) + fm.horizontalAdvance(txt.left(lo));
+                    float sw = fm.horizontalAdvance(txt.mid(lo, hi - lo));
+                    p.fillRect(QRectF(x1, tr.y() + 1, sw, tr.height() - 2),
+                               QColor(37, 99, 235, 80));
+                }
+                p.drawText(tr, int(Qt::TextWordWrap | Qt::AlignVCenter | align), cell.text);
+                if (m_cursorVisible) {
+                    QFontMetrics fm(font);
+                    int pos = qBound(0, m_tableCursorPos, cell.text.length());
+                    float cx2 = float(tr.x()) + fm.horizontalAdvance(cell.text.left(pos));
+                    float cy2 = float(tr.y()) + 1;
+                    float ch  = float(tr.height()) - 2;
+                    p.setPen(QPen(tc, 2));
+                    p.drawLine(QPointF(cx2, cy2), QPointF(cx2, cy2 + ch));
+                }
+            } else {
+                p.drawText(tr, int(Qt::TextWordWrap | Qt::AlignVCenter | align), cell.text);
+            }
+            p.restore();
+
+            // Cell border
+            if (e.tableBorderWidth > 0) {
+                p.setPen(QPen(e.tableBorderColor, e.tableBorderWidth));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(cr);
+            }
+
+            // Single-cell selection highlight
+            if (isCurCell && !hasMultiSel) {
+                p.setPen(QPen(QColor(37, 99, 235), 2.5));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(cr.adjusted(1, 1, -1, -1));
+                p.fillRect(cr.adjusted(2, 2, -2, -2), QColor(37, 99, 235, 30));
+            }
+
+            colX += colW;
+        }
+        rowY += rowH;
+    }
+
+    // Multi-cell selection overlay
+    if (hasMultiSel && selR1 >= 0) {
+        // Top-left of (selR1, selC1) to bottom-right of (selR2, selC2)
+        QRectF tl = cellRect(e, selR1, selC1);
+        QRectF br = cellRect(e, selR2, selC2);
+        QRectF selRect(tl.topLeft(), br.bottomRight());
+        p.fillRect(selRect, QColor(37, 99, 235, 45));
+        p.setPen(QPen(QColor(37, 99, 235), 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(selRect.adjusted(1, 1, -1, -1));
+    }
+
+    // Outer border
+    if (e.tableBorderWidth > 0) {
+        p.setPen(QPen(e.tableBorderColor, e.tableBorderWidth + 0.5f));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(wr);
+    }
+
+    if (selected) {
+        p.setPen(QPen(QColor(0, 120, 215), 2, Qt::SolidLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(wr.adjusted(-1, -1, 1, 1));
     }
 }
 
@@ -451,7 +694,7 @@ void SlideEditor2D::activateFormatPainter(const SlideElement& source) {
 void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     if (e->button() != Qt::LeftButton) return;
 
-    // Format painter mode: apply format to clicked element
+    // Format painter mode
     if (m_formatPainterMode) {
         int hit = hitTest(e->position());
         if (hit >= 0 && m_pres) {
@@ -467,7 +710,7 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
         return;
     }
 
-    // While editing text: click inside same element repositions cursor; elsewhere finishes edit
+    // Text editing: click inside same element → reposition cursor; elsewhere → finish
     if (m_editingElem >= 0) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
         if (s && hitTest(e->position()) == m_editingElem) {
@@ -482,7 +725,82 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
         finishTextEdit();
     }
 
-    // 1. Check if a resize handle of the selected element is hit
+    // Table edit mode
+    if (m_tableEditMode && m_selectedElem >= 0) {
+        Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        if (!s) return;
+        SlideElement& elem = s->elements[m_selectedElem];
+
+        // Check column/row divider for resize
+        DividerHit dh = hitTableDivider(m_selectedElem, e->position());
+        if (dh.valid) {
+            m_dragDivider  = dh;
+            m_divDragStart = dh.isCol ? float(e->position().x()) : float(e->position().y());
+            m_divFracA     = dh.isCol ? elem.tableColFracs[dh.idx]     : elem.tableRowFracs[dh.idx];
+            m_divFracB     = dh.isCol ? elem.tableColFracs[dh.idx + 1] : elem.tableRowFracs[dh.idx + 1];
+            return;
+        }
+
+        // Click inside table: select cell
+        CellPos cp = hitTableCell(m_selectedElem, e->position());
+        if (cp.valid()) {
+            bool sameCell = cp.row == m_selTableRow && cp.col == m_selTableCol;
+            m_selTableRow = cp.row;
+            m_selTableCol = cp.col;
+            // Anchor for multi-cell selection
+            m_cellSelAnchorRow = cp.row;
+            m_cellSelAnchorCol = cp.col;
+            m_isDraggingCellSel = true;
+            if (sameCell && m_tableCellEditing) {
+                // Reposition cursor within cell text
+                QRectF cr   = cellRect(elem, cp.row, cp.col);
+                float sy    = slideRect().height() / SLIDE_H_DEFAULT;
+                QFont font(elem.tableFontFamily, qMax(6, int(elem.tableFontSize * sy)));
+                font.setBold(elem.tableCells[cp.row][cp.col].bold || (cp.row == 0 && elem.tableHasHeader));
+                QFontMetrics fm(font);
+                QRectF tr = cr.adjusted(4, 2, -4, -2);
+                float relX = float(e->position().x()) - float(tr.x());
+                m_tableCursorPos = 0;
+                float accum = 0;
+                const QString& txt = elem.tableCells[cp.row][cp.col].text;
+                for (int i = 0; i < txt.length(); ++i) {
+                    float hw = fm.horizontalAdvance(txt.left(i + 1));
+                    if (relX < (accum + hw) * 0.5f + accum * 0.5f) { m_tableCursorPos = i; break; }
+                    m_tableCursorPos = i + 1;
+                    accum = hw;
+                }
+                m_tableSelAnchor = -1;
+            } else {
+                m_tableCellEditing = false;
+            }
+            emit tableCellSelected(cp.row, cp.col);
+            update();
+            return;
+        }
+
+        // Click outside table: exit table edit mode
+        exitTableEditMode();
+        // Fall through to regular hit test
+    }
+
+    // Column/row divider resize (table element must be selected but not in edit mode)
+    if (m_selectedElem >= 0 && m_pres) {
+        Slide* s = m_pres->slideAt(m_slideIndex);
+        if (s && m_selectedElem < s->elements.size() &&
+            s->elements[m_selectedElem].type == SlideElement::Table) {
+            DividerHit dh = hitTableDivider(m_selectedElem, e->position());
+            if (dh.valid) {
+                SlideElement& elem = s->elements[m_selectedElem];
+                m_dragDivider  = dh;
+                m_divDragStart = dh.isCol ? float(e->position().x()) : float(e->position().y());
+                m_divFracA     = dh.isCol ? elem.tableColFracs[dh.idx]     : elem.tableRowFracs[dh.idx];
+                m_divFracB     = dh.isCol ? elem.tableColFracs[dh.idx + 1] : elem.tableRowFracs[dh.idx + 1];
+                return;
+            }
+        }
+    }
+
+    // Resize handles of selected element
     int handle = hitHandle(e->position());
     if (handle >= 0) {
         Slide* s = m_pres->slideAt(m_slideIndex);
@@ -494,8 +812,11 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
         return;
     }
 
-    // 2. Hit-test elements for selection / move
+    // Hit-test elements for selection / move
     int hit = hitTest(e->position());
+    if (hit != m_selectedElem && m_tableEditMode) {
+        exitTableEditMode();
+    }
     m_selectedElem = hit;
 
     if (hit >= 0 && m_pres) {
@@ -510,6 +831,44 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
 }
 
 void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
+    // Table divider drag-resize
+    if (m_dragDivider.valid) {
+        Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        if (s && m_selectedElem >= 0 && m_selectedElem < s->elements.size()) {
+            SlideElement& elem = s->elements[m_selectedElem];
+            QRectF wr = elemToWidget(elem);
+            float totalPx = m_dragDivider.isCol ? float(wr.width()) : float(wr.height());
+            float delta   = (m_dragDivider.isCol ? float(e->position().x()) : float(e->position().y()))
+                            - m_divDragStart;
+            float dFrac = (totalPx > 0) ? delta / totalPx : 0.f;
+            float minFrac = 20.f / totalPx; // minimum ~20px
+            float newA = qMax(minFrac, m_divFracA + dFrac);
+            float newB = qMax(minFrac, m_divFracA + m_divFracB - newA);
+            if (m_dragDivider.isCol) {
+                elem.tableColFracs[m_dragDivider.idx]     = newA;
+                elem.tableColFracs[m_dragDivider.idx + 1] = newB;
+            } else {
+                elem.tableRowFracs[m_dragDivider.idx]     = newA;
+                elem.tableRowFracs[m_dragDivider.idx + 1] = newB;
+            }
+            update();
+            emit presentationModified();
+        }
+        return;
+    }
+
+    // Multi-cell drag selection (table edit mode)
+    if (m_isDraggingCellSel && m_tableEditMode && m_selectedElem >= 0) {
+        CellPos cp = hitTableCell(m_selectedElem, e->position());
+        if (cp.valid() && (cp.row != m_selTableRow || cp.col != m_selTableCol)) {
+            m_selTableRow = cp.row;
+            m_selTableCol = cp.col;
+            m_tableCellEditing = false; // exit text editing when dragging across cells
+            update();
+        }
+        return;
+    }
+
     // Text drag-selection
     if (m_editingElem >= 0 && m_textSelecting) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
@@ -555,6 +914,13 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
     }
 
     // Cursor hints when hovering
+    if (m_selectedElem >= 0) {
+        DividerHit dh = hitTableDivider(m_selectedElem, e->position());
+        if (dh.valid) {
+            setCursor(dh.isCol ? Qt::SplitHCursor : Qt::SplitVCursor);
+            return;
+        }
+    }
     int handle = hitHandle(e->position());
     if (handle >= 0) {
         static const Qt::CursorShape cursors[8] = {
@@ -573,9 +939,11 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
 
 void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
-        m_textSelecting  = false;
-        m_dragging       = false;
-        m_resizingHandle = -1;
+        m_textSelecting     = false;
+        m_dragging          = false;
+        m_resizingHandle    = -1;
+        m_dragDivider       = {};
+        m_isDraggingCellSel = false;
         m_snapGuides.clear();
         update();
     }
@@ -586,12 +954,30 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
     if (hit < 0 || !m_pres) return;
     Slide* s = m_pres->slideAt(m_slideIndex);
     if (!s) return;
-    if (s->elements[hit].type == SlideElement::Text)
+    const SlideElement& elem = s->elements[hit];
+
+    if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
+    } else if (elem.type == SlideElement::Table) {
+        m_selectedElem  = hit;
+        m_tableEditMode = true;
+        CellPos cp = hitTableCell(hit, e->position());
+        if (!cp.valid()) { m_selTableRow = 0; m_selTableCol = 0; }
+        else             { m_selTableRow = cp.row; m_selTableCol = cp.col; }
+        m_tableCellEditing = true;
+        m_tableCursorPos   = s->elements[hit].tableCells[m_selTableRow][m_selTableCol].text.length();
+        m_tableSelAnchor   = -1;
+        m_cursorBlink->start();
+        m_cursorVisible = true;
+        emit elementSelected(hit);
+        emit tableCellSelected(m_selTableRow, m_selTableCol);
+        update();
+    }
 }
 
 void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
     if (m_editingElem >= 0) { handleTextEditKey(e); return; }
+    if (m_tableEditMode)    { handleTableKey(e);     return; }
 
     const bool ctrl = e->modifiers() & Qt::ControlModifier;
 
@@ -600,7 +986,19 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
     } else if (ctrl && e->key() == Qt::Key_X) {
         copySelectedElement(); deleteSelectedElement();
     } else if (ctrl && e->key() == Qt::Key_V) {
-        // Check for image in system clipboard first
+        // Table selected: ALWAYS prefer text paste over image paste
+        if (m_selectedElem >= 0 && m_pres) {
+            Slide* s = m_pres->slideAt(m_slideIndex);
+            if (s && m_selectedElem < s->elements.size() &&
+                s->elements[m_selectedElem].type == SlideElement::Table) {
+                QString txt = QApplication::clipboard()->text();
+                if (!txt.isEmpty()) {
+                    pasteExcelIntoTable(s->elements[m_selectedElem]);
+                    return;
+                }
+            }
+        }
+        // Non-table: check for image in system clipboard first
         const QMimeData* md = QApplication::clipboard()->mimeData();
         if (md && md->hasImage()) {
             QImage img = qvariant_cast<QImage>(md->imageData());
@@ -681,6 +1079,36 @@ void SlideEditor2D::dropEvent(QDropEvent* e) {
 }
 
 void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
+    // Table edit mode: show table-specific context menu
+    if (m_tableEditMode && m_selectedElem >= 0 && m_pres) {
+        const Slide* s = m_pres->slideAt(m_slideIndex);
+        if (s && m_selectedElem < s->elements.size()) {
+            const SlideElement& tbl = s->elements[m_selectedElem];
+            QMenu menu(this);
+
+            bool multiSel = m_cellSelAnchorRow >= 0 && m_selTableRow >= 0
+                && (m_cellSelAnchorRow != m_selTableRow || m_cellSelAnchorCol != m_selTableCol);
+
+            bool isSpanning = false;
+            if (m_selTableRow >= 0 && m_selTableRow < tbl.tableRows &&
+                m_selTableCol >= 0 && m_selTableCol < tbl.tableCols) {
+                const TableCell& cell = tbl.tableCells[m_selTableRow][m_selTableCol];
+                isSpanning = !cell.merged && (cell.colspan > 1 || cell.rowspan > 1);
+            }
+
+            if (multiSel) {
+                menu.addAction("Zellen verbinden", this, &SlideEditor2D::mergeCells);
+            }
+            if (isSpanning) {
+                menu.addAction("Zellen trennen", this, &SlideEditor2D::unmergeCells);
+            }
+            if (multiSel || isSpanning) menu.addSeparator();
+            menu.addAction("Tabelle verlassen", this, &SlideEditor2D::exitTableEditMode);
+            menu.exec(e->globalPos());
+            return;
+        }
+    }
+
     QMenu menu(this);
     if (m_selectedElem >= 0) {
         menu.addAction("Kopieren  (Strg+C)", this, &SlideEditor2D::copySelectedElement);
@@ -752,6 +1180,23 @@ void SlideEditor2D::addImageFromPath(const QString& path, QPointF widgetPos) {
     }
     s->elements.append(e);
     m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::addTableElement(int rows, int cols) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.initTable(rows, cols);
+    e.x = 260.f; e.y = 340.f;
+    e.width = 1400.f; e.height = float(rows) * 60.f;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    m_tableEditMode = false;
+    m_selTableRow = m_selTableCol = -1;
+    m_tableCellEditing = false;
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -855,6 +1300,104 @@ void SlideEditor2D::startTextEdit(int idx, QPointF clickPos) {
     m_cursorVisible = true;
     m_cursorBlink->start();
     setFocus();
+    update();
+}
+
+void SlideEditor2D::exitTableEditMode() {
+    m_tableEditMode       = false;
+    m_selTableRow         = -1;
+    m_selTableCol         = -1;
+    m_tableCellEditing    = false;
+    m_tableCursorPos      = 0;
+    m_tableSelAnchor      = -1;
+    m_cellSelAnchorRow    = -1;
+    m_cellSelAnchorCol    = -1;
+    m_isDraggingCellSel   = false;
+    m_cursorBlink->stop();
+    m_cursorVisible = false;
+    update();
+    emit tableCellSelected(-1, -1);
+}
+
+void SlideEditor2D::mergeCells() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Table) return;
+    if (m_cellSelAnchorRow < 0 || m_selTableRow < 0) return;
+
+    int r1 = qMin(m_cellSelAnchorRow, m_selTableRow);
+    int c1 = qMin(m_cellSelAnchorCol, m_selTableCol);
+    int r2 = qMax(m_cellSelAnchorRow, m_selTableRow);
+    int c2 = qMax(m_cellSelAnchorCol, m_selTableCol);
+    if (r1 == r2 && c1 == c2) return;
+
+    // Collect all non-empty texts
+    QStringList parts;
+    for (int r = r1; r <= r2; ++r)
+        for (int c = c1; c <= c2; ++c)
+            if (r < e.tableCells.size() && c < e.tableCells[r].size())
+                if (!e.tableCells[r][c].text.isEmpty())
+                    parts << e.tableCells[r][c].text;
+
+    // Set top-left as spanning cell
+    TableCell& anchor = e.tableCells[r1][c1];
+    anchor.colspan = c2 - c1 + 1;
+    anchor.rowspan = r2 - r1 + 1;
+    anchor.merged  = false;
+    anchor.text    = parts.join(" ");
+
+    // Mark all other cells in range as merged
+    for (int r = r1; r <= r2; ++r) {
+        for (int c = c1; c <= c2; ++c) {
+            if (r == r1 && c == c1) continue;
+            if (r < e.tableCells.size() && c < e.tableCells[r].size()) {
+                TableCell& tc = e.tableCells[r][c];
+                tc.merged  = true;
+                tc.text    = "";
+                tc.colspan = 1;
+                tc.rowspan = 1;
+            }
+        }
+    }
+
+    // Collapse selection to the spanning cell
+    m_selTableRow = r1; m_selTableCol = c1;
+    m_cellSelAnchorRow = r1; m_cellSelAnchorCol = c1;
+    m_tableCellEditing = false;
+    emit presentationModified();
+    update();
+}
+
+void SlideEditor2D::unmergeCells() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Table) return;
+    if (m_selTableRow < 0 || m_selTableCol < 0) return;
+
+    TableCell& cell = e.tableCells[m_selTableRow][m_selTableCol];
+    if (cell.merged || (cell.colspan <= 1 && cell.rowspan <= 1)) return;
+
+    int r1 = m_selTableRow, c1 = m_selTableCol;
+    int r2 = qMin(r1 + cell.rowspan - 1, e.tableRows - 1);
+    int c2 = qMin(c1 + cell.colspan - 1, e.tableCols - 1);
+
+    cell.colspan = 1;
+    cell.rowspan = 1;
+
+    for (int r = r1; r <= r2; ++r) {
+        for (int c = c1; c <= c2; ++c) {
+            if (r == r1 && c == c1) continue;
+            if (r < e.tableCells.size() && c < e.tableCells[r].size()) {
+                TableCell& tc = e.tableCells[r][c];
+                tc.merged  = false;
+                tc.colspan = 1;
+                tc.rowspan = 1;
+            }
+        }
+    }
+    emit presentationModified();
     update();
 }
 
@@ -992,6 +1535,202 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
     }
 
     // ── Other Ctrl shortcuts → parent window (Ctrl+S, Ctrl+Z …) ─────────
+    if (ctrlOnly) QWidget::keyPressEvent(ke);
+}
+
+void SlideEditor2D::pasteExcelIntoTable(SlideElement& e) {
+    QString text = QApplication::clipboard()->text();
+    if (text.isEmpty()) return;
+
+    int startRow = qMax(0, m_selTableRow);
+    int startCol = qMax(0, m_selTableCol);
+
+    QStringList lines = text.split('\n');
+    for (int lr = 0; lr < lines.size(); ++lr) {
+        QString line = lines[lr];
+        if (line.endsWith('\r')) line.chop(1); // Windows \r\n
+        if (line.isEmpty() && lr == lines.size() - 1) continue; // trailing newline
+        int tr = startRow + lr;
+        if (tr >= e.tableRows) break;
+        QStringList cells = line.split('\t');
+        for (int lc = 0; lc < cells.size(); ++lc) {
+            int tc = startCol + lc;
+            if (tc >= e.tableCols) break;
+            e.tableCells[tr][tc].text = cells[lc];
+        }
+    }
+    emit presentationModified();
+    update();
+}
+
+void SlideEditor2D::handleTableKey(QKeyEvent* ke) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Table) return;
+
+    const bool ctrl  = ke->modifiers() & Qt::ControlModifier;
+    const bool shift = ke->modifiers() & Qt::ShiftModifier;
+
+    // ── Ctrl+V: paste Excel / TSV / plain text into table ────────────────────
+    if (ctrl && ke->key() == Qt::Key_V) {
+        QString text = QApplication::clipboard()->text();
+        if (!text.isEmpty()) { pasteExcelIntoTable(e); return; }
+    }
+
+    // ── Escape: exit table edit mode ─────────────────────────────────────────
+    if (ke->key() == Qt::Key_Escape) {
+        if (m_tableCellEditing) {
+            m_tableCellEditing = false;
+            m_tableCursorPos   = 0;
+            m_tableSelAnchor   = -1;
+            m_cursorBlink->stop();
+            m_cursorVisible = false;
+            update();
+        } else {
+            exitTableEditMode();
+        }
+        return;
+    }
+
+    // ── Navigation between cells ──────────────────────────────────────────────
+    auto moveTo = [&](int nr, int nc) {
+        if (nr < 0 || nr >= e.tableRows || nc < 0 || nc >= e.tableCols) return;
+        m_selTableRow = nr;
+        m_selTableCol = nc;
+        m_tableCellEditing = true;
+        m_tableCursorPos   = e.tableCells[nr][nc].text.length();
+        m_tableSelAnchor   = -1;
+        m_cursorBlink->start();
+        m_cursorVisible = true;
+        update();
+        emit tableCellSelected(nr, nc);
+    };
+
+    if (!m_tableCellEditing) {
+        // Arrow keys / Tab navigate cells
+        if (ke->key() == Qt::Key_Tab || ke->key() == Qt::Key_Right) {
+            int nc = m_selTableCol + 1;
+            int nr = m_selTableRow;
+            if (nc >= e.tableCols) { nc = 0; ++nr; }
+            moveTo(nr, nc); return;
+        }
+        if (ke->key() == Qt::Key_Left) {
+            int nc = m_selTableCol - 1;
+            int nr = m_selTableRow;
+            if (nc < 0) { nc = e.tableCols - 1; --nr; }
+            moveTo(nr, nc); return;
+        }
+        if (ke->key() == Qt::Key_Down || ke->key() == Qt::Key_Return) {
+            moveTo(m_selTableRow + 1, m_selTableCol); return;
+        }
+        if (ke->key() == Qt::Key_Up) {
+            moveTo(m_selTableRow - 1, m_selTableCol); return;
+        }
+        // Any printable char starts editing
+        QString ch = ke->text();
+        if (!ch.isEmpty() && ch[0].isPrint() && !ctrl) {
+            if (m_selTableRow < 0 || m_selTableRow >= e.tableRows ||
+                m_selTableCol < 0 || m_selTableCol >= e.tableCols) return;
+            TableCell& cell = e.tableCells[m_selTableRow][m_selTableCol];
+            cell.text = ch;
+            m_tableCellEditing = true;
+            m_tableCursorPos   = ch.length();
+            m_tableSelAnchor   = -1;
+            m_cursorBlink->start();
+            m_cursorVisible = true;
+            emit presentationModified();
+            update();
+        }
+        return;
+    }
+
+    // ── Cell text editing ─────────────────────────────────────────────────────
+    if (m_selTableRow < 0 || m_selTableRow >= e.tableRows ||
+        m_selTableCol < 0 || m_selTableCol >= e.tableCols) return;
+    TableCell& cell = e.tableCells[m_selTableRow][m_selTableCol];
+    QString&   text = cell.text;
+
+    m_cursorVisible = true;
+    m_cursorBlink->start();
+
+    auto deleteSelection = [&]() {
+        if (m_tableSelAnchor < 0 || m_tableSelAnchor == m_tableCursorPos) return;
+        int lo = qMin(m_tableCursorPos, m_tableSelAnchor);
+        int hi = qMax(m_tableCursorPos, m_tableSelAnchor);
+        text.remove(lo, hi - lo);
+        m_tableCursorPos = lo;
+        m_tableSelAnchor = -1;
+    };
+
+    if (ke->key() == Qt::Key_Tab) {
+        // finish cell and move right
+        m_tableCellEditing = false;
+        int nc = m_selTableCol + 1;
+        int nr = m_selTableRow;
+        if (nc >= e.tableCols) { nc = 0; ++nr; }
+        moveTo(nr, nc); return;
+    }
+    if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+        // finish cell and move down
+        m_tableCellEditing = false;
+        moveTo(m_selTableRow + 1, m_selTableCol); return;
+    }
+    if (ke->key() == Qt::Key_Left) {
+        if (shift) {
+            if (m_tableSelAnchor < 0) m_tableSelAnchor = m_tableCursorPos;
+            if (m_tableCursorPos > 0) m_tableCursorPos--;
+            if (m_tableSelAnchor == m_tableCursorPos) m_tableSelAnchor = -1;
+        } else {
+            m_tableSelAnchor = -1;
+            if (m_tableCursorPos > 0) m_tableCursorPos--;
+        }
+        update(); return;
+    }
+    if (ke->key() == Qt::Key_Right) {
+        if (shift) {
+            if (m_tableSelAnchor < 0) m_tableSelAnchor = m_tableCursorPos;
+            if (m_tableCursorPos < text.length()) m_tableCursorPos++;
+            if (m_tableSelAnchor == m_tableCursorPos) m_tableSelAnchor = -1;
+        } else {
+            m_tableSelAnchor = -1;
+            if (m_tableCursorPos < text.length()) m_tableCursorPos++;
+        }
+        update(); return;
+    }
+    if (ke->key() == Qt::Key_Home) {
+        if (shift) { if (m_tableSelAnchor < 0) m_tableSelAnchor = m_tableCursorPos; m_tableCursorPos = 0; if (m_tableSelAnchor == m_tableCursorPos) m_tableSelAnchor = -1; }
+        else { m_tableSelAnchor = -1; m_tableCursorPos = 0; }
+        update(); return;
+    }
+    if (ke->key() == Qt::Key_End) {
+        if (shift) { if (m_tableSelAnchor < 0) m_tableSelAnchor = m_tableCursorPos; m_tableCursorPos = text.length(); if (m_tableSelAnchor == m_tableCursorPos) m_tableSelAnchor = -1; }
+        else { m_tableSelAnchor = -1; m_tableCursorPos = text.length(); }
+        update(); return;
+    }
+    if (ctrl && ke->key() == Qt::Key_A) {
+        m_tableSelAnchor = 0; m_tableCursorPos = text.length(); update(); return;
+    }
+    if (ke->key() == Qt::Key_Backspace) {
+        if (m_tableSelAnchor >= 0 && m_tableSelAnchor != m_tableCursorPos) deleteSelection();
+        else if (m_tableCursorPos > 0) { text.remove(m_tableCursorPos - 1, 1); m_tableCursorPos--; }
+        emit presentationModified(); update(); return;
+    }
+    if (ke->key() == Qt::Key_Delete) {
+        if (m_tableSelAnchor >= 0 && m_tableSelAnchor != m_tableCursorPos) deleteSelection();
+        else if (m_tableCursorPos < text.length()) text.remove(m_tableCursorPos, 1);
+        emit presentationModified(); update(); return;
+    }
+    // Printable character
+    const bool alt    = ke->modifiers() & Qt::AltModifier;
+    const bool ctrlOnly = ctrl && !alt;
+    QString ch = ke->text();
+    if (!ch.isEmpty() && ch[0].isPrint() && !ctrlOnly) {
+        if (m_tableSelAnchor >= 0) deleteSelection();
+        text.insert(m_tableCursorPos, ch);
+        m_tableCursorPos += ch.length();
+        emit presentationModified(); update(); return;
+    }
     if (ctrlOnly) QWidget::keyPressEvent(ke);
 }
 

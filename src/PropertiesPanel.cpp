@@ -13,6 +13,7 @@
 #include <QScrollArea>
 #include <QColorDialog>
 #include <QToolButton>
+#include <QInputDialog>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,9 @@ static QFormLayout* makeForm(QWidget* parent) {
     return form;
 }
 
+// Forward declaration (defined below alongside other element slots)
+SlideElement* getElem(Presentation*, int, int);
+
 // ── Constructor ───────────────────────────────────────────────────────────────
 
 PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
@@ -96,9 +100,11 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     buildProjectGroup();
     buildSlideGroup();
     buildElementGroup();
+    buildTableGroup();
     vbox->addWidget(m_projectGroup);
     vbox->addWidget(m_slideGroup);
     vbox->addWidget(m_elemGroup);
+    vbox->addWidget(m_tableGroup);
     vbox->addStretch();
 
     scroll->setWidget(inner);
@@ -393,22 +399,176 @@ void PropertiesPanel::buildElementGroup() {
     m_elemGroup->setEnabled(false);
 }
 
+void PropertiesPanel::buildTableGroup() {
+    m_tableGroup = new QGroupBox("Tabelle", this);
+    auto* gvbox = new QVBoxLayout(m_tableGroup);
+    gvbox->setContentsMargins(4, 8, 4, 4);
+    gvbox->setSpacing(2);
+
+    // ── Tabellendesign ────────────────────────────────────────────────────────
+    auto secDesign = makeSection("Tabellendesign", true, m_tableGroup);
+    auto* formD    = makeForm(secDesign.content);
+
+    m_tBorderColorBtn = new QPushButton(secDesign.content);
+    m_tBorderColorBtn->setFixedHeight(24);
+    formD->addRow("Rahmenfarbe:", m_tBorderColorBtn);
+
+    m_tBorderWidth = makeSpin(0, 20, 0.5);
+    m_tBorderWidth->setDecimals(1);
+    formD->addRow("Rahmenbreite:", m_tBorderWidth);
+
+    m_tFontSize = new QSpinBox(secDesign.content);
+    m_tFontSize->setRange(6, 120);
+    m_tFontSize->setValue(20);
+    formD->addRow("Schriftgröße:", m_tFontSize);
+
+    m_tDefaultBgBtn = new QPushButton(secDesign.content);
+    m_tDefaultBgBtn->setFixedHeight(24);
+    formD->addRow("Zell-Hintergrund:", m_tDefaultBgBtn);
+
+    m_tDefaultTextBtn = new QPushButton(secDesign.content);
+    m_tDefaultTextBtn->setFixedHeight(24);
+    formD->addRow("Zell-Textfarbe:", m_tDefaultTextBtn);
+
+    // Header row
+    m_tHasHeader = new QCheckBox("Kopfzeile", secDesign.content);
+    formD->addRow(m_tHasHeader);
+
+    m_tHeaderBgBtn = new QPushButton(secDesign.content);
+    m_tHeaderBgBtn->setFixedHeight(24);
+    formD->addRow("Kopf-Hintergrund:", m_tHeaderBgBtn);
+
+    m_tHeaderTextBtn = new QPushButton(secDesign.content);
+    m_tHeaderTextBtn->setFixedHeight(24);
+    formD->addRow("Kopf-Textfarbe:", m_tHeaderTextBtn);
+
+    gvbox->addWidget(secDesign.outer);
+
+    // ── Zeilen / Spalten ──────────────────────────────────────────────────────
+    auto secRC = makeSection("Zeilen / Spalten", true, m_tableGroup);
+    auto* rcVbox = new QVBoxLayout(secRC.content);
+    rcVbox->setContentsMargins(4, 2, 4, 4);
+    rcVbox->setSpacing(4);
+
+    auto* rowBtnRow = new QHBoxLayout;
+    auto* addRowBtn = new QPushButton("+ Zeile", secRC.content);
+    auto* delRowBtn = new QPushButton("- Zeile", secRC.content);
+    auto* addColBtn = new QPushButton("+ Spalte", secRC.content);
+    auto* delColBtn = new QPushButton("- Spalte", secRC.content);
+    rowBtnRow->addWidget(addRowBtn);
+    rowBtnRow->addWidget(delRowBtn);
+    rowBtnRow->addWidget(addColBtn);
+    rowBtnRow->addWidget(delColBtn);
+    rcVbox->addLayout(rowBtnRow);
+
+    gvbox->addWidget(secRC.outer);
+
+    // ── Ausgewählte Zelle ─────────────────────────────────────────────────────
+    auto secCell = makeSection("Ausgewählte Zelle", true, m_tableGroup);
+    auto* formC  = makeForm(secCell.content);
+
+    m_cellBgBtn = new QPushButton(secCell.content);
+    m_cellBgBtn->setFixedHeight(24);
+    formC->addRow("Hintergrund:", m_cellBgBtn);
+
+    m_cellTextBtn = new QPushButton(secCell.content);
+    m_cellTextBtn->setFixedHeight(24);
+    formC->addRow("Textfarbe:", m_cellTextBtn);
+
+    m_cellBoldChk   = new QCheckBox("Fett",         secCell.content);
+    m_cellItalicChk = new QCheckBox("Kursiv",       secCell.content);
+    auto* styleRow  = new QHBoxLayout;
+    styleRow->addWidget(m_cellBoldChk);
+    styleRow->addWidget(m_cellItalicChk);
+    formC->addRow(styleRow);
+
+    m_cellAlignCombo = new QComboBox(secCell.content);
+    m_cellAlignCombo->addItems({"Links", "Zentriert", "Rechts"});
+    formC->addRow("Ausrichtung:", m_cellAlignCombo);
+
+    m_cellSection = secCell.outer;
+    gvbox->addWidget(secCell.outer);
+
+    m_tableGroup->setEnabled(false);
+    m_tableGroup->setVisible(false);
+
+    // Signals
+    connect(m_tBorderColorBtn,  &QPushButton::clicked, this, &PropertiesPanel::onTableBorderColorClicked);
+    connect(m_tBorderWidth,     &QDoubleSpinBox::valueChanged, this, [this](double v) {
+        if (m_updating) return;
+        if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
+            e->tableBorderWidth = float(v); emit elementModified();
+        }
+    });
+    connect(m_tFontSize, &QSpinBox::valueChanged, this, [this](int v) {
+        if (m_updating) return;
+        if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
+            e->tableFontSize = v; emit elementModified();
+        }
+    });
+    connect(m_tDefaultBgBtn,   &QPushButton::clicked, this, &PropertiesPanel::onTableDefaultBgClicked);
+    connect(m_tDefaultTextBtn, &QPushButton::clicked, this, &PropertiesPanel::onTableDefaultTextClicked);
+    connect(m_tHasHeader, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_updating) return;
+        if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
+            e->tableHasHeader = on;
+            m_tHeaderBgBtn->setEnabled(on);
+            m_tHeaderTextBtn->setEnabled(on);
+            emit elementModified();
+        }
+    });
+    connect(m_tHeaderBgBtn,   &QPushButton::clicked, this, &PropertiesPanel::onTableHeaderBgClicked);
+    connect(m_tHeaderTextBtn, &QPushButton::clicked, this, &PropertiesPanel::onTableHeaderTextClicked);
+    connect(addRowBtn, &QPushButton::clicked, this, &PropertiesPanel::onTableAddRow);
+    connect(delRowBtn, &QPushButton::clicked, this, &PropertiesPanel::onTableDelRow);
+    connect(addColBtn, &QPushButton::clicked, this, &PropertiesPanel::onTableAddCol);
+    connect(delColBtn, &QPushButton::clicked, this, &PropertiesPanel::onTableDelCol);
+    connect(m_cellBgBtn,   &QPushButton::clicked, this, &PropertiesPanel::onCellBgColorClicked);
+    connect(m_cellTextBtn, &QPushButton::clicked, this, &PropertiesPanel::onCellTextColorClicked);
+    connect(m_cellBoldChk,    &QCheckBox::toggled,            this, &PropertiesPanel::onCellBoldChanged);
+    connect(m_cellItalicChk,  &QCheckBox::toggled,            this, &PropertiesPanel::onCellItalicChanged);
+    connect(m_cellAlignCombo, &QComboBox::currentIndexChanged, this, &PropertiesPanel::onCellAlignChanged);
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 void PropertiesPanel::setSlide(Presentation* pres, int slideIndex) {
     m_pres     = pres;
     m_slideIdx = slideIndex;
     m_elemIdx  = -1;
+    m_cellRow  = -1;
+    m_cellCol  = -1;
     m_elemGroup->setEnabled(false);
+    m_elemGroup->setVisible(true);
+    m_tableGroup->setEnabled(false);
+    m_tableGroup->setVisible(false);
     rebuildVisibilitySection();
     refreshProject();
     refreshSlide();
 }
 
 void PropertiesPanel::setSelectedElement(int elemIndex) {
-    m_elemIdx = elemIndex;
-    m_elemGroup->setEnabled(elemIndex >= 0);
-    refreshElement();
+    m_elemIdx  = elemIndex;
+    m_cellRow  = -1;
+    m_cellCol  = -1;
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIdx) : nullptr;
+    bool isTable = s && elemIndex >= 0 && elemIndex < s->elements.size()
+                   && s->elements[elemIndex].type == SlideElement::Table;
+    m_elemGroup->setEnabled(elemIndex >= 0 && !isTable);
+    m_elemGroup->setVisible(!isTable || elemIndex < 0);
+    m_tableGroup->setEnabled(isTable);
+    m_tableGroup->setVisible(isTable);
+    m_cellSection->setVisible(false);
+    if (isTable) refreshTable();
+    else         refreshElement();
+}
+
+void PropertiesPanel::setSelectedTableCell(int row, int col) {
+    m_cellRow = row;
+    m_cellCol = col;
+    bool valid = row >= 0 && col >= 0;
+    m_cellSection->setVisible(valid);
+    if (valid) refreshTableCell();
 }
 
 // ── Visibility section ────────────────────────────────────────────────────────
@@ -536,7 +696,7 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Form", "Bild"};
+    static const char* typeNames[] = {"Text", "Form", "Bild", "Tabelle"};
     m_elemType->setText(typeNames[e.type]);
 
     m_elemContent->setEnabled(e.type != SlideElement::Shape);
@@ -818,6 +978,162 @@ void PropertiesPanel::onElemAnimDurationChanged(double v) {
     if (m_updating) return;
     if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
         e->animDuration = float(v);
+        emit elementModified();
+    }
+}
+
+// ── Table refresh ─────────────────────────────────────────────────────────────
+
+void PropertiesPanel::refreshTable() {
+    const auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Table) return;
+    m_updating = true;
+    updateColorButton(m_tBorderColorBtn, e->tableBorderColor);
+    m_tBorderWidth->setValue(e->tableBorderWidth);
+    m_tFontSize->setValue(e->tableFontSize);
+    updateColorButton(m_tDefaultBgBtn,   e->tableDefaultBg);
+    updateColorButton(m_tDefaultTextBtn, e->tableDefaultText);
+    m_tHasHeader->setChecked(e->tableHasHeader);
+    m_tHeaderBgBtn->setEnabled(e->tableHasHeader);
+    m_tHeaderTextBtn->setEnabled(e->tableHasHeader);
+    updateColorButton(m_tHeaderBgBtn,   e->tableHeaderBg);
+    updateColorButton(m_tHeaderTextBtn, e->tableHeaderText);
+    m_updating = false;
+}
+
+void PropertiesPanel::refreshTableCell() {
+    const auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Table) return;
+    if (m_cellRow < 0 || m_cellRow >= e->tableRows ||
+        m_cellCol < 0 || m_cellCol >= e->tableCols) return;
+    const TableCell& cell = e->tableCells[m_cellRow][m_cellCol];
+    m_updating = true;
+    updateColorButton(m_cellBgBtn,
+        cell.bgColor.isValid() ? cell.bgColor : e->tableDefaultBg);
+    updateColorButton(m_cellTextBtn,
+        cell.textColor.isValid() ? cell.textColor : e->tableDefaultText);
+    m_cellBoldChk->setChecked(cell.bold);
+    m_cellItalicChk->setChecked(cell.italic);
+    int alignIdx = (cell.textAlign == "center") ? 1 : (cell.textAlign == "right") ? 2 : 0;
+    m_cellAlignCombo->setCurrentIndex(alignIdx);
+    m_updating = false;
+}
+
+// ── Table slots ───────────────────────────────────────────────────────────────
+
+static TableCell* getCell(Presentation* p, int si, int ei, int row, int col) {
+    Slide* s = p ? p->slideAt(si) : nullptr;
+    if (!s || ei < 0 || ei >= s->elements.size()) return nullptr;
+    SlideElement& e = s->elements[ei];
+    if (e.type != SlideElement::Table) return nullptr;
+    if (row < 0 || row >= e.tableRows || col < 0 || col >= e.tableCols) return nullptr;
+    return &e.tableCells[row][col];
+}
+
+void PropertiesPanel::onTableBorderColorClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    QColor c = QColorDialog::getColor(e->tableBorderColor, this, "Rahmenfarbe");
+    if (c.isValid()) { e->tableBorderColor = c; updateColorButton(m_tBorderColorBtn, c); emit elementModified(); }
+}
+void PropertiesPanel::onTableHeaderBgClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    QColor c = QColorDialog::getColor(e->tableHeaderBg, this, "Kopfzeilen-Hintergrund");
+    if (c.isValid()) { e->tableHeaderBg = c; updateColorButton(m_tHeaderBgBtn, c); emit elementModified(); }
+}
+void PropertiesPanel::onTableHeaderTextClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    QColor c = QColorDialog::getColor(e->tableHeaderText, this, "Kopfzeilen-Textfarbe");
+    if (c.isValid()) { e->tableHeaderText = c; updateColorButton(m_tHeaderTextBtn, c); emit elementModified(); }
+}
+void PropertiesPanel::onTableDefaultBgClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    QColor c = QColorDialog::getColor(e->tableDefaultBg, this, "Zellen-Standardhintergrund");
+    if (c.isValid()) { e->tableDefaultBg = c; updateColorButton(m_tDefaultBgBtn, c); emit elementModified(); }
+}
+void PropertiesPanel::onTableDefaultTextClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    QColor c = QColorDialog::getColor(e->tableDefaultText, this, "Zellen-Standardtextfarbe");
+    if (c.isValid()) { e->tableDefaultText = c; updateColorButton(m_tDefaultTextBtn, c); emit elementModified(); }
+}
+
+void PropertiesPanel::onTableAddRow() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Table) return;
+    e->tableCells.append(QVector<TableCell>(e->tableCols));
+    float newFrac = 1.f / float(e->tableRows + 1);
+    for (float& f : e->tableRowFracs) f *= float(e->tableRows) / float(e->tableRows + 1);
+    e->tableRowFracs.append(newFrac);
+    e->tableRows++;
+    emit elementModified();
+}
+void PropertiesPanel::onTableDelRow() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Table || e->tableRows <= 1) return;
+    float removed = e->tableRowFracs.last();
+    e->tableRowFracs.removeLast();
+    e->tableCells.removeLast();
+    e->tableRows--;
+    float total = 0; for (float f : e->tableRowFracs) total += f;
+    if (total > 0) for (float& f : e->tableRowFracs) f /= total;
+    Q_UNUSED(removed);
+    emit elementModified();
+}
+void PropertiesPanel::onTableAddCol() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Table) return;
+    for (auto& row : e->tableCells) row.append(TableCell{});
+    float newFrac = 1.f / float(e->tableCols + 1);
+    for (float& f : e->tableColFracs) f *= float(e->tableCols) / float(e->tableCols + 1);
+    e->tableColFracs.append(newFrac);
+    e->tableCols++;
+    emit elementModified();
+}
+void PropertiesPanel::onTableDelCol() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Table || e->tableCols <= 1) return;
+    for (auto& row : e->tableCells) row.removeLast();
+    e->tableColFracs.removeLast();
+    e->tableCols--;
+    float total = 0; for (float f : e->tableColFracs) total += f;
+    if (total > 0) for (float& f : e->tableColFracs) f /= total;
+    emit elementModified();
+}
+
+void PropertiesPanel::onCellBgColorClicked() {
+    auto* cell = getCell(m_pres, m_slideIdx, m_elemIdx, m_cellRow, m_cellCol);
+    if (!cell) return;
+    const auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    QColor init = cell->bgColor.isValid() ? cell->bgColor : (e ? e->tableDefaultBg : Qt::white);
+    QColor c = QColorDialog::getColor(init, this, "Zellenhintergrund");
+    if (c.isValid()) { cell->bgColor = c; updateColorButton(m_cellBgBtn, c); emit elementModified(); }
+}
+void PropertiesPanel::onCellTextColorClicked() {
+    auto* cell = getCell(m_pres, m_slideIdx, m_elemIdx, m_cellRow, m_cellCol);
+    if (!cell) return;
+    const auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    QColor init = cell->textColor.isValid() ? cell->textColor : (e ? e->tableDefaultText : Qt::black);
+    QColor c = QColorDialog::getColor(init, this, "Zellenfarbe");
+    if (c.isValid()) { cell->textColor = c; updateColorButton(m_cellTextBtn, c); emit elementModified(); }
+}
+void PropertiesPanel::onCellBoldChanged(bool on) {
+    if (m_updating) return;
+    if (auto* cell = getCell(m_pres, m_slideIdx, m_elemIdx, m_cellRow, m_cellCol))
+        { cell->bold = on; emit elementModified(); }
+}
+void PropertiesPanel::onCellItalicChanged(bool on) {
+    if (m_updating) return;
+    if (auto* cell = getCell(m_pres, m_slideIdx, m_elemIdx, m_cellRow, m_cellCol))
+        { cell->italic = on; emit elementModified(); }
+}
+void PropertiesPanel::onCellAlignChanged(int idx) {
+    if (m_updating) return;
+    if (auto* cell = getCell(m_pres, m_slideIdx, m_elemIdx, m_cellRow, m_cellCol)) {
+        cell->textAlign = idx == 1 ? "center" : idx == 2 ? "right" : "left";
         emit elementModified();
     }
 }

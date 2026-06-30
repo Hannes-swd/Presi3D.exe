@@ -211,7 +211,17 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
 }
 
 void FormatBar::setContext(Presentation* pres, int slideIdx, int elemIdx) {
-    m_pres = pres; m_slideIdx = slideIdx; m_elemIdx = elemIdx;
+    m_pres     = pres;
+    m_slideIdx = slideIdx;
+    m_elemIdx  = elemIdx;
+    m_cellRow  = -1;
+    m_cellCol  = -1;
+    refresh();
+}
+
+void FormatBar::setTableCell(int row, int col) {
+    m_cellRow = row;
+    m_cellCol = col;
     refresh();
 }
 
@@ -223,16 +233,63 @@ SlideElement* FormatBar::currentElem() {
     return &elems[m_elemIdx];
 }
 
+TableCell* FormatBar::currentCell() {
+    auto* e = currentElem();
+    if (!e || e->type != SlideElement::Table) return nullptr;
+    if (m_cellRow < 0 || m_cellRow >= e->tableRows ||
+        m_cellCol < 0 || m_cellCol >= e->tableCols) return nullptr;
+    return &e->tableCells[m_cellRow][m_cellCol];
+}
+
 void FormatBar::refresh() {
     m_updating = true;
-    SlideElement* e = currentElem();
-    bool hasElem = (e != nullptr);
-    bool isText  = hasElem && e->type == SlideElement::Text;
+    SlideElement* e    = currentElem();
+    TableCell*    cell = currentCell();
+    bool hasElem  = (e != nullptr);
+    bool isText   = hasElem && e->type == SlideElement::Text;
+    bool isCell   = (cell != nullptr);
+    bool isTable  = hasElem && e->type == SlideElement::Table;
 
-    m_textGroup->setEnabled(isText);
+    m_textGroup->setEnabled(isText || isCell);
     m_geomGroup->setEnabled(hasElem);
 
-    if (isText) {
+    // Reset underline/list/vAlign (not supported per cell)
+    m_ulStyleCombo->setEnabled(false);
+    m_ulColorBtn->setEnabled(false);
+    m_listBullet->setChecked(false);
+    m_listNumbered->setChecked(false);
+    m_listBullet->setEnabled(isText);
+    m_listNumbered->setEnabled(isText);
+    m_underlineBtn->setEnabled(isText);
+    m_strikeBtn->setEnabled(isText);
+    m_vAlignTop->setEnabled(isText);
+    m_vAlignMiddle->setEnabled(isText);
+    m_vAlignBottom->setEnabled(isText);
+
+    if (isCell) {
+        // Font size shows table-wide font size
+        m_fontCombo->setCurrentFont(QFont(e->tableFontFamily));
+        m_fontSize->setValue(e->tableFontSize);
+        // Colors from cell (fall back to table default)
+        QColor tc = cell->textColor.isValid() ? cell->textColor : e->tableDefaultText;
+        QColor bg = cell->bgColor.isValid()   ? cell->bgColor   : e->tableDefaultBg;
+        updateColorSwatch(m_colorBtn,   tc);
+        updateColorSwatch(m_bgColorBtn, bg);
+        // Alignment
+        m_alignLeft->setChecked(cell->textAlign.isEmpty() || cell->textAlign == "left");
+        m_alignCenter->setChecked(cell->textAlign == "center");
+        m_alignRight->setChecked(cell->textAlign == "right");
+        m_vAlignTop->setChecked(false);
+        m_vAlignMiddle->setChecked(false);
+        m_vAlignBottom->setChecked(false);
+        // Bold / Italic
+        m_boldBtn->setChecked(cell->bold);
+        m_italicBtn->setChecked(cell->italic);
+        m_underlineBtn->setChecked(false);
+        m_strikeBtn->setChecked(false);
+        updateColorSwatch(m_ulColorBtn, Qt::black);
+        m_fmtPainterBtn->setEnabled(false);
+    } else if (isText) {
         m_fontCombo->setCurrentFont(QFont(e->fontFamily));
         m_fontSize->setValue(e->fontSize);
         updateColorSwatch(m_colorBtn,   e->color);
@@ -264,15 +321,12 @@ void FormatBar::refresh() {
         m_vAlignTop->setChecked(false);
         m_vAlignMiddle->setChecked(false);
         m_vAlignBottom->setChecked(false);
-        m_listBullet->setChecked(false);
-        m_listNumbered->setChecked(false);
         m_boldBtn->setChecked(false);
         m_italicBtn->setChecked(false);
         m_underlineBtn->setChecked(false);
         m_strikeBtn->setChecked(false);
-        m_ulStyleCombo->setEnabled(false);
-        m_ulColorBtn->setEnabled(false);
-        m_fmtPainterBtn->setEnabled(hasElem);
+        updateColorSwatch(m_ulColorBtn, Qt::black);
+        m_fmtPainterBtn->setEnabled(hasElem && !isTable);
     }
 
     if (hasElem) {
@@ -299,21 +353,38 @@ void FormatBar::updateColorSwatch(QPushButton* btn, const QColor& c) {
 
 void FormatBar::onFontChanged(const QFont& f) {
     if (m_updating) return;
-    auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
-    e->fontFamily = f.family(); emit modified();
+    if (auto* e = currentElem()) {
+        if (e->type == SlideElement::Table) { e->tableFontFamily = f.family(); emit modified(); return; }
+        if (e->type == SlideElement::Text)  { e->fontFamily = f.family(); emit modified(); }
+    }
 }
 void FormatBar::onFontSizeChanged(int v) {
     if (m_updating) return;
-    auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
-    e->fontSize = v; emit modified();
+    if (auto* e = currentElem()) {
+        if (e->type == SlideElement::Table) { e->tableFontSize = v; emit modified(); return; }
+        if (e->type == SlideElement::Text)  { e->fontSize = v; emit modified(); }
+    }
 }
 void FormatBar::onColorClicked() {
+    if (auto* cell = currentCell()) {
+        QColor init = cell->textColor.isValid() ? cell->textColor : Qt::black;
+        QColor c = QColorDialog::getColor(init, this, "Zelltextfarbe");
+        if (!c.isValid()) return;
+        cell->textColor = c; updateColorSwatch(m_colorBtn, c); emit modified(); return;
+    }
     auto* e = currentElem(); if (!e) return;
     QColor c = QColorDialog::getColor(e->color, this, "Textfarbe");
     if (!c.isValid()) return;
     e->color = c; updateColorSwatch(m_colorBtn, c); emit modified();
 }
 void FormatBar::onBgColorClicked() {
+    if (auto* cell = currentCell()) {
+        auto* e = currentElem();
+        QColor init = cell->bgColor.isValid() ? cell->bgColor : (e ? e->tableDefaultBg : Qt::white);
+        QColor c = QColorDialog::getColor(init, this, "Zellhintergrund");
+        if (!c.isValid()) return;
+        cell->bgColor = c; updateColorSwatch(m_bgColorBtn, c); emit modified(); return;
+    }
     auto* e = currentElem(); if (!e) return;
     QColor init = e->backgroundColor.isValid() ? e->backgroundColor : Qt::white;
     QColor c = QColorDialog::getColor(init, this, "Hintergrundfarbe",
@@ -323,6 +394,12 @@ void FormatBar::onBgColorClicked() {
 }
 void FormatBar::onAlignLeft() {
     if (m_updating) return;
+    if (auto* cell = currentCell()) {
+        cell->textAlign = "left";
+        m_updating = true;
+        m_alignLeft->setChecked(true); m_alignCenter->setChecked(false); m_alignRight->setChecked(false);
+        m_updating = false; emit modified(); return;
+    }
     auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
     e->textAlignment = "left";
     m_updating = true;
@@ -331,6 +408,12 @@ void FormatBar::onAlignLeft() {
 }
 void FormatBar::onAlignCenter() {
     if (m_updating) return;
+    if (auto* cell = currentCell()) {
+        cell->textAlign = "center";
+        m_updating = true;
+        m_alignLeft->setChecked(false); m_alignCenter->setChecked(true); m_alignRight->setChecked(false);
+        m_updating = false; emit modified(); return;
+    }
     auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
     e->textAlignment = "center";
     m_updating = true;
@@ -339,6 +422,12 @@ void FormatBar::onAlignCenter() {
 }
 void FormatBar::onAlignRight() {
     if (m_updating) return;
+    if (auto* cell = currentCell()) {
+        cell->textAlign = "right";
+        m_updating = true;
+        m_alignLeft->setChecked(false); m_alignCenter->setChecked(false); m_alignRight->setChecked(true);
+        m_updating = false; emit modified(); return;
+    }
     auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
     e->textAlignment = "right";
     m_updating = true;
@@ -371,11 +460,13 @@ void FormatBar::onListNumbered() {
 }
 void FormatBar::onBold() {
     if (m_updating) return;
+    if (auto* cell = currentCell()) { cell->bold = m_boldBtn->isChecked(); emit modified(); return; }
     auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
     e->bold = m_boldBtn->isChecked(); emit modified();
 }
 void FormatBar::onItalic() {
     if (m_updating) return;
+    if (auto* cell = currentCell()) { cell->italic = m_italicBtn->isChecked(); emit modified(); return; }
     auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
     e->italic = m_italicBtn->isChecked(); emit modified();
 }

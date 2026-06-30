@@ -338,6 +338,84 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
         QString src = fi.exists() ? "assets/" + fi.fileName() : e.content;
         return QString("<img data-type=\"image\" src=\"%1\" style=\"%2object-fit:contain;\" alt=\"\">")
                    .arg(src, base);
+
+    } else if (e.type == SlideElement::Table) {
+        QString tableStyle = base
+            + QString("font-family:'%1';font-size:%2px;overflow:hidden;")
+                  .arg(e.tableFontFamily).arg(e.tableFontSize);
+
+        QString borderStyle = e.tableBorderWidth > 0
+            ? QString("%1px solid %2")
+                  .arg(int(e.tableBorderWidth))
+                  .arg(colorToCss(e.tableBorderColor))
+            : "none";
+
+        QStringList colWidths;
+        for (double f : e.tableColFracs)
+            colWidths << QString::number(f * 100.0, 'f', 4) + "%";
+
+        QStringList rowHeights;
+        for (double f : e.tableRowFracs)
+            rowHeights << QString::number(f * e.height, 'f', 0) + "px";
+
+        QString html = QString("<div data-type=\"table\" style=\"%1\">").arg(tableStyle);
+        html += QString("<table style=\"width:100%;height:100%;border-collapse:collapse;"
+                        "table-layout:fixed;border:%1;\">").arg(borderStyle);
+
+        html += "<colgroup>";
+        for (const QString& w : colWidths)
+            html += QString("<col style=\"width:%1;\">").arg(w);
+        html += "</colgroup>";
+
+        for (int r = 0; r < e.tableRows && r < e.tableCells.size(); ++r) {
+            const QString rowH = (r < rowHeights.size()) ? rowHeights[r] : "auto";
+            html += QString("<tr style=\"height:%1;\">").arg(rowH);
+
+            for (int c = 0; c < e.tableCols && c < e.tableCells[r].size(); ++c) {
+                const TableCell& cell = e.tableCells[r][c];
+
+                if (cell.merged) continue; // covered by a spanning cell
+
+                QColor bg = cell.bgColor.isValid() ? cell.bgColor : e.tableDefaultBg;
+                QColor fg = cell.textColor.isValid() ? cell.textColor : e.tableDefaultText;
+
+                if (r == 0 && e.tableHasHeader) {
+                    if (!cell.bgColor.isValid() && e.tableHeaderBg.isValid())
+                        bg = e.tableHeaderBg;
+                    if (!cell.textColor.isValid() && e.tableHeaderText.isValid())
+                        fg = e.tableHeaderText;
+                }
+
+                QString cellStyle = "padding:4px 6px;overflow:hidden;"
+                                    "word-wrap:break-word;vertical-align:middle;";
+                cellStyle += "background:" + colorToCss(bg) + ";";
+                cellStyle += "color:" + colorToCss(fg) + ";";
+                cellStyle += "border:" + borderStyle + ";";
+
+                QString align = cell.textAlign.isEmpty() ? "left" : cell.textAlign;
+                cellStyle += "text-align:" + align + ";";
+
+                if (cell.bold || (r == 0 && e.tableHasHeader)) cellStyle += "font-weight:bold;";
+                if (cell.italic)                                 cellStyle += "font-style:italic;";
+
+                QString tag = (r == 0 && e.tableHasHeader) ? "th" : "td";
+
+                // colspan / rowspan attributes
+                QString spanAttrs;
+                int cs = qMax(1, qMin(cell.colspan, e.tableCols - c));
+                int rs = qMax(1, qMin(cell.rowspan, e.tableRows - r));
+                if (cs > 1) spanAttrs += QString(" colspan=\"%1\"").arg(cs);
+                if (rs > 1) spanAttrs += QString(" rowspan=\"%1\"").arg(rs);
+
+                html += QString("<%1%2 style=\"%3\">%4</%1>")
+                            .arg(tag, spanAttrs, cellStyle,
+                                 cell.text.toHtmlEscaped().replace("\n", "<br>"));
+            }
+            html += "</tr>";
+        }
+
+        html += "</table></div>";
+        return html;
     }
     return {};
 }

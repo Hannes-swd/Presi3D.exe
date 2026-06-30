@@ -124,6 +124,11 @@ void MainWindow::connectSignals() {
 
     connect(m_formatBar,  &FormatBar::modified,              this, &MainWindow::onPresentationModified);
     connect(m_formatBar,  &FormatBar::formatPainterRequested, this, &MainWindow::onFormatPainterRequested);
+
+    connect(m_editorArea, &EditorArea::tableCellSelected,
+            m_propPanel,  &PropertiesPanel::setSelectedTableCell);
+    connect(m_editorArea, &EditorArea::tableCellSelected,
+            m_formatBar,  &FormatBar::setTableCell);
 }
 
 void MainWindow::onSlideSelected(int index) {

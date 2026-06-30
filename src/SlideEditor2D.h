@@ -20,11 +20,13 @@ public:
 signals:
     void presentationModified();
     void elementSelected(int elemIndex); // -1 = none
+    void tableCellSelected(int row, int col); // -1/-1 = none
 
 public slots:
     void addTextElement();
     void addShapeElement(const QString& shapeType = "rect");
     void addImageElement();
+    void addTableElement(int rows, int cols);
     void deleteSelectedElement();
     void copySelectedElement();
     void pasteElement();
@@ -55,6 +57,19 @@ private:
     QRectF  elemToWidget(const SlideElement&) const;
     QPointF widgetToSlide(const QPointF&) const;
     int     hitTest(const QPointF& widgetPos) const;
+
+    // Table helpers
+    struct CellPos { int row = -1; int col = -1; bool valid() const { return row >= 0 && col >= 0; } };
+    struct DividerHit { bool valid = false; bool isCol; int idx; };
+    CellPos    hitTableCell(int elemIdx, QPointF wpos) const;
+    DividerHit hitTableDivider(int elemIdx, QPointF wpos) const;
+    QRectF     cellRect(const SlideElement& e, int row, int col) const;
+    void       drawTableElement(QPainter& p, const SlideElement& e, bool selected) const;
+    void       handleTableKey(QKeyEvent*);
+    void       pasteExcelIntoTable(SlideElement& e);
+    void       exitTableEditMode();
+    void       mergeCells();
+    void       unmergeCells();
 
     // Handle hit-test: returns 0-7 for resize handles, -1 if none
     // Handle order: TL=0, TR=1, BL=2, BR=3, TC=4, BC=5, ML=6, MR=7
@@ -111,4 +126,23 @@ private:
     QTimer* m_cursorBlink    = nullptr;
 
     mutable QHash<QString, QPixmap> m_pixmapCache;
+
+    // Table edit state
+    bool  m_tableEditMode    = false;
+    int   m_selTableRow      = -1;
+    int   m_selTableCol      = -1;
+    bool  m_tableCellEditing = false;  // cursor active in cell
+    int   m_tableCursorPos   = 0;
+    int   m_tableSelAnchor   = -1;
+
+    // Multi-cell selection (drag or shift+click)
+    int   m_cellSelAnchorRow  = -1;
+    int   m_cellSelAnchorCol  = -1;
+    bool  m_isDraggingCellSel = false;
+
+    // Table column/row drag resize
+    DividerHit m_dragDivider;
+    float      m_divDragStart = 0.f;  // widget coord when drag started
+    float      m_divFracA = 0.f;      // original frac of divider[idx]
+    float      m_divFracB = 0.f;      // original frac of divider[idx+1]
 };

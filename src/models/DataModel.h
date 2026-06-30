@@ -5,8 +5,20 @@
 #include <QMap>
 #include <QUuid>
 
+struct TableCell {
+    QString text;
+    QColor  bgColor;       // invalid = use table default
+    QColor  textColor;     // invalid = use table default
+    bool    bold      = false;
+    bool    italic    = false;
+    QString textAlign = "left";
+    int     colspan   = 1;  // horizontal span
+    int     rowspan   = 1;  // vertical span
+    bool    merged    = false; // covered by another cell's span (skip drawing)
+};
+
 struct SlideElement {
-    enum Type { Text, Shape, Image };
+    enum Type { Text, Shape, Image, Table };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
@@ -40,6 +52,31 @@ struct SlideElement {
     bool    strikethrough  = false;
     QColor  underlineColor;          // invalid = same as text color
     int     underlineStyle = 0;      // 0=solid 1=dashed 2=dotted 3=wavy
+
+    // ── Table (only when type == Table) ───────────────────────────────────────
+    int     tableRows        = 3;
+    int     tableCols        = 3;
+    QVector<QVector<TableCell>> tableCells;   // [row][col]
+    QVector<float> tableColFracs;             // column width fractions, sum=1
+    QVector<float> tableRowFracs;             // row height fractions, sum=1
+    QColor  tableBorderColor = QColor(180, 180, 180);
+    float   tableBorderWidth = 1.f;
+    bool    tableHasHeader   = true;
+    QColor  tableHeaderBg    = QColor(60, 100, 200);
+    QColor  tableHeaderText  = Qt::white;
+    int     tableFontSize    = 20;
+    QString tableFontFamily  = "Arial";
+    QColor  tableDefaultBg   = Qt::white;
+    QColor  tableDefaultText = Qt::black;
+
+    void initTable(int rows, int cols) {
+        type      = Table;
+        tableRows = rows;
+        tableCols = cols;
+        tableCells    = QVector<QVector<TableCell>>(rows, QVector<TableCell>(cols));
+        tableColFracs = QVector<float>(cols, 1.f / float(cols));
+        tableRowFracs = QVector<float>(rows, 1.f / float(rows));
+    }
 
     SlideElement() : id(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 };
