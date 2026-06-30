@@ -70,6 +70,9 @@ struct SlideElement {
     QColor  tableDefaultBg   = Qt::white;
     QColor  tableDefaultText = Qt::black;
 
+    float   rotation  = 0.f;    // degrees clockwise; applied around element center
+    QString shapeText;           // text overlaid inside shape (type==Shape only)
+
     // ── Chart (only when type == Chart) ──────────────────────────────────────
     ChartData chartData;
 

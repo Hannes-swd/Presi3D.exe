@@ -247,10 +247,11 @@ void FormatBar::refresh() {
     TableCell*    cell = currentCell();
     bool hasElem  = (e != nullptr);
     bool isText   = hasElem && e->type == SlideElement::Text;
+    bool isShape  = hasElem && e->type == SlideElement::Shape;
     bool isCell   = (cell != nullptr);
     bool isTable  = hasElem && e->type == SlideElement::Table;
 
-    m_textGroup->setEnabled(isText || isCell);
+    m_textGroup->setEnabled(isText || isCell || isShape);
     m_geomGroup->setEnabled(hasElem);
 
     // Reset underline/list/vAlign (not supported per cell)
@@ -260,8 +261,8 @@ void FormatBar::refresh() {
     m_listNumbered->setChecked(false);
     m_listBullet->setEnabled(isText);
     m_listNumbered->setEnabled(isText);
-    m_underlineBtn->setEnabled(isText);
-    m_strikeBtn->setEnabled(isText);
+    m_underlineBtn->setEnabled(isText || isShape);
+    m_strikeBtn->setEnabled(isText || isShape);
     m_vAlignTop->setEnabled(isText);
     m_vAlignMiddle->setEnabled(isText);
     m_vAlignBottom->setEnabled(isText);
@@ -289,6 +290,23 @@ void FormatBar::refresh() {
         m_strikeBtn->setChecked(false);
         updateColorSwatch(m_ulColorBtn, Qt::black);
         m_fmtPainterBtn->setEnabled(false);
+    } else if (isShape) {
+        m_fontCombo->setCurrentFont(QFont(e->fontFamily));
+        m_fontSize->setValue(e->fontSize);
+        updateColorSwatch(m_colorBtn,   e->color.isValid() ? e->color : Qt::white);
+        updateColorSwatch(m_bgColorBtn, e->backgroundColor);
+        m_alignLeft->setChecked(false);
+        m_alignCenter->setChecked(true);
+        m_alignRight->setChecked(false);
+        m_vAlignTop->setChecked(false);
+        m_vAlignMiddle->setChecked(false);
+        m_vAlignBottom->setChecked(false);
+        m_boldBtn->setChecked(e->bold);
+        m_italicBtn->setChecked(e->italic);
+        m_underlineBtn->setChecked(e->underline);
+        m_strikeBtn->setChecked(e->strikethrough);
+        updateColorSwatch(m_ulColorBtn, Qt::black);
+        m_fmtPainterBtn->setEnabled(true);
     } else if (isText) {
         m_fontCombo->setCurrentFont(QFont(e->fontFamily));
         m_fontSize->setValue(e->fontSize);
@@ -355,14 +373,16 @@ void FormatBar::onFontChanged(const QFont& f) {
     if (m_updating) return;
     if (auto* e = currentElem()) {
         if (e->type == SlideElement::Table) { e->tableFontFamily = f.family(); emit modified(); return; }
-        if (e->type == SlideElement::Text)  { e->fontFamily = f.family(); emit modified(); }
+        if (e->type == SlideElement::Text || e->type == SlideElement::Shape)
+            { e->fontFamily = f.family(); emit modified(); }
     }
 }
 void FormatBar::onFontSizeChanged(int v) {
     if (m_updating) return;
     if (auto* e = currentElem()) {
         if (e->type == SlideElement::Table) { e->tableFontSize = v; emit modified(); return; }
-        if (e->type == SlideElement::Text)  { e->fontSize = v; emit modified(); }
+        if (e->type == SlideElement::Text || e->type == SlideElement::Shape)
+            { e->fontSize = v; emit modified(); }
     }
 }
 void FormatBar::onColorClicked() {
@@ -461,26 +481,30 @@ void FormatBar::onListNumbered() {
 void FormatBar::onBold() {
     if (m_updating) return;
     if (auto* cell = currentCell()) { cell->bold = m_boldBtn->isChecked(); emit modified(); return; }
-    auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
+    auto* e = currentElem();
+    if (!e || (e->type != SlideElement::Text && e->type != SlideElement::Shape)) return;
     e->bold = m_boldBtn->isChecked(); emit modified();
 }
 void FormatBar::onItalic() {
     if (m_updating) return;
     if (auto* cell = currentCell()) { cell->italic = m_italicBtn->isChecked(); emit modified(); return; }
-    auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
+    auto* e = currentElem();
+    if (!e || (e->type != SlideElement::Text && e->type != SlideElement::Shape)) return;
     e->italic = m_italicBtn->isChecked(); emit modified();
 }
 void FormatBar::onUnderline() {
     if (m_updating) return;
-    auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
+    auto* e = currentElem();
+    if (!e || (e->type != SlideElement::Text && e->type != SlideElement::Shape)) return;
     e->underline = m_underlineBtn->isChecked();
-    m_ulStyleCombo->setEnabled(e->underline);
-    m_ulColorBtn->setEnabled(e->underline);
+    m_ulStyleCombo->setEnabled(e->underline && e->type == SlideElement::Text);
+    m_ulColorBtn->setEnabled(e->underline && e->type == SlideElement::Text);
     emit modified();
 }
 void FormatBar::onStrikethrough() {
     if (m_updating) return;
-    auto* e = currentElem(); if (!e || e->type != SlideElement::Text) return;
+    auto* e = currentElem();
+    if (!e || (e->type != SlideElement::Text && e->type != SlideElement::Shape)) return;
     e->strikethrough = m_strikeBtn->isChecked(); emit modified();
 }
 void FormatBar::onUnderlineColorClicked() {

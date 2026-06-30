@@ -73,8 +73,8 @@ private:
     void       mergeCells();
     void       unmergeCells();
 
-    // Handle hit-test: returns 0-7 for resize handles, -1 if none
-    // Handle order: TL=0, TR=1, BL=2, BR=3, TC=4, BC=5, ML=6, MR=7
+    // Handle hit-test: returns 0-7 for resize handles, 8 for rotation handle, -1 if none
+    // Handle order: TL=0, TR=1, BL=2, BR=3, TC=4, BC=5, ML=6, MR=7, Rot=8
     int  hitHandle(const QPointF& widgetPos) const;
     void applyResize(SlideElement&, int handle,
                      const QPointF& curSlide, float origX, float origY,
@@ -83,8 +83,11 @@ private:
 
     // Drawing
     void drawElement(QPainter&, const SlideElement&, bool selected) const;
-    void drawHandles(QPainter&, const QRectF&) const;
+    void drawHandles(QPainter&, const QRectF&, float rotation = 0.f) const;
     void drawTextCursor(QPainter&, const SlideElement&) const;
+
+    // Text-edit helper: returns the text string being edited (content or shapeText)
+    const QString& getEditText(const SlideElement& e) const;
 
     // Snap / alignment guides
     struct SnapGuide { bool vertical; float pos; }; // vertical=X guide, else Y guide
@@ -111,6 +114,11 @@ private:
     float m_resizeOrigX = 0, m_resizeOrigY = 0;
     float m_resizeOrigW = 0, m_resizeOrigH = 0;
 
+    // Rotation drag
+    bool  m_rotatingHandle   = false;
+    float m_rotateStartAngle = 0.f; // atan2 angle at drag start (degrees)
+    float m_rotateOrigAngle  = 0.f; // element.rotation at drag start
+
     // Format painter
     bool         m_formatPainterMode = false;
     SlideElement m_formatTemplate;
@@ -120,12 +128,13 @@ private:
     static bool         s_hasClipboard;
 
     // Inline text editing state
-    int     m_editingElem    = -1;
-    int     m_cursorPos      = 0;
-    int     m_selAnchor      = -1;  // -1 = no selection
-    bool    m_cursorVisible  = false;
-    bool    m_textSelecting  = false; // mouse drag for selection
-    QTimer* m_cursorBlink    = nullptr;
+    int     m_editingElem      = -1;
+    int     m_cursorPos        = 0;
+    int     m_selAnchor        = -1;  // -1 = no selection
+    bool    m_cursorVisible    = false;
+    bool    m_textSelecting    = false; // mouse drag for selection
+    bool    m_editingShapeText = false; // editing shapeText (vs content)
+    QTimer* m_cursorBlink      = nullptr;
 
     mutable QHash<QString, QPixmap> m_pixmapCache;
 

@@ -1,4 +1,5 @@
 #include "SlideEditor3D.h"
+#include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -379,10 +380,14 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                      : Qt::NoPen);
             p.setBrush(brush);
             float rx = elem.cornerRadius * sx, ry = elem.cornerRadius * sy;
-            if (elem.content == "circle")       p.drawEllipse(r);
-            else if (elem.content == "line")    p.drawLine(r.topLeft(), r.bottomRight());
-            else if (rx > 0 || ry > 0)          p.drawRoundedRect(r, rx, ry);
-            else                                p.drawRect(r);
+            if (elem.content == "line") {
+                p.drawLine(r.topLeft(), r.bottomRight());
+            } else if (elem.content == "rect") {
+                if (rx > 0 || ry > 0) p.drawRoundedRect(r, rx, ry);
+                else                   p.drawRect(r);
+            } else {
+                p.drawPath(ShapeUtils::shapeToPath(elem.content, r));
+            }
 
         } else if (elem.type == SlideElement::Image) {
             QPixmap px(elem.content);

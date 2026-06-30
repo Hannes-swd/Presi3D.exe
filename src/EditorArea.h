@@ -39,8 +39,7 @@ private:
 
     // 2D element toolbar buttons
     QPushButton*     m_btnText     = nullptr;
-    QPushButton*     m_btnRect     = nullptr;
-    QPushButton*     m_btnCircle   = nullptr;
+    QPushButton*     m_btnShape    = nullptr;
     QPushButton*     m_btnImage    = nullptr;
     QPushButton*     m_btnTable    = nullptr;
     QPushButton*     m_btnChart    = nullptr;

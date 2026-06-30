@@ -1,7 +1,9 @@
 #include "SlideEditor2D.h"
+#include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "dialogs/ChartEditorDialog.h"
 #include <QPainter>
+#include <QtMath>
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QContextMenuEvent>
@@ -38,6 +40,19 @@ static constexpr float SNAP_PX   = 10.f;  // snap threshold in screen pixels
 // 0=TL  4=TC  1=TR
 // 6=ML        7=MR
 // 2=BL  5=BC  3=BR
+
+// Rotate pt around center by angleDeg degrees (clockwise)
+static QPointF rotatePt(const QPointF& pt, const QPointF& center, float angleDeg) {
+    float rad = float(qDegreesToRadians(double(angleDeg)));
+    float c = qCos(rad), s = qSin(rad);
+    float x = float(pt.x()) - float(center.x());
+    float y = float(pt.y()) - float(center.y());
+    return center + QPointF(x * c - y * s, x * s + y * c);
+}
+// Un-rotate pt around center (inverse rotation)
+static QPointF unrotatePt(const QPointF& pt, const QPointF& center, float angleDeg) {
+    return rotatePt(pt, center, -angleDeg);
+}
 
 static QVector<QPointF> handlePoints(const QRectF& r) {
     return {
@@ -115,20 +130,40 @@ QPointF SlideEditor2D::widgetToSlide(const QPointF& wp) const {
 int SlideEditor2D::hitTest(const QPointF& wpos) const {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s) return -1;
-    for (int i = s->elements.size() - 1; i >= 0; --i)
-        if (elemToWidget(s->elements[i]).contains(wpos)) return i;
+    for (int i = s->elements.size() - 1; i >= 0; --i) {
+        const SlideElement& elem = s->elements[i];
+        QRectF wr = elemToWidget(elem);
+        // Un-rotate the click point into the element's local coordinate space
+        QPointF testPos = (elem.rotation != 0.f)
+            ? unrotatePt(wpos, wr.center(), elem.rotation)
+            : wpos;
+        if (wr.contains(testPos)) return i;
+    }
     return -1;
 }
 
 int SlideEditor2D::hitHandle(const QPointF& wpos) const {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return -1;
-    QRectF wr = elemToWidget(s->elements[m_selectedElem]);
+    const SlideElement& elem = s->elements[m_selectedElem];
+    QRectF wr = elemToWidget(elem);
+    float rot = elem.rotation;
+
+    // Check rotation handle first: circle 30px above TC in local space, then rotated
+    QPointF localRotHandle(wr.center().x(), wr.top() - 30);
+    QPointF rotHandleW = (rot != 0.f) ? rotatePt(localRotHandle, wr.center(), rot)
+                                       : localRotHandle;
+    QRectF rhr(rotHandleW.x() - HANDLE_R, rotHandleW.y() - HANDLE_R,
+               HANDLE_R * 2, HANDLE_R * 2);
+    if (rhr.contains(wpos)) return 8;
+
+    // Resize handles: un-rotate click into local space first
+    QPointF testPos = (rot != 0.f) ? unrotatePt(wpos, wr.center(), rot) : wpos;
     const auto pts = handlePoints(wr);
     for (int i = 0; i < pts.size(); ++i) {
         QRectF hr(pts[i].x() - HANDLE_R, pts[i].y() - HANDLE_R,
                   HANDLE_R * 2, HANDLE_R * 2);
-        if (hr.contains(wpos)) return i;
+        if (hr.contains(testPos)) return i;
     }
     return -1;
 }
@@ -323,7 +358,8 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
 
     // Selection handles (drawn outside clip so they extend beyond slide edge)
     if (m_selectedElem >= 0 && m_selectedElem < slide->elements.size())
-        drawHandles(p, elemToWidget(slide->elements[m_selectedElem]));
+        drawHandles(p, elemToWidget(slide->elements[m_selectedElem]),
+                    slide->elements[m_selectedElem].rotation);
 }
 
 void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selected) const {
@@ -372,44 +408,79 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.restore();
 
     } else if (e.type == SlideElement::Shape) {
+        bool hasRot = (e.rotation != 0.f);
+        if (hasRot) {
+            p.save();
+            p.translate(wr.center());
+            p.rotate(double(e.rotation));
+            p.translate(-wr.center());
+        }
+
         p.setPen(e.borderWidth > 0
                  ? QPen(e.borderColor.isValid() ? e.borderColor : Qt::darkGray, e.borderWidth)
                  : Qt::NoPen);
         p.setBrush(e.backgroundColor == Qt::transparent ? Qt::NoBrush : QBrush(e.backgroundColor));
-        QRectF sr2 = slideRect();
-        float rx = e.cornerRadius * sr2.width()  / SLIDE_W_DEFAULT;
-        float ry = e.cornerRadius * sr2.height() / SLIDE_H_DEFAULT;
-        if      (e.content == "circle") p.drawEllipse(wr);
-        else if (e.content == "line")   p.drawLine(wr.topLeft(), wr.bottomRight());
-        else if (rx > 0 || ry > 0)      p.drawRoundedRect(wr, rx, ry);
-        else                            p.drawRect(wr);
+        {
+            QRectF sr2 = slideRect();
+            float rx = e.cornerRadius * sr2.width()  / SLIDE_W_DEFAULT;
+            float ry = e.cornerRadius * sr2.height() / SLIDE_H_DEFAULT;
+            if (e.content == "line") {
+                p.drawLine(wr.topLeft(), wr.bottomRight());
+            } else if (e.content == "rect") {
+                if (rx > 0 || ry > 0) p.drawRoundedRect(wr, rx, ry);
+                else                   p.drawRect(wr);
+            } else {
+                p.drawPath(ShapeUtils::shapeToPath(e.content, wr));
+            }
+        }
+
+        // Draw text overlaid inside the shape
+        if (!e.shapeText.isEmpty()) {
+            QFont font(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
+            font.setBold(e.bold);
+            font.setItalic(e.italic);
+            p.save();
+            p.setFont(font);
+            p.setPen(e.color.isValid() ? e.color : Qt::white);
+            p.setClipRect(wr, Qt::IntersectClip);
+            p.drawText(wr, Qt::AlignCenter | Qt::TextWordWrap, e.shapeText);
+            p.restore();
+        }
+
+        // Selection outline and restore rotation transform
+        if (selected) {
+            p.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(wr);
+        }
+        if (hasRot) p.restore();
+        return;
 
     } else if (e.type == SlideElement::Table) {
         drawTableElement(p, e, selected);
         return; // table draws its own selection outline
 
     } else if (e.type == SlideElement::Image) {
+        bool drawn = false;
         if (!e.content.isEmpty()) {
             if (!m_pixmapCache.contains(e.content))
                 m_pixmapCache[e.content] = QPixmap(e.content);
             const QPixmap& px = m_pixmapCache[e.content];
-            if (!px.isNull()) { p.drawPixmap(wr.toRect(), px); goto done; }
+            if (!px.isNull()) { p.drawPixmap(wr.toRect(), px); drawn = true; }
         }
-        p.fillRect(wr, QColor(180, 180, 200));
-        p.setPen(Qt::darkGray);
-        p.drawText(wr, Qt::AlignCenter,
-                   e.content.isEmpty() ? "[Bild]" : QFileInfo(e.content).fileName());
+        if (!drawn) {
+            p.fillRect(wr, QColor(180, 180, 200));
+            p.setPen(Qt::darkGray);
+            p.drawText(wr, Qt::AlignCenter,
+                       e.content.isEmpty() ? "[Bild]" : QFileInfo(e.content).fileName());
+        }
 
     } else if (e.type == SlideElement::Chart) {
-        // White background for chart
         p.fillRect(wr, Qt::white);
         ChartRenderer::paint(p, wr, e.chartData);
-        // Thin border
         p.setPen(QPen(QColor(200, 200, 200), 0.5));
         p.setBrush(Qt::NoBrush);
         p.drawRect(wr);
-
-        // "Double-click to edit" hint when selected
         if (selected) {
             p.save();
             p.setPen(QColor(37, 99, 235, 200));
@@ -419,11 +490,9 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                        Qt::AlignCenter, "Doppelklick zum Bearbeiten");
             p.restore();
         }
-        goto done;
     }
 
-done:
-    // Dashed outline for selected element (inside the clip area)
+    // Generic dashed selection outline (Text, Image, Chart)
     if (selected) {
         p.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
         p.setBrush(Qt::NoBrush);
@@ -668,21 +737,37 @@ void SlideEditor2D::drawTableElement(QPainter& p, const SlideElement& e, bool se
     }
 }
 
-void SlideEditor2D::drawHandles(QPainter& p, const QRectF& r) const {
+void SlideEditor2D::drawHandles(QPainter& p, const QRectF& r, float rotation) const {
+    p.save();
+    if (rotation != 0.f) {
+        p.translate(r.center());
+        p.rotate(double(rotation));
+        p.translate(-r.center());
+    }
+
     // Blue selection border
     p.setPen(QPen(QColor(0, 120, 215), 2));
     p.setBrush(Qt::NoBrush);
     p.drawRect(r);
 
-    // 8 resize handles
+    // 8 resize handles (white squares with blue border)
     const auto pts = handlePoints(r);
     for (const auto& pt : pts) {
-        // White fill with blue border
         p.setPen(QPen(QColor(0, 120, 215), 1.5));
         p.setBrush(Qt::white);
         p.drawRect(QRectF(pt.x() - HANDLE_V, pt.y() - HANDLE_V,
                           HANDLE_V * 2,       HANDLE_V * 2));
     }
+
+    // Rotation handle: stem + circle above TC
+    QPointF tc(r.center().x(), r.top());
+    QPointF rotHandle(tc.x(), tc.y() - 30);
+    p.setPen(QPen(QColor(0, 120, 215), 1.5));
+    p.drawLine(tc, rotHandle);
+    p.setBrush(Qt::white);
+    p.drawEllipse(rotHandle, HANDLE_V, HANDLE_V);
+
+    p.restore();
 }
 
 // ── Format painter ────────────────────────────────────────────────────────────
@@ -737,9 +822,10 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     if (m_editingElem >= 0) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
         if (s && hitTest(e->position()) == m_editingElem) {
-            m_cursorPos    = textPositionAt(s->elements[m_editingElem], e->position());
-            m_selAnchor    = -1;
-            m_textSelecting = true;
+            if (!m_editingShapeText)
+                m_cursorPos = textPositionAt(s->elements[m_editingElem], e->position());
+            m_selAnchor     = -1;
+            m_textSelecting = !m_editingShapeText;
             m_cursorVisible = true;
             m_cursorBlink->start();
             update();
@@ -823,8 +909,20 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
         }
     }
 
-    // Resize handles of selected element
+    // Handles of selected element (resize or rotation)
     int handle = hitHandle(e->position());
+    if (handle == 8) {
+        // Rotation handle
+        Slide* s = m_pres->slideAt(m_slideIndex);
+        const SlideElement& elem = s->elements[m_selectedElem];
+        QRectF wr = elemToWidget(elem);
+        m_rotatingHandle   = true;
+        m_rotateOrigAngle  = elem.rotation;
+        m_rotateStartAngle = float(qRadiansToDegrees(
+            qAtan2(e->position().y() - wr.center().y(),
+                   e->position().x() - wr.center().x())));
+        return;
+    }
     if (handle >= 0) {
         Slide* s = m_pres->slideAt(m_slideIndex);
         const SlideElement& elem = s->elements[m_selectedElem];
@@ -907,6 +1005,25 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
 
     QPointF curSlide = widgetToSlide(e->position());
 
+    // Rotation drag
+    if (m_rotatingHandle) {
+        Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        if (s && m_selectedElem >= 0 && m_selectedElem < s->elements.size()) {
+            SlideElement& elem = s->elements[m_selectedElem];
+            QRectF wr = elemToWidget(elem);
+            float angle = float(qRadiansToDegrees(
+                qAtan2(e->position().y() - wr.center().y(),
+                       e->position().x() - wr.center().x())));
+            float newRot = m_rotateOrigAngle + (angle - m_rotateStartAngle);
+            if (e->modifiers() & Qt::ControlModifier)
+                newRot = qRound(newRot / 45.f) * 45.f;
+            elem.rotation = newRot;
+            update();
+            emit presentationModified();
+        }
+        return;
+    }
+
     // Resize mode
     if (m_resizingHandle >= 0) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
@@ -945,7 +1062,9 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
         }
     }
     int handle = hitHandle(e->position());
-    if (handle >= 0) {
+    if (handle == 8) {
+        setCursor(Qt::CrossCursor);
+    } else if (handle >= 0) {
         static const Qt::CursorShape cursors[8] = {
             Qt::SizeFDiagCursor, Qt::SizeBDiagCursor,
             Qt::SizeBDiagCursor, Qt::SizeFDiagCursor,
@@ -965,6 +1084,7 @@ void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
         m_textSelecting     = false;
         m_dragging          = false;
         m_resizingHandle    = -1;
+        m_rotatingHandle    = false;
         m_dragDivider       = {};
         m_isDraggingCellSel = false;
         m_snapGuides.clear();
@@ -984,6 +1104,9 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
         openChartEditor();
         return;
     } else if (elem.type == SlideElement::Text) {
+        startTextEdit(hit, e->position());
+    } else if (elem.type == SlideElement::Shape) {
+        m_selectedElem = hit;
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Table) {
         m_selectedElem  = hit;
@@ -1314,12 +1437,14 @@ void SlideEditor2D::sendToBack() {
 // Build a QTextLayout for a text element at widget scale and do line layout.
 // The layout origin is at (0,0); add elemToWidget(e).topLeft() to get widget coords.
 static void buildLayout(QTextLayout& layout, const SlideElement& e,
-                        const QFont& font, float width) {
+                        const QFont& font, float width,
+                        const QString& alignOverride = {}) {
     layout.setFont(font);
     QTextOption opt;
-    if      (e.textAlignment == "center") opt.setAlignment(Qt::AlignHCenter);
-    else if (e.textAlignment == "right")  opt.setAlignment(Qt::AlignRight);
-    else                                  opt.setAlignment(Qt::AlignLeft);
+    const QString& align = alignOverride.isEmpty() ? e.textAlignment : alignOverride;
+    if      (align == "center") opt.setAlignment(Qt::AlignHCenter);
+    else if (align == "right")  opt.setAlignment(Qt::AlignRight);
+    else                        opt.setAlignment(Qt::AlignLeft);
     opt.setWrapMode(QTextOption::WordWrap);
     layout.setTextOption(opt);
     layout.beginLayout();
@@ -1343,20 +1468,27 @@ static QFont elemFont(const SlideElement& e, float scaleY) {
 void SlideEditor2D::startTextEdit(int idx, QPointF clickPos) {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || idx < 0 || idx >= s->elements.size()) return;
-    if (s->elements[idx].type != SlideElement::Text) return;
+    SlideElement& elem = s->elements[idx];
+    if (elem.type != SlideElement::Text && elem.type != SlideElement::Shape) return;
     finishTextEdit();
-    m_editingElem = idx;
+    m_editingElem      = idx;
+    m_editingShapeText = (elem.type == SlideElement::Shape);
 
-    if (clickPos.x() >= 0)
-        m_cursorPos = textPositionAt(s->elements[idx], clickPos);
+    const QString& text = m_editingShapeText ? elem.shapeText : elem.content;
+    if (clickPos.x() >= 0 && !m_editingShapeText)
+        m_cursorPos = textPositionAt(elem, clickPos);
     else
-        m_cursorPos = s->elements[idx].content.length();
+        m_cursorPos = text.length();
 
     m_selAnchor     = -1;
     m_cursorVisible = true;
     m_cursorBlink->start();
     setFocus();
     update();
+}
+
+const QString& SlideEditor2D::getEditText(const SlideElement& e) const {
+    return m_editingShapeText ? e.shapeText : e.content;
 }
 
 void SlideEditor2D::exitTableEditMode() {
@@ -1460,11 +1592,12 @@ void SlideEditor2D::unmergeCells() {
 void SlideEditor2D::finishTextEdit() {
     if (m_editingElem < 0) return;
     m_cursorBlink->stop();
-    m_editingElem    = -1;
-    m_cursorPos      = 0;
-    m_selAnchor      = -1;
-    m_textSelecting  = false;
-    m_cursorVisible  = false;
+    m_editingElem      = -1;
+    m_editingShapeText = false;
+    m_cursorPos        = 0;
+    m_selAnchor        = -1;
+    m_textSelecting    = false;
+    m_cursorVisible    = false;
     update();
 }
 
@@ -1472,7 +1605,7 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_editingElem < 0 || m_editingElem >= s->elements.size()) return;
     SlideElement& elem = s->elements[m_editingElem];
-    QString& text = elem.content;
+    QString& text = m_editingShapeText ? elem.shapeText : elem.content;
 
     m_cursorVisible = true;
     m_cursorBlink->start();
@@ -1804,17 +1937,29 @@ void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
     QRectF wr = elemToWidget(e);
     p.save();
 
+    // Apply rotation for shape text editing
+    bool hasRot = (m_editingShapeText && e.rotation != 0.f);
+    if (hasRot) {
+        p.translate(wr.center());
+        p.rotate(double(e.rotation));
+        p.translate(-wr.center());
+    }
+
     // Blue editing border
     p.setPen(QPen(QColor(37, 99, 235), 1.5));
     p.setBrush(Qt::NoBrush);
     p.drawRect(wr);
 
+    const QString& editText = getEditText(e);
+    const QString& vAlignStr = m_editingShapeText ? QString("middle") : e.verticalAlignment;
+    const QString& alignStr  = m_editingShapeText ? QString("center") : QString();
+
     float sy = slideRect().height() / SLIDE_H_DEFAULT;
     QFont font = elemFont(e, sy);
-    QTextLayout layout(e.content, font);
-    buildLayout(layout, e, font, float(wr.width()));
+    QTextLayout layout(editText, font);
+    buildLayout(layout, e, font, float(wr.width()), alignStr);
 
-    float vOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
+    float vOff = textVOff(layout, float(wr.height()), vAlignStr);
 
     // ── Selection highlight ───────────────────────────────────────────────
     if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) {
@@ -1835,7 +1980,7 @@ void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
 
     // ── Cursor line ───────────────────────────────────────────────────────
     if (m_cursorVisible) {
-        int pos = qBound(0, m_cursorPos, e.content.length());
+        int pos = qBound(0, m_cursorPos, editText.length());
         QTextLine line = layout.lineForTextPosition(pos);
         if (!line.isValid() && layout.lineCount() > 0)
             line = layout.lineAt(layout.lineCount() - 1);

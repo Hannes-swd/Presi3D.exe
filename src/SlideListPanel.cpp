@@ -1,4 +1,5 @@
 #include "SlideListPanel.h"
+#include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -105,12 +106,24 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
             p.setFont(f);
             p.drawText(r, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap, elem.content);
         } else if (elem.type == SlideElement::Shape) {
+            bool hasRot = (elem.rotation != 0.f);
+            if (hasRot) {
+                p.save();
+                p.translate(r.center());
+                p.rotate(double(elem.rotation));
+                p.translate(-r.center());
+            }
             p.setPen(QPen(elem.borderColor, 1));
             p.setBrush(elem.backgroundColor);
-            if (elem.content == "circle")
-                p.drawEllipse(r);
+            if (elem.content == "line")
+                p.drawLine(r.topLeft(), r.bottomRight());
             else
-                p.drawRect(r);
+                p.drawPath(ShapeUtils::shapeToPath(elem.content, r));
+            if (!elem.shapeText.isEmpty()) {
+                p.setPen(elem.color.isValid() ? elem.color : Qt::white);
+                p.drawText(r, Qt::AlignCenter | Qt::TextWordWrap, elem.shapeText);
+            }
+            if (hasRot) p.restore();
         } else if (elem.type == SlideElement::Image) {
             p.fillRect(r, QColor(200, 200, 220));
         } else if (elem.type == SlideElement::Table) {

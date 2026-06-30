@@ -1,4 +1,5 @@
 #include "HtmlExporter.h"
+#include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
 #include <QDir>
 #include <QFile>
@@ -269,6 +270,9 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index,
 QString HtmlExporter::elementToHtml(const SlideElement& e) {
     QString base = QString("position:absolute;left:%1px;top:%2px;width:%3px;height:%4px;")
                        .arg(int(e.x)).arg(int(e.y)).arg(int(e.width)).arg(int(e.height));
+    if (e.rotation != 0.f)
+        base += QString("transform:rotate(%1deg);transform-origin:center;")
+                    .arg(double(e.rotation), 0, 'f', 2);
 
     if (e.type == SlideElement::Text) {
         QString justifyContent = "flex-start";
@@ -325,18 +329,35 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
         if (e.borderWidth > 0)
             style += QString("border:%1px solid %2;")
                          .arg(int(e.borderWidth)).arg(colorToCss(e.borderColor));
-        if (e.content == "circle")
-            style += "border-radius:50%;";
-        else if (e.cornerRadius > 0)
-            style += QString("border-radius:%1px;").arg(int(e.cornerRadius));
+        {
+            QString css = ShapeUtils::shapeToCssStyle(e.content);
+            if (!css.isEmpty())
+                style += css + ";";
+            else if (e.cornerRadius > 0)
+                style += QString("border-radius:%1px;").arg(int(e.cornerRadius));
+        }
+        // Inner text overlay
+        QString innerText;
+        if (!e.shapeText.isEmpty()) {
+            QString textStyle = QString(
+                "position:absolute;inset:0;display:flex;align-items:center;"
+                "justify-content:center;text-align:center;padding:4px;"
+                "font-family:'%1';font-size:%2px;color:%3;"
+                "word-wrap:break-word;overflow:hidden;pointer-events:none;")
+                    .arg(e.fontFamily).arg(e.fontSize).arg(colorToCss(e.color));
+            if (e.bold)   textStyle += "font-weight:bold;";
+            if (e.italic) textStyle += "font-style:italic;";
+            innerText = QString("<span style=\"%1\">%2</span>")
+                            .arg(textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
+        }
         if (!e.entranceAnim.isEmpty()) {
             style += QString("--anim-delay:%1s;--anim-dur:%2s;")
                          .arg(e.animDelay, 0, 'f', 2).arg(e.animDuration, 0, 'f', 2);
-            return QString("<div data-type=\"shape\" data-shape=\"%1\" data-anim=\"%2\" style=\"%3\"></div>")
-                       .arg(e.content, e.entranceAnim, style);
+            return QString("<div data-type=\"shape\" data-shape=\"%1\" data-anim=\"%2\" style=\"%3\">%4</div>")
+                       .arg(e.content, e.entranceAnim, style, innerText);
         }
-        return QString("<div data-type=\"shape\" data-shape=\"%1\" style=\"%2\"></div>")
-                   .arg(e.content, style);
+        return QString("<div data-type=\"shape\" data-shape=\"%1\" style=\"%2\">%3</div>")
+                   .arg(e.content, style, innerText);
 
     } else if (e.type == SlideElement::Image) {
         QFileInfo fi(e.content);

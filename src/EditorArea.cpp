@@ -3,6 +3,7 @@
 #include "SlideEditor3D.h"
 #include "dialogs/InsertTableDialog.h"
 #include "dialogs/InsertChartDialog.h"
+#include "dialogs/ShapePickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -52,10 +53,9 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         tbRow->addWidget(b);
         return b;
     };
-    m_btnText   = mkBtn("T Text",     "Textfeld hinzufügen");
-    m_btnRect   = mkBtn("▭ Rechteck", "Rechteck hinzufügen");
-    m_btnCircle = mkBtn("○ Kreis",    "Kreis hinzufügen");
-    m_btnImage  = mkBtn("□ Bild",     "Bild importieren");
+    m_btnText   = mkBtn("T Text",    "Textfeld hinzufügen");
+    m_btnShape  = mkBtn("⬡ Formen",  "Form einfügen");
+    m_btnImage  = mkBtn("□ Bild",    "Bild importieren");
     m_btnTable  = mkBtn("⊞ Tabelle",  "Tabelle einfügen");
     m_btnChart  = mkBtn("📊 Diagramm","Diagramm einfügen");
 
@@ -147,10 +147,13 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_btn2D, &QPushButton::clicked, this, &EditorArea::switchTo2D);
     connect(m_btn3D, &QPushButton::clicked, this, &EditorArea::switchTo3D);
 
-    connect(m_btnText,     &QPushButton::clicked, m_editor2D, &SlideEditor2D::addTextElement);
-    connect(m_btnRect,     &QPushButton::clicked, this, [this]() { m_editor2D->addShapeElement("rect"); });
-    connect(m_btnCircle,   &QPushButton::clicked, this, [this]() { m_editor2D->addShapeElement("circle"); });
-    connect(m_btnImage,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::addImageElement);
+    connect(m_btnText,  &QPushButton::clicked, m_editor2D, &SlideEditor2D::addTextElement);
+    connect(m_btnShape, &QPushButton::clicked, this, [this]() {
+        ShapePickerDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted && !dlg.selectedShape().isEmpty())
+            m_editor2D->addShapeElement(dlg.selectedShape());
+    });
+    connect(m_btnImage, &QPushButton::clicked, m_editor2D, &SlideEditor2D::addImageElement);
     connect(m_btnTable,    &QPushButton::clicked, this, [this]() {
         InsertTableDialog dlg(this);
         if (dlg.exec() == QDialog::Accepted)

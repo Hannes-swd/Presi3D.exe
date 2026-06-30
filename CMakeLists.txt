@@ -26,6 +26,7 @@ set(SOURCES
     src/dialogs/InsertTableDialog.cpp
     src/dialogs/InsertChartDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
+    src/dialogs/ShapePickerDialog.cpp
     src/FormatBar.cpp
 )
 
