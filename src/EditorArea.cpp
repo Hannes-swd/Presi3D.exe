@@ -3,6 +3,7 @@
 #include "SlideEditor3D.h"
 #include "dialogs/InsertTableDialog.h"
 #include "dialogs/InsertChartDialog.h"
+#include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/ShapePickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -56,8 +57,9 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnText   = mkBtn("T Text",    "Textfeld hinzufügen");
     m_btnShape  = mkBtn("⬡ Formen",  "Form einfügen");
     m_btnImage  = mkBtn("□ Bild",    "Bild importieren");
-    m_btnTable  = mkBtn("⊞ Tabelle",  "Tabelle einfügen");
-    m_btnChart  = mkBtn("📊 Diagramm","Diagramm einfügen");
+    m_btnTable   = mkBtn("⊞ Tabelle",  "Tabelle einfügen");
+    m_btnChart   = mkBtn("📊 Diagramm","Diagramm einfügen");
+    m_btnFormula = mkBtn("∑ Formel",  "Formel einfügen (LaTeX)");
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -163,6 +165,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         InsertChartDialog dlg(this);
         if (dlg.exec() == QDialog::Accepted)
             m_editor2D->addChartElement(dlg.selectedType());
+    });
+    connect(m_btnFormula,  &QPushButton::clicked, this, [this]() {
+        InsertFormulaDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted && !dlg.latex().isEmpty())
+            m_editor2D->addFormulaElement(dlg.latex());
     });
     connect(m_btnDelete,   &QPushButton::clicked, m_editor2D, &SlideEditor2D::deleteSelectedElement);
     connect(m_btnFront,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringToFront);

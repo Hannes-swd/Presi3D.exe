@@ -19,12 +19,12 @@ struct TableCell {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table, Chart };
+    enum Type { Text, Shape, Image, Table, Chart, Formula };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
     Type    type = Text;
-    QString content; // text string | shape type ("rect","circle","line") | image path
+    QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula)
     int     listStyle = NoList;
 
     // Position and size in slide coordinates (0-1920 x 0-1080)

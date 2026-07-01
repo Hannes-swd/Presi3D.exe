@@ -133,6 +133,14 @@ static void buildVisibilityData(const Presentation& pres,
     }
 }
 
+// Does any slide contain a formula element? Only then load MathJax.
+static bool hasFormulaElement(const Presentation& pres) {
+    for (const Slide& s : pres.slides)
+        for (const SlideElement& e : s.elements)
+            if (e.type == SlideElement::Formula) return true;
+    return false;
+}
+
 QString HtmlExporter::generateHtml(const Presentation& pres) {
     QMap<QString, QString> uuidToHtmlId;
     QMap<QString, QString> uuidToVisString;
@@ -148,8 +156,11 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "<head>\n"
         << "  <meta charset=\"UTF-8\">\n"
         << "  <title>Präsentation</title>\n"
-        << "  <link rel=\"stylesheet\" href=\"styles.css\">\n"
-        << "</head>\n"
+        << "  <link rel=\"stylesheet\" href=\"styles.css\">\n";
+    if (hasFormulaElement(pres))
+        out << "  <script id=\"MathJax-script\" async "
+               "src=\"https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js\"></script>\n";
+    out << "</head>\n"
         << "<body>\n\n"
         << "<div id=\"impress\"\n"
         << "     data-transition-duration=\"1000\"\n"
@@ -472,6 +483,21 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
             "style=\"width:100%;height:100%;object-fit:contain;\" alt=\"%5\">"
             "</div>")
             .arg(e.chartData.type, chartDataB64, base, b64img, title.toHtmlEscaped());
+
+    } else if (e.type == SlideElement::Formula) {
+        QString style = base
+            + QString("display:flex;align-items:center;justify-content:center;"
+                       "overflow:hidden;font-size:%1px;").arg(e.fontSize);
+        if (e.color.isValid())
+            style += "color:" + colorToCss(e.color) + ";";
+        if (e.backgroundColor != Qt::transparent)
+            style += "background:" + colorToCss(e.backgroundColor) + ";";
+
+        QString latex = e.content.toHtmlEscaped();
+        return QString(
+            "<div data-type=\"formula\" data-latex=\"%1\" style=\"%2\">"
+            "<div class=\"math\">$$%3$$</div></div>")
+            .arg(latex, style, latex);
     }
     return {};
 }

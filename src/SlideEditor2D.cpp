@@ -1,7 +1,9 @@
 #include "SlideEditor2D.h"
 #include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
+#include "rendering/LatexRenderer.h"
 #include "dialogs/ChartEditorDialog.h"
+#include "dialogs/InsertFormulaDialog.h"
 #include <QPainter>
 #include <QtMath>
 #include <QMouseEvent>
@@ -487,6 +489,31 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.setFont(QFont("Arial", qMax(6, int(9 * sr.height() / SLIDE_H_DEFAULT))));
             p.drawText(QRectF(wr.x(), wr.bottom() - 18 * sr.height()/SLIDE_H_DEFAULT,
                               wr.width(), 18 * sr.height()/SLIDE_H_DEFAULT),
+                       Qt::AlignCenter, "Doppelklick zum Bearbeiten");
+            p.restore();
+        }
+
+    } else if (e.type == SlideElement::Formula) {
+        if (e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent)
+            p.fillRect(wr, e.backgroundColor);
+
+        if (e.content.trimmed().isEmpty()) {
+            p.save();
+            p.setPen(QColor(150, 150, 150));
+            p.setFont(QFont(e.fontFamily, qMax(6, int(9 * scaleY))));
+            p.drawText(wr, Qt::AlignCenter, "∑ Formel");
+            p.restore();
+        } else {
+            LatexRenderer::paint(p, wr, e.content, e.fontFamily,
+                                 qMax(6, int(e.fontSize * scaleY)),
+                                 e.color.isValid() ? e.color : Qt::black);
+        }
+
+        if (selected) {
+            p.save();
+            p.setPen(QColor(37, 99, 235, 200));
+            p.setFont(QFont("Arial", qMax(6, int(9 * scaleY))));
+            p.drawText(QRectF(wr.x(), wr.bottom() - 18 * scaleY, wr.width(), 18 * scaleY),
                        Qt::AlignCenter, "Doppelklick zum Bearbeiten");
             p.restore();
         }
@@ -1103,6 +1130,10 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
         m_selectedElem = hit;
         openChartEditor();
         return;
+    } else if (elem.type == SlideElement::Formula) {
+        m_selectedElem = hit;
+        openFormulaEditor();
+        return;
     } else if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Shape) {
@@ -1376,6 +1407,34 @@ void SlideEditor2D::openChartEditor() {
     ChartEditorDialog dlg(e.chartData, this);
     if (dlg.exec() == QDialog::Accepted) {
         e.chartData = dlg.chartData();
+        update();
+        emit presentationModified();
+    }
+}
+
+void SlideEditor2D::addFormulaElement(const QString& latex) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type    = SlideElement::Formula;
+    e.content = latex;
+    e.x = 300.f; e.y = 300.f; e.width = 500.f; e.height = 120.f; e.fontSize = 40;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::openFormulaEditor() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Formula) return;
+
+    InsertFormulaDialog dlg(this, e.content);
+    if (dlg.exec() == QDialog::Accepted) {
+        e.content = dlg.latex();
         update();
         emit presentationModified();
     }

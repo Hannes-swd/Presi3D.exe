@@ -19,12 +19,14 @@ set(SOURCES
     src/models/Presentation.cpp
     src/models/ChartData.cpp
     src/rendering/ChartRenderer.cpp
+    src/rendering/LatexRenderer.cpp
     src/export/HtmlExporter.cpp
     src/import/HtmlImporter.cpp
     src/dialogs/ExportDialog.cpp
     src/dialogs/StartDialog.cpp
     src/dialogs/InsertTableDialog.cpp
     src/dialogs/InsertChartDialog.cpp
+    src/dialogs/InsertFormulaDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
     src/FormatBar.cpp

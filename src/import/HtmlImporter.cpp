@@ -540,6 +540,34 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     continue;
                 }
 
+                // Formula element: LaTeX source stored in data-latex attribute
+                if (dtype == "formula") {
+                    SlideElement fe;
+                    fe.type   = SlideElement::Formula;
+                    fe.x      = cssProp(style, "left").remove("px").toFloat();
+                    fe.y      = cssProp(style, "top").remove("px").toFloat();
+                    fe.width  = cssProp(style, "width").remove("px").toFloat();
+                    fe.height = cssProp(style, "height").remove("px").toFloat();
+                    QString fs = cssProp(style, "font-size").remove("px");
+                    if (!fs.isEmpty()) fe.fontSize = fs.toInt();
+                    QColor fc = parseCssColor(cssProp(style, "color"));
+                    if (fc.isValid()) fe.color = fc;
+                    QColor bg = parseCssColor(cssProp(style, "background"));
+                    if (bg.isValid()) fe.backgroundColor = bg;
+                    QString transform = cssProp(style, "transform");
+                    if (transform.contains("rotate")) {
+                        QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                        auto rotM = rotRe.match(transform);
+                        if (rotM.hasMatch()) fe.rotation = rotM.captured(1).toFloat();
+                    }
+                    QString latex = attrVal(dTag, "data-latex");
+                    latex.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                         .replace("&quot;", "\"").replace("&#39;", "'");
+                    fe.content = latex;
+                    slide.elements.append(fe);
+                    continue;
+                }
+
                 // Classify: prefer explicit data-type, fall back to style inspection
                 bool isText = (dtype == "text") ||
                               (dtype.isEmpty() && style.contains("font-family"));

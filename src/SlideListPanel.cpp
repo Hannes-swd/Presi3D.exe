@@ -1,6 +1,7 @@
 #include "SlideListPanel.h"
 #include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
+#include "rendering/LatexRenderer.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -176,6 +177,12 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
         } else if (elem.type == SlideElement::Chart) {
             p.fillRect(r, Qt::white);
             ChartRenderer::paint(p, r, elem.chartData);
+        } else if (elem.type == SlideElement::Formula) {
+            if (elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent)
+                p.fillRect(r, elem.backgroundColor);
+            LatexRenderer::paint(p, r, elem.content, elem.fontFamily,
+                                 qMax(1, (int)(elem.fontSize * sy)),
+                                 elem.color.isValid() ? elem.color : Qt::black);
         }
     }
 
