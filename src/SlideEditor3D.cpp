@@ -401,6 +401,18 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                 p.drawText(r, int(Qt::AlignCenter), QFileInfo(elem.content).fileName());
             }
 
+        } else if (elem.type == SlideElement::IFrame) {
+            p.fillRect(r, QColor(235, 240, 250));
+            p.setPen(QPen(QColor(150, 160, 190), qMax(1.f, sx)));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r);
+            p.save();
+            p.setPen(QColor(90, 100, 140));
+            p.setFont(QFont("Arial", qMax(6, int(20 * sy))));
+            p.drawText(r, int(Qt::AlignCenter | Qt::TextWordWrap),
+                       elem.content.isEmpty() ? QStringLiteral("\U0001F310 iFrame") : elem.content);
+            p.restore();
+
         } else if (elem.type == SlideElement::Table) {
             p.fillRect(r, elem.tableDefaultBg);
             int fontPx = qMax(1, int(elem.tableFontSize * sy));

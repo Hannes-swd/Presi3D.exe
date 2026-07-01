@@ -1,6 +1,6 @@
 # Feature-Roadmap – Impress.js Editor
 
-> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export)
+> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export)
 
 ---
 
@@ -31,7 +31,7 @@
 | **Videos** | Lokale Videodateien einbetten, Autoplay-/Loop-Optionen |
 | **GIFs** | Animierte GIFs auf Folien platzieren |
 | **Audio** | Hintergrundmusik oder Sound-Effekte pro Folie |
-| **YouTube / iFrame** | Externen Webinhalt einbetten (wird im exportierten HTML funktionieren) |
+| ~~**YouTube / iFrame**~~ | ✅ Implementiert – Link eingeben, Platzhalter im Editor/3D-Ansicht, echtes `<iframe>` im HTML-Export/Vorschau |
 | **Hyperlinks** | Text oder Elemente als Klick-Link definieren |
 | **QR-Code-Generator** | URL eingeben → QR-Code wird direkt als Element eingefügt |
 

@@ -19,7 +19,7 @@ struct TableCell {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table, Chart, Formula };
+    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;

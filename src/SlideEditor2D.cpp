@@ -4,6 +4,7 @@
 #include "rendering/LatexRenderer.h"
 #include "dialogs/ChartEditorDialog.h"
 #include "dialogs/InsertFormulaDialog.h"
+#include "dialogs/InsertIFrameDialog.h"
 #include <QPainter>
 #include <QtMath>
 #include <QMouseEvent>
@@ -517,6 +518,26 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                        Qt::AlignCenter, "Doppelklick zum Bearbeiten");
             p.restore();
         }
+
+    } else if (e.type == SlideElement::IFrame) {
+        p.fillRect(wr, QColor(235, 240, 250));
+        p.setPen(QPen(QColor(150, 160, 190), 1, Qt::DashLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(wr);
+
+        p.save();
+        p.setPen(QColor(90, 100, 140));
+        QFont iconFont("Arial", qMax(10, int(28 * scaleY)));
+        p.setFont(iconFont);
+        QRectF iconRect(wr.x(), wr.y() + 4 * scaleY, wr.width(), wr.height() * 0.55);
+        p.drawText(iconRect, Qt::AlignCenter, QStringLiteral("\U0001F310"));
+
+        QFont labelFont("Arial", qMax(6, int(9 * scaleY)));
+        p.setFont(labelFont);
+        QRectF labelRect(wr.x() + 4, wr.y() + wr.height() * 0.6, wr.width() - 8, wr.height() * 0.35);
+        p.drawText(labelRect, Qt::AlignCenter | Qt::TextWordWrap,
+                   e.content.isEmpty() ? "iFrame – Doppelklick für Link" : e.content);
+        p.restore();
     }
 
     // Generic dashed selection outline (Text, Image, Chart)
@@ -1134,6 +1155,10 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
         m_selectedElem = hit;
         openFormulaEditor();
         return;
+    } else if (elem.type == SlideElement::IFrame) {
+        m_selectedElem = hit;
+        openIFrameEditor();
+        return;
     } else if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Shape) {
@@ -1435,6 +1460,34 @@ void SlideEditor2D::openFormulaEditor() {
     InsertFormulaDialog dlg(this, e.content);
     if (dlg.exec() == QDialog::Accepted) {
         e.content = dlg.latex();
+        update();
+        emit presentationModified();
+    }
+}
+
+void SlideEditor2D::addIFrameElement(const QString& url) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type    = SlideElement::IFrame;
+    e.content = url;
+    e.x = 300.f; e.y = 300.f; e.width = 800.f; e.height = 450.f;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::openIFrameEditor() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::IFrame) return;
+
+    InsertIFrameDialog dlg(this, e.content);
+    if (dlg.exec() == QDialog::Accepted) {
+        e.content = dlg.url();
         update();
         emit presentationModified();
     }

@@ -7,6 +7,7 @@
 #include "dialogs/StartDialog.h"
 #include "import/HtmlImporter.h"
 #include "export/HtmlExporter.h"
+#include "LocalHttpServer.h"
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -440,7 +441,13 @@ void MainWindow::openInBrowser() {
         return;
     }
 
-    QString url = QUrl::fromLocalFile(indexPath).toString();
+    // Serve via http://127.0.0.1 instead of file:// — some embeds (e.g. YouTube,
+    // "Error 153") refuse to initialize when the parent page has no http(s) origin.
+    if (!m_previewServer)
+        m_previewServer = new LocalHttpServer(this);
+    QString base = m_previewServer->serve(m_presentation->exportPath);
+    QString url = !base.isEmpty() ? base + "/index.html"
+                                   : QUrl::fromLocalFile(indexPath).toString();
 
     static const QStringList chromePaths = {
         "C:/Program Files/Google/Chrome/Application/chrome.exe",

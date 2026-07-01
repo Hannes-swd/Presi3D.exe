@@ -215,6 +215,60 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  if (el) el.textContent = i + ' / ' + steps.length;\n"
         << "});\n"
         << "\n"
+        << "// ── iframe \"portal\" workaround ──────────────────────────────────\n"
+        << "// Browsers render <iframe> elements inside a CSS 3D-transformed\n"
+        << "// ancestor (how impress.js positions every step) as a flattened,\n"
+        << "// non-interactive image. We clone each iframe into a position:fixed\n"
+        << "// element appended to <body> (outside the 3D context) and keep it\n"
+        << "// aligned to the on-screen position of the original while active.\n"
+        << "var portals = {};\n"
+        << "function syncPortal(wrap) {\n"
+        << "  var id = wrap.dataset.portalId;\n"
+        << "  var srcIframe = wrap.querySelector('iframe');\n"
+        << "  if (!id || !srcIframe) return;\n"
+        << "  var rect = wrap.getBoundingClientRect();\n"
+        << "  var portal = portals[id];\n"
+        << "  if (!portal) {\n"
+        << "    portal = document.createElement('iframe');\n"
+        << "    portal.src = srcIframe.src;\n"
+        << "    portal.allow = srcIframe.getAttribute('allow') || '';\n"
+        << "    portal.allowFullscreen = true;\n"
+        << "    portal.loading = 'lazy';\n"
+        << "    portal.style.position = 'fixed';\n"
+        << "    portal.style.border = 'none';\n"
+        << "    portal.style.zIndex = '5000';\n"
+        << "    document.body.appendChild(portal);\n"
+        << "    portals[id] = portal;\n"
+        << "  }\n"
+        << "  portal.style.display = 'block';\n"
+        << "  portal.style.left   = rect.left + 'px';\n"
+        << "  portal.style.top    = rect.top + 'px';\n"
+        << "  portal.style.width  = rect.width + 'px';\n"
+        << "  portal.style.height = rect.height + 'px';\n"
+        << "}\n"
+        << "function activeIframeWraps() {\n"
+        << "  var active = document.querySelector('.step.active');\n"
+        << "  return active ? Array.from(active.querySelectorAll('[data-type=\"iframe-wrap\"]')) : [];\n"
+        << "}\n"
+        << "function updateActivePortals() {\n"
+        << "  var activeWraps = activeIframeWraps();\n"
+        << "  var activeIds = activeWraps.map(function(w) { return w.dataset.portalId; });\n"
+        << "  Object.keys(portals).forEach(function(id) {\n"
+        << "    if (activeIds.indexOf(id) === -1) portals[id].style.display = 'none';\n"
+        << "  });\n"
+        << "  activeWraps.forEach(syncPortal);\n"
+        << "}\n"
+        << "document.addEventListener('impress:stepenter', function() {\n"
+        << "  var frames = 0;\n"
+        << "  var raf = function() {\n"
+        << "    updateActivePortals();\n"
+        << "    frames++;\n"
+        << "    if (frames < 80) requestAnimationFrame(raf);\n"
+        << "  };\n"
+        << "  requestAnimationFrame(raf);\n"
+        << "});\n"
+        << "window.addEventListener('resize', updateActivePortals);\n"
+        << "\n"
         << "document.addEventListener('keydown', function(e) {\n"
         << "  if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) {\n"
         << "    if (!document.fullscreenElement) {\n"
@@ -498,6 +552,27 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
             "<div data-type=\"formula\" data-latex=\"%1\" style=\"%2\">"
             "<div class=\"math\">$$%3$$</div></div>")
             .arg(latex, style, latex);
+
+    } else if (e.type == SlideElement::IFrame) {
+        if (e.content.trimmed().isEmpty()) return {};
+        QString url = e.content.toHtmlEscaped();
+        // data-portal-id: browsers render iframes inside a CSS 3D-transformed
+        // ancestor (how impress.js positions every step) as a flattened,
+        // non-interactive image. The exported JS "portals" a live clone of
+        // this iframe to a position:fixed element outside the 3D context
+        // while its slide is active, keyed by this id.
+        return QString(
+            "<div data-type=\"iframe-wrap\" data-portal-id=\"%3\" style=\"%1overflow:hidden;\">"
+            "<iframe data-type=\"iframe\" src=\"%2\" "
+            "style=\"position:absolute;inset:0;width:100%;height:100%;border:none;\" "
+            "allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" "
+            "allowfullscreen loading=\"lazy\"></iframe>"
+            "<a href=\"%2\" target=\"_blank\" rel=\"noopener\" "
+            "style=\"position:absolute;top:4px;right:4px;z-index:2;background:rgba(17,17,17,.75);"
+            "color:#fff;font:11px sans-serif;padding:3px 7px;border-radius:4px;text-decoration:none;\" "
+            "title=\"Falls die Seite das Einbetten blockiert: hier in neuem Tab öffnen\">↗ Öffnen</a>"
+            "</div>")
+            .arg(base, url, e.id);
     }
     return {};
 }

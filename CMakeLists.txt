@@ -6,11 +6,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Widgets OpenGL OpenGLWidgets)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Widgets OpenGL OpenGLWidgets Network)
 
 set(SOURCES
     src/main.cpp
     src/MainWindow.cpp
+    src/LocalHttpServer.cpp
     src/SlideListPanel.cpp
     src/EditorArea.cpp
     src/SlideEditor2D.cpp
@@ -27,6 +28,7 @@ set(SOURCES
     src/dialogs/InsertTableDialog.cpp
     src/dialogs/InsertChartDialog.cpp
     src/dialogs/InsertFormulaDialog.cpp
+    src/dialogs/InsertIFrameDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
     src/FormatBar.cpp
@@ -41,6 +43,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Widgets
     Qt6::OpenGL
     Qt6::OpenGLWidgets
+    Qt6::Network
 )
 
 # To deploy Qt DLLs, run manually:

@@ -9,6 +9,7 @@ class EditorArea;
 class PropertiesPanel;
 class FormatBar;
 class QTimer;
+class LocalHttpServer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -62,6 +63,7 @@ private:
     Presentation*    m_presentation  = nullptr;
     int              m_selectedSlide = -1;
     QAction*         m_browserAction = nullptr;
+    LocalHttpServer* m_previewServer = nullptr;
 
     SlideListPanel*  m_slidePanel    = nullptr;
     EditorArea*      m_editorArea    = nullptr;

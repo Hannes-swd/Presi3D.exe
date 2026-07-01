@@ -183,6 +183,11 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
             LatexRenderer::paint(p, r, elem.content, elem.fontFamily,
                                  qMax(1, (int)(elem.fontSize * sy)),
                                  elem.color.isValid() ? elem.color : Qt::black);
+        } else if (elem.type == SlideElement::IFrame) {
+            p.fillRect(r, QColor(235, 240, 250));
+            p.setPen(QPen(QColor(150, 160, 190), 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r);
         }
     }
 

@@ -707,7 +707,7 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Form", "Bild", "Tabelle", "Diagramm", "Formel"};
+    static const char* typeNames[] = {"Text", "Form", "Bild", "Tabelle", "Diagramm", "Formel", "iFrame"};
     m_elemType->setText(typeNames[e.type]);
 
     m_elemContent->setEnabled(e.type != SlideElement::Shape);

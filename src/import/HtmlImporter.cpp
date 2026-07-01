@@ -475,6 +475,21 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 e.height = cssProp(style, "height").remove("px").toFloat();
                 slide.elements.append(e);
 
+            } else if (line.startsWith("<iframe")) {
+                // ── IFrame element ───────────────────────────────────────────
+                SlideElement e;
+                e.type    = SlideElement::IFrame;
+                QString style = attrVal(line, "style");
+                QString src   = attrVal(line, "src");
+                src.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                   .replace("&quot;", "\"").replace("&#39;", "'");
+                e.content = src;
+                e.x      = cssProp(style, "left").remove("px").toFloat();
+                e.y      = cssProp(style, "top").remove("px").toFloat();
+                e.width  = cssProp(style, "width").remove("px").toFloat();
+                e.height = cssProp(style, "height").remove("px").toFloat();
+                slide.elements.append(e);
+
             } else if (line.startsWith("<div")) {
                 // ── Text or Shape element ──────────────────────────────────────
                 int dTagEnd    = line.indexOf('>');
@@ -536,6 +551,32 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                             }
                             slide.elements.append(ce);
                         }
+                    }
+                    continue;
+                }
+
+                // IFrame element: wrapped in a div with a nested <iframe src="...">
+                if (dtype == "iframe-wrap") {
+                    QRegularExpression srcRe("<iframe[^>]*\\ssrc=\"([^\"]*)\"");
+                    auto srcM = srcRe.match(line);
+                    if (srcM.hasMatch()) {
+                        SlideElement ie;
+                        ie.type   = SlideElement::IFrame;
+                        ie.x      = cssProp(style, "left").remove("px").toFloat();
+                        ie.y      = cssProp(style, "top").remove("px").toFloat();
+                        ie.width  = cssProp(style, "width").remove("px").toFloat();
+                        ie.height = cssProp(style, "height").remove("px").toFloat();
+                        QString transform = cssProp(style, "transform");
+                        if (transform.contains("rotate")) {
+                            QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                            auto rotM = rotRe.match(transform);
+                            if (rotM.hasMatch()) ie.rotation = rotM.captured(1).toFloat();
+                        }
+                        QString src = srcM.captured(1);
+                        src.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                           .replace("&quot;", "\"").replace("&#39;", "'");
+                        ie.content = src;
+                        slide.elements.append(ie);
                     }
                     continue;
                 }

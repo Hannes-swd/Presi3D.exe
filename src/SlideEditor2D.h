@@ -31,6 +31,8 @@ public slots:
     void openChartEditor();  // open editor for selected chart element
     void addFormulaElement(const QString& latex);
     void openFormulaEditor(); // open editor for selected formula element
+    void addIFrameElement(const QString& url);
+    void openIFrameEditor(); // open editor for selected iframe element
     void deleteSelectedElement();
     void copySelectedElement();
     void pasteElement();
