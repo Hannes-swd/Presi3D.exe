@@ -8,6 +8,8 @@
 #include <QLabel>
 #include <QFrame>
 #include <QColorDialog>
+#include <QInputDialog>
+#include <QLineEdit>
 
 static const QString ALIGN_BTN =
     "QPushButton { border:1px solid #d1d5db; padding:2px 5px; min-width:26px; font-size:12px; background:#ffffff; color:#111827; }"
@@ -149,6 +151,15 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
 
     tr->addWidget(makeSep(m_textGroup));
 
+    m_linkBtn = new QPushButton("🔗 Link", m_textGroup);
+    m_linkBtn->setCheckable(true);
+    m_linkBtn->setFixedWidth(62);
+    m_linkBtn->setStyleSheet(ALIGN_BTN);
+    m_linkBtn->setToolTip("Hyperlink für diesen Text setzen/entfernen");
+    tr->addWidget(m_linkBtn);
+
+    tr->addWidget(makeSep(m_textGroup));
+
     m_fmtPainterBtn = new QPushButton("◈ Format", m_textGroup);
     m_fmtPainterBtn->setToolTip("Format auf anderes Element übertragen");
     m_fmtPainterBtn->setFixedWidth(80);
@@ -199,6 +210,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     connect(m_underlineBtn, &QPushButton::clicked, this, &FormatBar::onUnderline);
     connect(m_strikeBtn,    &QPushButton::clicked, this, &FormatBar::onStrikethrough);
     connect(m_ulColorBtn,   &QPushButton::clicked, this, &FormatBar::onUnderlineColorClicked);
+    connect(m_linkBtn,      &QPushButton::clicked, this, &FormatBar::onLinkClicked);
     connect(m_ulStyleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &FormatBar::onUnderlineStyleChanged);
     connect(m_fmtPainterBtn, &QPushButton::clicked, this, &FormatBar::formatPainterRequested);
@@ -266,6 +278,8 @@ void FormatBar::refresh() {
     m_vAlignTop->setEnabled(isText);
     m_vAlignMiddle->setEnabled(isText);
     m_vAlignBottom->setEnabled(isText);
+    m_linkBtn->setEnabled(isText);
+    m_linkBtn->setChecked(isText && !e->hyperlink.trimmed().isEmpty());
 
     if (isCell) {
         // Font size shows table-wide font size
@@ -506,6 +520,17 @@ void FormatBar::onStrikethrough() {
     auto* e = currentElem();
     if (!e || (e->type != SlideElement::Text && e->type != SlideElement::Shape)) return;
     e->strikethrough = m_strikeBtn->isChecked(); emit modified();
+}
+void FormatBar::onLinkClicked() {
+    auto* e = currentElem();
+    if (!e || e->type != SlideElement::Text) { refresh(); return; }
+    bool ok = false;
+    QString url = QInputDialog::getText(this, "Hyperlink",
+        "Ziel-URL (leer lassen zum Entfernen):", QLineEdit::Normal, e->hyperlink, &ok);
+    if (!ok) { refresh(); return; }
+    e->hyperlink = url.trimmed();
+    refresh();
+    emit modified();
 }
 void FormatBar::onUnderlineColorClicked() {
     auto* e = currentElem(); if (!e) return;

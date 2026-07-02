@@ -707,7 +707,7 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Form", "Bild", "Tabelle", "Diagramm", "Formel", "iFrame"};
+    static const char* typeNames[] = {"Text", "Form", "Bild", "Tabelle", "Diagramm", "Formel", "iFrame", "Button"};
     m_elemType->setText(typeNames[e.type]);
 
     m_elemContent->setEnabled(e.type != SlideElement::Shape);
@@ -722,7 +722,8 @@ void PropertiesPanel::refreshElement() {
     updateColorButton(m_eBgColorBtn, e.backgroundColor == Qt::transparent
                                          ? Qt::white : e.backgroundColor);
 
-    m_eFontSize->setEnabled(e.type == SlideElement::Text || e.type == SlideElement::Formula);
+    m_eFontSize->setEnabled(e.type == SlideElement::Text || e.type == SlideElement::Formula
+                             || e.type == SlideElement::Button);
     m_eFontSize->setValue(e.fontSize);
 
     m_eAlign->setEnabled(e.type == SlideElement::Text);

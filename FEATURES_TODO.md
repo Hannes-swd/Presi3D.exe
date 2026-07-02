@@ -1,6 +1,6 @@
 # Feature-Roadmap – Impress.js Editor
 
-> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export)
+> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung, LaTeX-Formeln), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export + Properties-Panel-UI), Undo/Redo (debounced, 50 Schritte), Datei speichern/öffnen (Projektordner-Format)
 
 ---
 
@@ -8,14 +8,12 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Datei speichern / öffnen** | JSON-Format für das gesamte Projekt; Ctrl+S / Ctrl+O |
-| **Undo / Redo** | Ctrl+Z / Ctrl+Y, Command-Pattern, mind. 50 Schritte |
 | **Autosave** | Alle X Minuten automatisch speichern, Wiederherstellung nach Absturz |
-| **Tastaturkürzel** | Vollständiges Shortcut-System (Kopieren, Einfügen, Auswählen, Löschen …) |
-| **Mehrfachauswahl** | Mehrere Elemente gleichzeitig markieren, verschieben, löschen |
+| **Tastaturkürzel** | ⚠️ Teilweise – Menü-Shortcuts (Save/Open/Undo/Redo) und einzelne Editor-Shortcuts (Ctrl+C/V, Entf, Ctrl+A) vorhanden, aber kein zentrales/dokumentiertes Shortcut-System |
+| **Mehrfachauswahl** | Mehrere Elemente gleichzeitig markieren, verschieben, löschen (aktuell nur Einzelauswahl `m_selectedElem`) |
 | **Gruppenbildung** | Elemente zu Gruppen zusammenfassen und gemeinsam bearbeiten |
-| **Lineale und Führungslinien** | Einblendbare Lineale, ziehbare Hilfslinien |
-| **Zoom im 2D-Editor** | Ctrl+Mausrad zum Rein-/Rauszoomen in die Arbeitsfläche |
+| **Lineale und Führungslinien** | Einblendbare Lineale, ziehbare Hilfslinien (aktuell nur temporäre Snap-Ausrichtungslinien beim Ziehen, keine Lineale, keine dauerhaften Guides) |
+| **Zoom im 2D-Editor** | Ctrl+Mausrad zum Rein-/Rauszoomen in die Arbeitsfläche (aktuell nur Auto-Fit-Skalierung, kein manueller Zoom) |
 
 ---
 
@@ -25,13 +23,11 @@
 |---|---|
 | **Linien als eigenes Element** | Gerade Linien mit konfigurierbaren Pfeilspitzen an beiden Enden |
 | **Code-Block** | Monospace-Box mit Syntax-Highlighting (C++, Python, JS usw.) |
-| **Gleichungen / Mathe** | LaTeX-Eingabe, gerenderte Formeldarstellung |
 | **Icons** | Eingebaute Icon-Bibliothek (z. B. Material Icons, Font Awesome), SVG-Import |
 | **SVG-Dateien** | SVG direkt importieren und als Vektorgrafik auf der Folie platzieren |
 | **Videos** | Lokale Videodateien einbetten, Autoplay-/Loop-Optionen |
 | **GIFs** | Animierte GIFs auf Folien platzieren |
 | **Audio** | Hintergrundmusik oder Sound-Effekte pro Folie |
-| ~~**YouTube / iFrame**~~ | ✅ Implementiert – Link eingeben, Platzhalter im Editor/3D-Ansicht, echtes `<iframe>` im HTML-Export/Vorschau |
 | **Hyperlinks** | Text oder Elemente als Klick-Link definieren |
 | **QR-Code-Generator** | URL eingeben → QR-Code wird direkt als Element eingefügt |
 
@@ -96,7 +92,6 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 | Feature | Beschreibung |
 |---|---|
-| **Animations-UI** | UI zum Setzen von Eintrittanimationstyp, Delay und Dauer pro Element (Daten + HTML bereits vorhanden) |
 | **Austrittsanimationen** | Fade Out, Slide Out, Shrink usw. |
 | **Folienübergänge (UI)** | Impress.js-Übergänge konfigurieren (bereits im HTML, UI fehlt) |
 | **Timeline-Editor** | Visuelle Timeline pro Folie: Wann startet welche Animation? |
@@ -178,7 +173,7 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 ## Zusammenfassung: Die wichtigsten noch fehlenden Features
 
 1. **Variablen ohne Code** – absolutes Alleinstellungsmerkmal, kein Konkurrent hat das
-2. **Datei speichern / öffnen** – grundlegende Voraussetzung für produktiven Einsatz
-3. **Undo / Redo** – essentiell für fehlerfreies Arbeiten
-4. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
-5. **Animations-UI** – Infrastruktur (Daten + HTML-Export) bereits vorhanden
+2. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
+3. **Autosave** – schützt vor Datenverlust bei Absturz
+4. **Gruppenbildung** – baut auf Mehrfachauswahl auf
+5. **Lineale, Führungslinien & Zoom im 2D-Editor** – grundlegende Editier-Komfortfunktionen

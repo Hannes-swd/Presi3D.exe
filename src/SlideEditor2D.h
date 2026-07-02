@@ -33,6 +33,8 @@ public slots:
     void openFormulaEditor(); // open editor for selected formula element
     void addIFrameElement(const QString& url);
     void openIFrameEditor(); // open editor for selected iframe element
+    void addButtonElement(const QString& label, const QString& targetSlideId);
+    void openButtonEditor(); // open editor for selected button element
     void deleteSelectedElement();
     void copySelectedElement();
     void pasteElement();

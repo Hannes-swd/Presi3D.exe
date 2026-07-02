@@ -659,6 +659,20 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                         else if (ulst == "dotted") e.underlineStyle = 2;
                         else if (ulst == "wavy")   e.underlineStyle = 3;
                     }
+                    // Hyperlink: content wrapped in <a href="...">...</a> by the exporter
+                    {
+                        QRegularExpression linkRe("^<a href=\"([^\"]*)\"[^>]*>(.*)</a>$",
+                                                   QRegularExpression::DotMatchesEverythingOption);
+                        auto linkM = linkRe.match(elemTxt);
+                        if (linkM.hasMatch()) {
+                            QString href = linkM.captured(1);
+                            href.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                                .replace("&quot;", "\"").replace("&#39;", "'");
+                            e.hyperlink = href;
+                            elemTxt = linkM.captured(2);
+                        }
+                    }
+
                     // Check for list style
                     QString dlist = attrVal(dTag, "data-list");
                     if (!dlist.isEmpty()) {
@@ -735,6 +749,55 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     if (!rawDur.isEmpty())   e.animDuration = rawDur.remove('s').toFloat();
                 }
 
+                slide.elements.append(e);
+
+            } else if (line.startsWith("<a") && attrVal(line, "data-type") == "button") {
+                // ── Navigation button ───────────────────────────────────────────
+                SlideElement e;
+                e.type = SlideElement::Button;
+                QString style = attrVal(line, "style");
+                e.x      = cssProp(style, "left").remove("px").toFloat();
+                e.y      = cssProp(style, "top").remove("px").toFloat();
+                e.width  = cssProp(style, "width").remove("px").toFloat();
+                e.height = cssProp(style, "height").remove("px").toFloat();
+                QString transform = cssProp(style, "transform");
+                if (transform.contains("rotate")) {
+                    QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                    auto rotM = rotRe.match(transform);
+                    if (rotM.hasMatch()) e.rotation = rotM.captured(1).toFloat();
+                }
+                QString ff = cssProp(style, "font-family");
+                ff.remove('\'').remove('"');
+                if (!ff.isEmpty()) e.fontFamily = ff;
+                QString fs = cssProp(style, "font-size").remove("px");
+                if (!fs.isEmpty()) e.fontSize = fs.toInt();
+                QColor fc = parseCssColor(cssProp(style, "color"));
+                if (fc.isValid()) e.color = fc;
+                QColor bg = parseCssColor(cssProp(style, "background"));
+                if (bg.isValid()) e.backgroundColor = bg;
+                e.bold = cssProp(style, "font-weight").trimmed() == "bold";
+                QString border = cssProp(style, "border");
+                QRegularExpression bRe(R"(([\d.]+)px\s+solid\s+(.+))");
+                auto bm = bRe.match(border);
+                if (bm.hasMatch()) {
+                    e.borderWidth = bm.captured(1).toFloat();
+                    e.borderColor = parseCssColor(bm.captured(2).trimmed());
+                }
+                QString brad = cssProp(style, "border-radius");
+                if (!brad.isEmpty()) e.cornerRadius = brad.remove("px").toFloat();
+
+                QString targetId = attrVal(line, "data-target");
+                if (!targetId.isEmpty() && htmlIdToUuid.contains(targetId))
+                    e.targetSlideId = htmlIdToUuid[targetId];
+
+                int aTagEnd = line.indexOf('>');
+                int aEnd    = line.lastIndexOf("</a>");
+                if (aTagEnd >= 0 && aEnd > aTagEnd) {
+                    QString label = line.mid(aTagEnd + 1, aEnd - aTagEnd - 1);
+                    label.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                         .replace("&quot;", "\"").replace("&#39;", "'");
+                    e.content = label;
+                }
                 slide.elements.append(e);
             }
         }

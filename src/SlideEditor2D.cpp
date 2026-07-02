@@ -5,6 +5,7 @@
 #include "dialogs/ChartEditorDialog.h"
 #include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/InsertIFrameDialog.h"
+#include "dialogs/InsertButtonDialog.h"
 #include <QPainter>
 #include <QtMath>
 #include <QMouseEvent>
@@ -390,7 +391,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         QFont font(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
         font.setBold(e.bold);
         font.setItalic(e.italic);
-        font.setUnderline(e.underline);
+        font.setUnderline(e.underline || !e.hyperlink.trimmed().isEmpty());
         font.setStrikeOut(e.strikethrough);
 
         Qt::Alignment align = Qt::AlignLeft;
@@ -538,6 +539,39 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.drawText(labelRect, Qt::AlignCenter | Qt::TextWordWrap,
                    e.content.isEmpty() ? "iFrame – Doppelklick für Link" : e.content);
         p.restore();
+
+    } else if (e.type == SlideElement::Button) {
+        QRectF sr2 = slideRect();
+        float rx = e.cornerRadius * sr2.width()  / SLIDE_W_DEFAULT;
+        float ry = e.cornerRadius * sr2.height() / SLIDE_H_DEFAULT;
+
+        p.setPen(e.borderWidth > 0
+                 ? QPen(e.borderColor.isValid() ? e.borderColor : Qt::darkGray, e.borderWidth)
+                 : Qt::NoPen);
+        p.setBrush(e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent
+                   ? QBrush(e.backgroundColor) : QBrush(QColor(37, 99, 235)));
+        if (rx > 0 || ry > 0) p.drawRoundedRect(wr, rx, ry);
+        else                   p.drawRect(wr);
+
+        QFont font(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
+        font.setBold(e.bold);
+        font.setItalic(e.italic);
+        p.save();
+        p.setFont(font);
+        p.setPen(e.color.isValid() ? e.color : Qt::white);
+        p.setClipRect(wr, Qt::IntersectClip);
+        p.drawText(wr, Qt::AlignCenter | Qt::TextWordWrap,
+                   e.content.isEmpty() ? "Button" : e.content);
+        p.restore();
+
+        if (selected) {
+            p.save();
+            p.setPen(QColor(37, 99, 235, 220));
+            p.setFont(QFont("Arial", qMax(6, int(9 * scaleY))));
+            p.drawText(QRectF(wr.x(), wr.bottom() - 16 * scaleY, wr.width(), 16 * scaleY),
+                       Qt::AlignCenter, "Doppelklick: Ziel-Folie wählen");
+            p.restore();
+        }
     }
 
     // Generic dashed selection outline (Text, Image, Chart)
@@ -1159,6 +1193,10 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
         m_selectedElem = hit;
         openIFrameEditor();
         return;
+    } else if (elem.type == SlideElement::Button) {
+        m_selectedElem = hit;
+        openButtonEditor();
+        return;
     } else if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Shape) {
@@ -1488,6 +1526,49 @@ void SlideEditor2D::openIFrameEditor() {
     InsertIFrameDialog dlg(this, e.content);
     if (dlg.exec() == QDialog::Accepted) {
         e.content = dlg.url();
+        update();
+        emit presentationModified();
+    }
+}
+
+static QVector<QPair<QString, QString>> slideListForButtonTarget(const Presentation* pres) {
+    QVector<QPair<QString, QString>> slides;
+    if (!pres) return slides;
+    for (const Slide& s : pres->slides)
+        slides.append({s.id, s.name.isEmpty() ? QString("Folie %1").arg(slides.size() + 1) : s.name});
+    return slides;
+}
+
+void SlideEditor2D::addButtonElement(const QString& label, const QString& targetSlideId) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type            = SlideElement::Button;
+    e.content         = label.isEmpty() ? "Weiter" : label;
+    e.targetSlideId   = targetSlideId;
+    e.x = 300.f; e.y = 300.f; e.width = 240.f; e.height = 70.f;
+    e.fontSize        = 24;
+    e.color           = Qt::white;
+    e.backgroundColor = QColor(37, 99, 235);
+    e.cornerRadius    = 8.f;
+    e.bold            = true;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::openButtonEditor() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Button) return;
+
+    InsertButtonDialog dlg(this, slideListForButtonTarget(m_pres), e.content, e.targetSlideId);
+    if (dlg.exec() == QDialog::Accepted) {
+        e.content       = dlg.label().isEmpty() ? "Weiter" : dlg.label();
+        e.targetSlideId = dlg.targetSlideId();
         update();
         emit presentationModified();
     }

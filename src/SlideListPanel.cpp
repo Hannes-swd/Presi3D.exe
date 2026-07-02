@@ -188,6 +188,11 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
             p.setPen(QPen(QColor(150, 160, 190), 1));
             p.setBrush(Qt::NoBrush);
             p.drawRect(r);
+        } else if (elem.type == SlideElement::Button) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent
+                       ? elem.backgroundColor : QColor(37, 99, 235));
+            p.drawRoundedRect(r, 3, 3);
         }
     }
 

@@ -20,7 +20,8 @@ private:
     static QString slideToHtml(const Slide& slide, int index,
                                const QMap<QString, QString>& uuidToHtmlId,
                                const QMap<QString, QString>& uuidToVisString);
-    static QString elementToHtml(const SlideElement& elem);
+    static QString elementToHtml(const SlideElement& elem,
+                                 const QMap<QString, QString>& uuidToHtmlId = {});
     static QString colorToCss(const QColor& c);
     static bool    copyImages(const Presentation& pres,
                               const QString& assetsDir,

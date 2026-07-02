@@ -468,6 +468,22 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
         } else if (elem.type == SlideElement::Chart) {
             p.fillRect(r, Qt::white);
             ChartRenderer::paint(p, r, elem.chartData);
+        } else if (elem.type == SlideElement::Button) {
+            p.setPen(elem.borderWidth > 0
+                     ? QPen(elem.borderColor.isValid() ? elem.borderColor : Qt::darkGray,
+                            elem.borderWidth * sx)
+                     : Qt::NoPen);
+            p.setBrush(elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent
+                       ? QBrush(elem.backgroundColor) : QBrush(QColor(37, 99, 235)));
+            float rx = elem.cornerRadius * sx, ry = elem.cornerRadius * sy;
+            if (rx > 0 || ry > 0) p.drawRoundedRect(r, rx, ry);
+            else                   p.drawRect(r);
+            QFont bf(elem.fontFamily, qMax(6, int(elem.fontSize * sy)));
+            bf.setBold(elem.bold);
+            p.setFont(bf);
+            p.setPen(elem.color.isValid() ? elem.color : Qt::white);
+            p.drawText(r, int(Qt::AlignCenter | Qt::TextWordWrap),
+                       elem.content.isEmpty() ? "Button" : elem.content);
         }
     }
     p.end();

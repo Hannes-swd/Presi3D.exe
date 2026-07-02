@@ -40,6 +40,7 @@ private slots:
     void onStrikethrough();
     void onUnderlineColorClicked();
     void onUnderlineStyleChanged(int idx);
+    void onLinkClicked();
     void onXChanged(double v);
     void onYChanged(double v);
     void onWChanged(double v);
@@ -78,6 +79,7 @@ private:
     QPushButton*   m_ulColorBtn     = nullptr;
     QComboBox*     m_ulStyleCombo   = nullptr;
     QPushButton*   m_fmtPainterBtn  = nullptr;
+    QPushButton*   m_linkBtn        = nullptr;
 
     // Geometry group
     QDoubleSpinBox* m_posX  = nullptr;

@@ -5,6 +5,7 @@
 #include "dialogs/InsertChartDialog.h"
 #include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/InsertIFrameDialog.h"
+#include "dialogs/InsertButtonDialog.h"
 #include "dialogs/ShapePickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -62,6 +63,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnChart   = mkBtn("📊 Diagramm","Diagramm einfügen");
     m_btnFormula = mkBtn("∑ Formel",  "Formel einfügen (LaTeX)");
     m_btnIFrame  = mkBtn("🌐 iFrame", "Webseite/Link einbetten");
+    m_btnButton  = mkBtn("⏵ Button", "Navigations-Button einfügen (springt zu einer Folie)");
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -177,6 +179,16 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         InsertIFrameDialog dlg(this);
         if (dlg.exec() == QDialog::Accepted && !dlg.url().isEmpty())
             m_editor2D->addIFrameElement(dlg.url());
+    });
+    connect(m_btnButton,   &QPushButton::clicked, this, [this]() {
+        QVector<QPair<QString, QString>> slides;
+        if (m_pres) {
+            for (const Slide& s : m_pres->slides)
+                slides.append({s.id, s.name.isEmpty() ? QString("Folie %1").arg(slides.size() + 1) : s.name});
+        }
+        InsertButtonDialog dlg(this, slides);
+        if (dlg.exec() == QDialog::Accepted)
+            m_editor2D->addButtonElement(dlg.label(), dlg.targetSlideId());
     });
     connect(m_btnDelete,   &QPushButton::clicked, m_editor2D, &SlideEditor2D::deleteSelectedElement);
     connect(m_btnFront,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringToFront);

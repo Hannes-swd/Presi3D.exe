@@ -29,6 +29,7 @@ set(SOURCES
     src/dialogs/InsertChartDialog.cpp
     src/dialogs/InsertFormulaDialog.cpp
     src/dialogs/InsertIFrameDialog.cpp
+    src/dialogs/InsertButtonDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
     src/FormatBar.cpp

@@ -45,6 +45,7 @@ private:
     QPushButton*     m_btnChart    = nullptr;
     QPushButton*     m_btnFormula  = nullptr;
     QPushButton*     m_btnIFrame   = nullptr;
+    QPushButton*     m_btnButton   = nullptr;
     QPushButton*     m_btnDelete   = nullptr;
     // Layer buttons
     QPushButton*     m_btnFront    = nullptr;

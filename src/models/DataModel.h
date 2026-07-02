@@ -19,13 +19,19 @@ struct TableCell {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame };
+    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
     Type    type = Text;
-    QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula)
+    QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula) | button label (Button)
     int     listStyle = NoList;
+
+    // ── Hyperlink (Text elements) ────────────────────────────────────────────
+    QString hyperlink; // URL the whole text element links to; empty = no link
+
+    // ── Navigation button (only when type == Button) ─────────────────────────
+    QString targetSlideId; // id of the Slide this button jumps to when clicked
 
     // Position and size in slide coordinates (0-1920 x 0-1080)
     float x      = 100.f;

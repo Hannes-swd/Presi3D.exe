@@ -197,7 +197,10 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "});\n"
         << "\n"
         << "// Set initial opacities\n"
-        << "steps.forEach(function(step) { step.style.opacity = defaultInactiveOpacity; });\n"
+        << "// Inactive steps get pointer-events:none so they can't intercept clicks meant\n"
+        << "// for the active slide's content (e.g. navigation buttons) even when a\n"
+        << "// neighboring step's 3D-transformed box visually overlaps it on screen.\n"
+        << "steps.forEach(function(step) { step.style.opacity = defaultInactiveOpacity; step.style.pointerEvents = 'none'; });\n"
         << "\n"
         << "document.addEventListener('impress:stepenter', function(e) {\n"
         << "  var activeId = e.target.id;\n"
@@ -205,9 +208,11 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  steps.forEach(function(step) {\n"
         << "    if (step.id === activeId) {\n"
         << "      step.style.opacity = '1';\n"
+        << "      step.style.pointerEvents = 'auto';\n"
         << "    } else {\n"
         << "      var opa = (step.id in overrides) ? overrides[step.id] : defaultInactiveOpacity;\n"
         << "      step.style.opacity = String(opa);\n"
+        << "      step.style.pointerEvents = 'none';\n"
         << "    }\n"
         << "  });\n"
         << "  var el = document.getElementById('slide-counter');\n"
@@ -326,13 +331,14 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index,
     out << "       style=\""          << stepStyle << "\">\n";
 
     for (const auto& elem : s.elements)
-        out << "    " << elementToHtml(elem) << "\n";
+        out << "    " << elementToHtml(elem, uuidToHtmlId) << "\n";
 
     out << "  </div>";
     return html;
 }
 
-QString HtmlExporter::elementToHtml(const SlideElement& e) {
+QString HtmlExporter::elementToHtml(const SlideElement& e,
+                                    const QMap<QString, QString>& uuidToHtmlId) {
     QString base = QString("position:absolute;left:%1px;top:%2px;width:%3px;height:%4px;")
                        .arg(int(e.x)).arg(int(e.y)).arg(int(e.width)).arg(int(e.height));
     if (e.rotation != 0.f)
@@ -381,6 +387,12 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
         }
 
         QString text = e.content.toHtmlEscaped().replace("\n", "<br>");
+        if (!e.hyperlink.trimmed().isEmpty()) {
+            QString href = e.hyperlink.trimmed().toHtmlEscaped();
+            text = QString("<a href=\"%1\" target=\"_blank\" rel=\"noopener noreferrer\" "
+                           "style=\"color:inherit;text-decoration:inherit;\">%2</a>")
+                       .arg(href, text);
+        }
         if (!e.entranceAnim.isEmpty()) {
             style += QString("--anim-delay:%1s;--anim-dur:%2s;")
                          .arg(e.animDelay, 0, 'f', 2).arg(e.animDuration, 0, 'f', 2);
@@ -573,6 +585,31 @@ QString HtmlExporter::elementToHtml(const SlideElement& e) {
             "title=\"Falls die Seite das Einbetten blockiert: hier in neuem Tab öffnen\">↗ Öffnen</a>"
             "</div>")
             .arg(base, url, e.id);
+
+    } else if (e.type == SlideElement::Button) {
+        QString style = base
+            + QString("display:flex;align-items:center;justify-content:center;"
+                       "font-family:'%1';font-size:%2px;text-align:center;"
+                       "cursor:pointer;user-select:none;text-decoration:none;overflow:hidden;box-sizing:border-box;")
+                  .arg(e.fontFamily).arg(e.fontSize);
+        style += "color:" + colorToCss(e.color.isValid() ? e.color : Qt::white) + ";";
+        style += "background:" + colorToCss(e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent
+                                             ? e.backgroundColor : QColor(37, 99, 235)) + ";";
+        if (e.borderWidth > 0)
+            style += QString("border:%1px solid %2;")
+                         .arg(int(e.borderWidth)).arg(colorToCss(e.borderColor));
+        if (e.cornerRadius > 0)
+            style += QString("border-radius:%1px;").arg(int(e.cornerRadius));
+        if (e.bold) style += "font-weight:bold;";
+
+        QString label = e.content.isEmpty() ? "Weiter" : e.content.toHtmlEscaped();
+        QString targetHtmlId = uuidToHtmlId.value(e.targetSlideId);
+        if (targetHtmlId.isEmpty())
+            return QString("<div data-type=\"button\" style=\"%1opacity:.5;\">%2</div>").arg(style, label);
+
+        return QString("<a data-type=\"button\" data-target=\"%1\" href=\"#%1\" "
+                       "onclick=\"api.goto('%1');return false;\" style=\"%2\">%3</a>")
+                   .arg(targetHtmlId, style, label);
     }
     return {};
 }
