@@ -1,0 +1,42 @@
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #ffffff;
+    overflow: hidden;
+    font-family: sans-serif;
+}
+
+.step {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transition: opacity 0.6s ease-in-out;
+}
+
+/* Opacity is managed via JavaScript for per-slide control */
+
+/* Fix: prevent GPU sub-pixel blur on images during 3D CSS transforms */
+.step img {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transform: translateZ(0);
+    image-rendering: -webkit-optimize-contrast;
+}
+
+/* Entrance animations */
+.step [data-anim] { opacity: 0; }
+.step.present [data-anim="fadeIn"]    { animation: impressFadeIn    var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
+.step.present [data-anim="slideLeft"] { animation: impressSlideLeft var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
+.step.present [data-anim="slideRight"]{ animation: impressSlideRight var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
+.step.present [data-anim="slideUp"]   { animation: impressSlideUp   var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
+.step.present [data-anim="slideDown"] { animation: impressSlideDown var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
+.step.present [data-anim="zoomIn"]    { animation: impressZoomIn    var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
+
+@keyframes impressFadeIn    { from{opacity:0}               to{opacity:1} }
+@keyframes impressSlideLeft { from{transform:translateX(-60px);opacity:0} to{transform:none;opacity:1} }
+@keyframes impressSlideRight{ from{transform:translateX(60px);opacity:0}  to{transform:none;opacity:1} }
+@keyframes impressSlideUp   { from{transform:translateY(-60px);opacity:0} to{transform:none;opacity:1} }
+@keyframes impressSlideDown { from{transform:translateY(60px);opacity:0}  to{transform:none;opacity:1} }
+@keyframes impressZoomIn    { from{transform:scale(0.4);opacity:0}        to{transform:none;opacity:1} }

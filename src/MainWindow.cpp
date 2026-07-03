@@ -152,8 +152,12 @@ void MainWindow::connectSignals() {
 void MainWindow::onSlideSelected(int index) {
     m_selectedSlide = index;
     m_selectedElem  = -1;
-    m_editorArea->setPresentation(m_presentation, index);
+    // m_propPanel must be updated before m_editorArea: SlideEditor2D::setSlide()
+    // synchronously emits elementSelected(-1), which MainWindow::onElementSelected
+    // forwards straight into PropertiesPanel::setSelectedElement(). If m_propPanel
+    // still pointed at the old Presentation at that moment, it would dereference it.
     m_propPanel->setSlide(m_presentation, index);
+    m_editorArea->setPresentation(m_presentation, index);
     m_slidePanel->setSelectedSlide(index);
     m_formatBar->setContext(m_presentation, index, -1);
 }
@@ -316,8 +320,9 @@ void MainWindow::onElementSelected(int elemIndex) {
 void MainWindow::refreshAll() {
     m_slidePanel->setPresentation(m_presentation);
     if (m_selectedSlide >= 0) {
-        m_editorArea->setPresentation(m_presentation, m_selectedSlide);
+        // See comment in onSlideSelected(): m_propPanel must be refreshed first.
         m_propPanel->setSlide(m_presentation, m_selectedSlide);
+        m_editorArea->setPresentation(m_presentation, m_selectedSlide);
     }
     m_formatBar->setContext(m_presentation, m_selectedSlide, m_selectedElem);
 }
