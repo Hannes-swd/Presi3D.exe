@@ -648,7 +648,7 @@ void SlideEditor3D::paintGL() {
     painter.setRenderHint(QPainter::Antialiasing);
 
     // Mode indicator
-    QString modeStr = m_gizmoMode == GizmoMode::Move ? "⬜ Bewegen [W]" : "↻ Drehen [E]";
+    QString modeStr = m_gizmoMode == GizmoMode::Move ? "⬜ Move [W]" : "↻ Rotate [E]";
     painter.setPen(QColor(0,0,0,140));
     painter.fillRect(6, 6, 160, 20, QColor(0,0,0,100));
     painter.setPen(m_gizmoMode == GizmoMode::Move ? QColor(80,200,255) : QColor(255,200,80));
@@ -658,9 +658,9 @@ void SlideEditor3D::paintGL() {
     // Controls hint
     painter.setPen(QColor(200,200,200,160));
     painter.setFont(QFont("Arial", 8));
-    painter.drawText(10, height() - 36, "Linksklick: Slide wählen / Gizmo ziehen");
-    painter.drawText(10, height() - 22, "Rechtsklick+Ziehen: Kamera Pan  |  Scroll: Zoom");
-    painter.drawText(10, height() - 8,  "Linksklick+Ziehen (leer): Kamera Orbit");
+    painter.drawText(10, height() - 36, "Left-click: select slide / drag gizmo");
+    painter.drawText(10, height() - 22, "Right-click+drag: camera pan  |  Scroll: zoom");
+    painter.drawText(10, height() - 8,  "Left-click+drag (empty): camera orbit");
 
     // Viewport rectangles (projected to screen) + slide name labels
     if (m_pres) {

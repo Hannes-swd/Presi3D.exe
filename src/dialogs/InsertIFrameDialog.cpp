@@ -40,18 +40,18 @@ static QString normalizeIFrameUrl(const QString& raw) {
 
 InsertIFrameDialog::InsertIFrameDialog(QWidget* parent, const QString& initialUrl)
     : QDialog(parent) {
-    setWindowTitle(initialUrl.isEmpty() ? "iFrame einfügen" : "iFrame bearbeiten");
+    setWindowTitle(initialUrl.isEmpty() ? "Insert iFrame" : "Edit iFrame");
     setMinimumWidth(440);
 
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(8);
 
-    auto* hdr = new QLabel("Webseiten-Link (URL)", this);
+    auto* hdr = new QLabel("Web Link (URL)", this);
     hdr->setStyleSheet("font-size:14px;font-weight:bold;color:#111827;");
     layout->addWidget(hdr);
 
     auto* hint = new QLabel(
-        "YouTube-Links werden automatisch in die einbettbare /embed/-Form umgewandelt.", this);
+        "YouTube links are automatically converted to the embeddable /embed/ form.", this);
     hint->setStyleSheet("color:#6b7280; font-size:11px;");
     hint->setWordWrap(true);
     layout->addWidget(hint);
@@ -63,16 +63,16 @@ InsertIFrameDialog::InsertIFrameDialog(QWidget* parent, const QString& initialUr
     layout->addWidget(m_edit);
 
     auto* warn = new QLabel(
-        "⚠ Manche Seiten (z. B. google.com und viele andere) blockieren das Einbetten "
-        "per iframe grundsätzlich (X-Frame-Options) – das kommt von der Zielseite selbst "
-        "und lässt sich nicht umgehen. Betroffen zeigt die Seite dann einen Fehler statt "
-        "ihres Inhalts.", this);
+        "⚠ Some sites (e.g. google.com and many others) block embedding "
+        "via iframe entirely (X-Frame-Options) – this comes from the target site itself "
+        "and cannot be worked around. Affected sites will show an error instead of "
+        "their content.", this);
     warn->setStyleSheet("color:#b45309; font-size:11px;");
     warn->setWordWrap(true);
     layout->addWidget(warn);
 
     auto* bbox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    bbox->button(QDialogButtonBox::Ok)->setText(initialUrl.isEmpty() ? "Einfügen" : "Übernehmen");
+    bbox->button(QDialogButtonBox::Ok)->setText(initialUrl.isEmpty() ? "Insert" : "Apply");
     layout->addWidget(bbox);
     connect(bbox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(bbox, &QDialogButtonBox::rejected, this, &QDialog::reject);

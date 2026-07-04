@@ -27,8 +27,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     auto* topRow = new QHBoxLayout(topBar);
     topRow->setContentsMargins(8, 4, 8, 4);
 
-    m_btn2D = new QPushButton("2D Modus", topBar);
-    m_btn3D = new QPushButton("3D Modus", topBar);
+    m_btn2D = new QPushButton("2D Mode", topBar);
+    m_btn3D = new QPushButton("3D Mode", topBar);
     for (auto* b : {m_btn2D, m_btn3D}) {
         b->setCheckable(true);
         b->setFixedWidth(90);
@@ -56,14 +56,14 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         tbRow->addWidget(b);
         return b;
     };
-    m_btnText   = mkBtn("T Text",    "Textfeld hinzufügen");
-    m_btnShape  = mkBtn("⬡ Formen",  "Form einfügen");
-    m_btnImage  = mkBtn("□ Bild",    "Bild importieren");
-    m_btnTable   = mkBtn("⊞ Tabelle",  "Tabelle einfügen");
-    m_btnChart   = mkBtn("📊 Diagramm","Diagramm einfügen");
-    m_btnFormula = mkBtn("∑ Formel",  "Formel einfügen (LaTeX)");
-    m_btnIFrame  = mkBtn("🌐 iFrame", "Webseite/Link einbetten");
-    m_btnButton  = mkBtn("⏵ Button", "Navigations-Button einfügen (springt zu einer Folie)");
+    m_btnText   = mkBtn("T Text",    "Add text box");
+    m_btnShape  = mkBtn("⬡ Shapes",  "Insert shape");
+    m_btnImage  = mkBtn("□ Image",    "Import image");
+    m_btnTable   = mkBtn("⊞ Table",  "Insert table");
+    m_btnChart   = mkBtn("📊 Chart","Insert chart");
+    m_btnFormula = mkBtn("∑ Formula",  "Insert formula (LaTeX)");
+    m_btnIFrame  = mkBtn("🌐 iFrame", "Embed website/link");
+    m_btnButton  = mkBtn("⏵ Button", "Insert navigation button (jumps to a slide)");
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -85,13 +85,13 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         tbRow->addWidget(b);
         return b;
     };
-    m_btnFront    = mkLayerBtn("▲▲", "In Vordergrund (Ganz oben)");
-    m_btnForward  = mkLayerBtn("▲",  "Eine Ebene nach oben");
-    m_btnBackward = mkLayerBtn("▼",  "Eine Ebene nach unten");
-    m_btnBack     = mkLayerBtn("▼▼", "In Hintergrund (Ganz unten)");
+    m_btnFront    = mkLayerBtn("▲▲", "Bring to Front (Topmost)");
+    m_btnForward  = mkLayerBtn("▲",  "Move one layer up");
+    m_btnBackward = mkLayerBtn("▼",  "Move one layer down");
+    m_btnBack     = mkLayerBtn("▼▼", "Send to Back (Bottommost)");
 
     tbRow->addStretch();
-    m_btnDelete = mkBtn("× Löschen", "Ausgewähltes Element löschen");
+    m_btnDelete = mkBtn("× Delete", "Delete selected element");
     m_btnDelete->setStyleSheet(
         "QPushButton { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:3px; border-radius:4px; }"
         "QPushButton:hover { background:#fee2e2; border-color:#f87171; }");
@@ -113,14 +113,14 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         gRow->addWidget(b);
         return b;
     };
-    m_btnGizmoMove   = mkGizmoBtn("[W] Bewegen",  "Slide in 3D verschieben (X/Y/Z Pfeile ziehen)");
-    m_btnGizmoRotate = mkGizmoBtn("[E] Drehen",   "Slide in 3D drehen (X/Y/Z Ringe ziehen)");
+    m_btnGizmoMove   = mkGizmoBtn("[W] Move",  "Move slide in 3D (drag X/Y/Z arrows)");
+    m_btnGizmoRotate = mkGizmoBtn("[E] Rotate",   "Rotate slide in 3D (drag X/Y/Z rings)");
     m_btnGizmoMove->setChecked(true);
 
     gRow->addStretch();
 
     // Camera distance control
-    auto* distLbl = new QLabel("Abstand:", m_gizmoToolbar);
+    auto* distLbl = new QLabel("Distance:", m_gizmoToolbar);
     distLbl->setStyleSheet("color:#9ca3af; font-size:9px;");
     gRow->addWidget(distLbl);
     m_distanceSpin = new QDoubleSpinBox(m_gizmoToolbar);
@@ -129,7 +129,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_distanceSpin->setSingleStep(500.0);
     m_distanceSpin->setDecimals(0);
     m_distanceSpin->setFixedWidth(90);
-    m_distanceSpin->setToolTip("Kamera-Abstand (Mausrad ändert auch den Abstand)");
+    m_distanceSpin->setToolTip("Camera distance (mouse wheel also changes the distance)");
     gRow->addWidget(m_distanceSpin);
 
     gRow->addSpacing(12);
@@ -184,7 +184,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         QVector<QPair<QString, QString>> slides;
         if (m_pres) {
             for (const Slide& s : m_pres->slides)
-                slides.append({s.id, s.name.isEmpty() ? QString("Folie %1").arg(slides.size() + 1) : s.name});
+                slides.append({s.id, s.name.isEmpty() ? QString("Slide %1").arg(slides.size() + 1) : s.name});
         }
         InsertButtonDialog dlg(this, slides);
         if (dlg.exec() == QDialog::Accepted)

@@ -70,54 +70,54 @@ void MainWindow::setupUI() {
     splitter->setSizes({220, 920, 260});
 
     setCentralWidget(splitter);
-    statusBar()->showMessage("Bereit");
+    statusBar()->showMessage("Ready");
 }
 
 void MainWindow::setupMenuBar() {
-    QMenu* fileMenu = menuBar()->addMenu("&Datei");
-    fileMenu->addAction("&Neu",               this, &MainWindow::newPresentation,    QKeySequence::New);
-    fileMenu->addAction("&Öffnen...",         this, &MainWindow::openPresentation,   QKeySequence::Open);
+    QMenu* fileMenu = menuBar()->addMenu("&File");
+    fileMenu->addAction("&New",               this, &MainWindow::newPresentation,    QKeySequence::New);
+    fileMenu->addAction("&Open...",           this, &MainWindow::openPresentation,   QKeySequence::Open);
     fileMenu->addSeparator();
-    fileMenu->addAction("&Speichern",         this, &MainWindow::savePresentation,   QKeySequence::Save);
-    fileMenu->addAction("Speichern &unter...", this, &MainWindow::savePresentationAs, QKeySequence::SaveAs);
+    fileMenu->addAction("&Save",              this, &MainWindow::savePresentation,   QKeySequence::Save);
+    fileMenu->addAction("Save &As...",        this, &MainWindow::savePresentationAs, QKeySequence::SaveAs);
     fileMenu->addSeparator();
-    fileMenu->addAction("Im &Browser öffnen", this, &MainWindow::openInBrowser, QKeySequence("Ctrl+B"));
+    fileMenu->addAction("Open in &Browser",   this, &MainWindow::openInBrowser, QKeySequence("Ctrl+B"));
     fileMenu->addSeparator();
-    fileMenu->addAction("&Beenden",           this, &QWidget::close,                 QKeySequence::Quit);
+    fileMenu->addAction("E&xit",              this, &QWidget::close,                 QKeySequence::Quit);
 
-    QMenu* editMenu = menuBar()->addMenu("&Bearbeiten");
-    m_undoAction = editMenu->addAction("&Rückgängig", this, &MainWindow::undo, QKeySequence::Undo);
-    m_redoAction = editMenu->addAction("&Wiederholen", this, &MainWindow::redo, QKeySequence::Redo);
+    QMenu* editMenu = menuBar()->addMenu("&Edit");
+    m_undoAction = editMenu->addAction("&Undo", this, &MainWindow::undo, QKeySequence::Undo);
+    m_redoAction = editMenu->addAction("&Redo", this, &MainWindow::redo, QKeySequence::Redo);
 
-    QMenu* helpMenu = menuBar()->addMenu("&Hilfe");
-    helpMenu->addAction("&Über", this, [this]() {
-        QMessageBox::about(this, "Über Presi 3D",
+    QMenu* helpMenu = menuBar()->addMenu("&Help");
+    helpMenu->addAction("&About", this, [this]() {
+        QMessageBox::about(this, "About Presi 3D",
             "<b>Presi 3D</b><br>"
-            "Erstelle beeindruckende Präsentationen mit 3D-Effekten.<br><br>"
+            "Create stunning presentations with 3D effects.<br><br>"
             "Qt 6 + OpenGL");
     });
 }
 
 void MainWindow::setupToolBar() {
-    // ── Datei-Toolbar ──
-    QToolBar* tb = addToolBar("Datei");
+    // ── File toolbar ──
+    QToolBar* tb = addToolBar("File");
     tb->setMovable(false);
     tb->addAction(m_undoAction);
     m_undoAction->setText("↶");
-    m_undoAction->setToolTip("Rückgängig (Strg+Z)");
+    m_undoAction->setToolTip("Undo (Ctrl+Z)");
     tb->addAction(m_redoAction);
     m_redoAction->setText("↷");
-    m_redoAction->setToolTip("Wiederholen (Strg+Y)");
+    m_redoAction->setToolTip("Redo (Ctrl+Y)");
     tb->addSeparator();
-    tb->addAction("Neu",          this, &MainWindow::newPresentation);
-    tb->addAction("Öffnen",       this, &MainWindow::openPresentation);
-    tb->addAction("Speichern",    this, &MainWindow::savePresentation);
+    tb->addAction("New",          this, &MainWindow::newPresentation);
+    tb->addAction("Open",         this, &MainWindow::openPresentation);
+    tb->addAction("Save",         this, &MainWindow::savePresentation);
     tb->addSeparator();
-    m_browserAction = tb->addAction("▷ Im Browser öffnen", this, &MainWindow::openInBrowser);
-    m_browserAction->setToolTip("Exportierte Präsentation im Browser öffnen\n(F = Vollbild)");
+    m_browserAction = tb->addAction("▷ Open in Browser", this, &MainWindow::openInBrowser);
+    m_browserAction->setToolTip("Open exported presentation in browser\n(F = Fullscreen)");
     m_browserAction->setEnabled(false);
 
-    // ── Format-Toolbar (second row) ──
+    // ── Format toolbar (second row) ──
     addToolBarBreak();
     QToolBar* ftb = addToolBar("Format");
     ftb->setMovable(false);
@@ -173,8 +173,8 @@ void MainWindow::onSlideAdded() {
 
 void MainWindow::onSlideRemoved(int index) {
     if (m_presentation->slides.size() <= 1) {
-        QMessageBox::warning(this, "Löschen nicht möglich",
-                             "Die letzte Slide kann nicht gelöscht werden.");
+        QMessageBox::warning(this, "Cannot Delete",
+                             "The last slide cannot be deleted.");
         return;
     }
     pushUndoStep();
@@ -344,8 +344,8 @@ void MainWindow::updateTitle() {
 
 bool MainWindow::maybeSave() {
     if (!m_presentation->modified) return true;
-    auto ret = QMessageBox::warning(this, "Ungespeicherte Änderungen",
-        "Die Präsentation wurde geändert.\nMöchten Sie speichern?",
+    auto ret = QMessageBox::warning(this, "Unsaved Changes",
+        "The presentation has been modified.\nDo you want to save it?",
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
     if (ret == QMessageBox::Save)   { savePresentation(); return !m_presentation->modified; }
     if (ret == QMessageBox::Cancel) return false;
@@ -375,7 +375,7 @@ void MainWindow::openPresentationFromFolder(const QString& folder) {
     QString errorMsg;
     Presentation* loaded = HtmlImporter::importFrom(folder, errorMsg);
     if (!loaded) {
-        QMessageBox::warning(this, "Laden fehlgeschlagen", errorMsg);
+        QMessageBox::warning(this, "Load Failed", errorMsg);
         return;
     }
 
@@ -389,14 +389,14 @@ void MainWindow::openPresentationFromFolder(const QString& folder) {
     updateTitle();
     StartDialog::addRecentProject(folder);
     statusBar()->showMessage(
-        QString("Geladen: %1  (%2 Folien)").arg(folder).arg(m_presentation->slides.size()));
+        QString("Loaded: %1  (%2 slides)").arg(folder).arg(m_presentation->slides.size()));
 }
 
 void MainWindow::openPresentation() {
     if (!maybeSave()) return;
 
     QString folder = QFileDialog::getExistingDirectory(
-        this, "Präsentationsordner öffnen",
+        this, "Open Presentation Folder",
         m_presentation->exportPath.isEmpty()
             ? QDir::homePath() : QFileInfo(m_presentation->exportPath).absolutePath(),
         QFileDialog::ShowDirsOnly);
@@ -414,9 +414,9 @@ void MainWindow::savePresentation() {
     if (result.ok) {
         m_presentation->modified = false;
         updateTitle();
-        statusBar()->showMessage("Gespeichert: " + m_presentation->exportPath, 4000);
+        statusBar()->showMessage("Saved: " + m_presentation->exportPath, 4000);
     } else {
-        QMessageBox::warning(this, "Fehler beim Speichern", result.errorMessage);
+        QMessageBox::warning(this, "Save Error", result.errorMessage);
     }
 }
 
@@ -440,9 +440,9 @@ void MainWindow::exportPresentation() {
 void MainWindow::openInBrowser() {
     QString indexPath = m_presentation->exportPath + "/index.html";
     if (!QFile::exists(indexPath)) {
-        QMessageBox::information(this, "Kein Export",
-            "Bitte zuerst exportieren (Datei → Exportieren),\n"
-            "dann kann die Präsentation im Browser geöffnet werden.");
+        QMessageBox::information(this, "No Export",
+            "Please export first (File → Export),\n"
+            "then the presentation can be opened in the browser.");
         return;
     }
 
@@ -465,7 +465,7 @@ void MainWindow::openInBrowser() {
         }
     }
 
-    // Chrome nicht gefunden — Standard-Browser als Fallback
+    // Chrome not found — fall back to default browser
     QDesktopServices::openUrl(QUrl::fromLocalFile(indexPath));
 }
 

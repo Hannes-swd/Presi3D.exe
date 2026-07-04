@@ -7,17 +7,17 @@
 
 InsertFormulaDialog::InsertFormulaDialog(QWidget* parent, const QString& initialLatex)
     : QDialog(parent) {
-    setWindowTitle(initialLatex.isEmpty() ? "Formel einfügen" : "Formel bearbeiten");
+    setWindowTitle(initialLatex.isEmpty() ? "Insert Formula" : "Edit Formula");
     setMinimumWidth(420);
 
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(8);
 
-    auto* hdr = new QLabel("LaTeX-Formel", this);
+    auto* hdr = new QLabel("LaTeX Formula", this);
     hdr->setStyleSheet("font-size:14px;font-weight:bold;color:#111827;");
     layout->addWidget(hdr);
 
-    auto* hint = new QLabel("z. B.  E = mc^2   oder   x = (-b \\pm \\sqrt{b^2-4ac})/2a", this);
+    auto* hint = new QLabel("e.g.  E = mc^2   or   x = (-b \\pm \\sqrt{b^2-4ac})/2a", this);
     hint->setStyleSheet("color:#6b7280; font-size:11px;");
     layout->addWidget(hint);
 
@@ -29,7 +29,7 @@ InsertFormulaDialog::InsertFormulaDialog(QWidget* parent, const QString& initial
     layout->addWidget(m_edit);
 
     auto* bbox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    bbox->button(QDialogButtonBox::Ok)->setText(initialLatex.isEmpty() ? "Einfügen" : "Übernehmen");
+    bbox->button(QDialogButtonBox::Ok)->setText(initialLatex.isEmpty() ? "Insert" : "Apply");
     layout->addWidget(bbox);
     connect(bbox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(bbox, &QDialogButtonBox::rejected, this, &QDialog::reject);

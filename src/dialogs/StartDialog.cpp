@@ -50,8 +50,8 @@ void StartDialog::buildUi() {
     vbox->addWidget(title);
 
     // Action buttons
-    auto* newBtn  = new QPushButton("Neues Projekt erstellen", this);
-    auto* openBtn = new QPushButton("Projekt öffnen...", this);
+    auto* newBtn  = new QPushButton("Create New Project", this);
+    auto* openBtn = new QPushButton("Open Project...", this);
     newBtn->setFixedHeight(34);
     openBtn->setFixedHeight(34);
     newBtn->setStyleSheet(
@@ -70,7 +70,7 @@ void StartDialog::buildUi() {
     line->setFrameShadow(QFrame::Sunken);
     vbox->addWidget(line);
 
-    auto* recentLabel = new QLabel("Zuletzt bearbeitet:", this);
+    auto* recentLabel = new QLabel("Recently Edited:", this);
     recentLabel->setStyleSheet("color:#374151; font-size:11px; font-weight:bold;");
     vbox->addWidget(recentLabel);
 
@@ -79,9 +79,9 @@ void StartDialog::buildUi() {
 
     // Bottom row
     auto* btnRow = new QHBoxLayout;
-    m_openRecentBtn = new QPushButton("Öffnen", this);
+    m_openRecentBtn = new QPushButton("Open", this);
     m_openRecentBtn->setEnabled(false);
-    auto* cancelBtn = new QPushButton("Abbrechen", this);
+    auto* cancelBtn = new QPushButton("Cancel", this);
     btnRow->addStretch();
     btnRow->addWidget(m_openRecentBtn);
     btnRow->addWidget(cancelBtn);
@@ -99,7 +99,7 @@ void StartDialog::loadRecentList() {
     m_recentList->clear();
     const QStringList paths = recentProjects();
     if (paths.isEmpty()) {
-        auto* item = new QListWidgetItem("Keine kürzlichen Projekte");
+        auto* item = new QListWidgetItem("No recent projects");
         item->setFlags(Qt::NoItemFlags);
         item->setForeground(QColor("#aaa"));
         m_recentList->addItem(item);
@@ -121,7 +121,7 @@ void StartDialog::onNewProject() {
 
 void StartDialog::onOpenProject() {
     QString folder = QFileDialog::getExistingDirectory(
-        this, "Präsentationsordner öffnen", QDir::homePath(),
+        this, "Open Presentation Folder", QDir::homePath(),
         QFileDialog::ShowDirsOnly);
     if (folder.isEmpty()) return;
     m_choice       = OpenProject;

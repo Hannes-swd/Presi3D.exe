@@ -26,7 +26,7 @@ void ChartRenderer::drawPlaceholder(QPainter& p, const QRectF& r, const QString&
     p.setPen(QColor(150, 150, 150));
     float sc = qMin(float(r.width()), float(r.height())) / 300.f;
     p.setFont(scaledFont("Arial", 13, qBound(0.4f, sc, 2.f)));
-    p.drawText(r, Qt::AlignCenter, typeIcon(type) + "  " + typeName(type) + "\n(keine Daten)");
+    p.drawText(r, Qt::AlignCenter, typeIcon(type) + "  " + typeName(type) + "\n(no data)");
     p.restore();
 }
 
@@ -1214,20 +1214,20 @@ void ChartRenderer::paintVenn(QPainter& p, const QRectF& rect,
 
 QString ChartRenderer::typeName(const QString& type) {
     static const QMap<QString, QString> names = {
-        {"bar",       "Balkendiagramm"},
-        {"bar_h",     "Horizontales Balkendiagramm"},
-        {"line",      "Liniendiagramm"},
-        {"area",      "Flächendiagramm"},
-        {"pie",       "Kreisdiagramm"},
-        {"donut",     "Donut-Diagramm"},
-        {"scatter",   "Streudiagramm"},
-        {"flowchart", "Flussdiagramm"},
-        {"mindmap",   "Mindmap"},
-        {"orgchart",  "Organigramm"},
-        {"timeline",  "Zeitstrahl"},
-        {"gantt",     "Gantt-Diagramm"},
-        {"uml",       "UML-Klassendiagramm"},
-        {"venn",      "Venn-Diagramm"},
+        {"bar",       "Bar Chart"},
+        {"bar_h",     "Horizontal Bar Chart"},
+        {"line",      "Line Chart"},
+        {"area",      "Area Chart"},
+        {"pie",       "Pie Chart"},
+        {"donut",     "Donut Chart"},
+        {"scatter",   "Scatter Chart"},
+        {"flowchart", "Flowchart"},
+        {"mindmap",   "Mind Map"},
+        {"orgchart",  "Org Chart"},
+        {"timeline",  "Timeline"},
+        {"gantt",     "Gantt Chart"},
+        {"uml",       "UML Class Diagram"},
+        {"venn",      "Venn Diagram"},
     };
     return names.value(type, type);
 }

@@ -14,19 +14,19 @@
 ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     : QDialog(parent), m_pres(pres)
 {
-    setWindowTitle("Präsentation exportieren");
+    setWindowTitle("Export Presentation");
     setMinimumWidth(520);
 
     auto* vbox = new QVBoxLayout(this);
     vbox->setSpacing(10);
 
-    auto* title = new QLabel("<b>Präsentation exportieren</b>", this);
+    auto* title = new QLabel("<b>Export Presentation</b>", this);
     title->setStyleSheet("font-size:14px;");
     vbox->addWidget(title);
 
     auto* info = new QLabel(
-        "Erstellt einen Ordner mit <b>index.html</b>, CSS und Assets.\n"
-        "Impress.js wird automatisch über CDN eingebunden – einfach index.html im Browser öffnen.", this);
+        "Creates a folder with <b>index.html</b>, CSS and assets.\n"
+        "Impress.js is automatically included via CDN – just open index.html in a browser.", this);
     info->setWordWrap(true);
     info->setStyleSheet("color:#888; font-size:11px;");
     vbox->addWidget(info);
@@ -36,7 +36,7 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     form->setSpacing(8);
 
     m_nameEdit = new QLineEdit(this);
-    m_nameEdit->setPlaceholderText("meine-praesentation");
+    m_nameEdit->setPlaceholderText("my-presentation");
 
     // Pre-fill from last export path, or suggest a name from the first slide
     QString initParent = QDir::homePath();
@@ -48,9 +48,9 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     }
     if (initName.isEmpty() && pres && !pres->slides.isEmpty())
         initName = pres->slides.first().name.toLower().replace(' ', '-');
-    if (initName.isEmpty()) initName = "praesentation";
+    if (initName.isEmpty()) initName = "presentation";
     m_nameEdit->setText(initName);
-    form->addRow("Ordnername:", m_nameEdit);
+    form->addRow("Folder name:", m_nameEdit);
 
     auto* row = new QHBoxLayout;
     m_parentEdit = new QLineEdit(initParent, this);
@@ -58,7 +58,7 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     browseBtn->setFixedWidth(32);
     row->addWidget(m_parentEdit);
     row->addWidget(browseBtn);
-    form->addRow("Speicherort:", row);
+    form->addRow("Location:", row);
 
     vbox->addLayout(form);
 
@@ -78,18 +78,18 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     vbox->addStretch();
 
     // Open button (hidden until export succeeds)
-    m_openBtn = new QPushButton("Ordner öffnen", this);
+    m_openBtn = new QPushButton("Open Folder", this);
     m_openBtn->setVisible(false);
     vbox->addWidget(m_openBtn);
 
     // Bottom buttons
     auto* btnRow = new QHBoxLayout;
-    m_expBtn = new QPushButton("Exportieren", this);
+    m_expBtn = new QPushButton("Export", this);
     m_expBtn->setDefault(true);
     m_expBtn->setStyleSheet(
         "QPushButton { background:#0078d4; color:white; border:none; padding:6px 20px; }"
         "QPushButton:hover { background:#106ebe; }");
-    auto* closeBtn = new QPushButton("Schließen", this);
+    auto* closeBtn = new QPushButton("Close", this);
     btnRow->addStretch();
     btnRow->addWidget(m_expBtn);
     btnRow->addWidget(closeBtn);
@@ -105,7 +105,7 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
 }
 
 void ExportDialog::browseFolder() {
-    QString dir = QFileDialog::getExistingDirectory(this, "Speicherort wählen",
+    QString dir = QFileDialog::getExistingDirectory(this, "Choose Location",
         m_parentEdit->text().isEmpty() ? QDir::homePath() : m_parentEdit->text());
     if (!dir.isEmpty())
         m_parentEdit->setText(dir);
@@ -115,11 +115,11 @@ void ExportDialog::updatePreview() {
     QString parent = m_parentEdit->text().trimmed();
     QString name   = m_nameEdit->text().trimmed();
     if (parent.isEmpty()) parent = QDir::homePath();
-    if (name.isEmpty()) name = "praesentation";
+    if (name.isEmpty()) name = "presentation";
 
     QString full = QDir(parent).filePath(name);
     m_previewLbl->setText(
-        QString("<span style='color:#888;'>Erstellt:</span> <span style='color:#4af;'>%1</span><br>"
+        QString("<span style='color:#888;'>Creates:</span> <span style='color:#4af;'>%1</span><br>"
                 "<span style='color:#888;'>    ├── index.html</span><br>"
                 "<span style='color:#888;'>    ├── styles.css</span><br>"
                 "<span style='color:#888;'>    └── assets/</span>").arg(full));
@@ -131,12 +131,12 @@ void ExportDialog::doExport() {
 
     if (parent.isEmpty() || name.isEmpty()) {
         m_status->setStyleSheet("color: red;");
-        m_status->setText("Bitte Ordnernamen und Speicherort angeben.");
+        m_status->setText("Please provide a folder name and location.");
         return;
     }
     if (!m_pres || m_pres->slides.isEmpty()) {
         m_status->setStyleSheet("color: red;");
-        m_status->setText("Keine Slides vorhanden.");
+        m_status->setText("No slides available.");
         return;
     }
 
@@ -145,7 +145,7 @@ void ExportDialog::doExport() {
 
     m_expBtn->setEnabled(false);
     m_status->setStyleSheet("color: orange;");
-    m_status->setText("Exportiere…");
+    m_status->setText("Exporting…");
     repaint();
 
     auto result = HtmlExporter::exportTo(*m_pres, outDir);
@@ -156,7 +156,7 @@ void ExportDialog::doExport() {
         if (m_pres) m_pres->exportPath = outDir;
 
         m_status->setStyleSheet("color: #4c4;");
-        QString msg = QString("✓ Erfolgreich exportiert nach:\n%1").arg(outDir);
+        QString msg = QString("✓ Successfully exported to:\n%1").arg(outDir);
         if (!result.errorMessage.isEmpty()) msg += result.errorMessage;
         m_status->setText(msg);
 
@@ -167,6 +167,6 @@ void ExportDialog::doExport() {
         });
     } else {
         m_status->setStyleSheet("color: red;");
-        m_status->setText("Fehler: " + result.errorMessage);
+        m_status->setText("Error: " + result.errorMessage);
     }
 }

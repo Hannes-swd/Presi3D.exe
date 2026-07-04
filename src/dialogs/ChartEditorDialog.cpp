@@ -93,7 +93,7 @@ void ChartEditorDialog::updateColorButton(QPushButton* btn, const QColor& c) {
 
 ChartEditorDialog::ChartEditorDialog(const ChartData& data, QWidget* parent)
     : QDialog(parent), m_data(data) {
-    setWindowTitle("Diagramm bearbeiten – " + ChartRenderer::typeName(data.type));
+    setWindowTitle("Edit Chart – " + ChartRenderer::typeName(data.type));
     setMinimumSize(700, 520);
     resize(820, 600);
 
@@ -143,7 +143,7 @@ ChartEditorDialog::ChartEditorDialog(const ChartData& data, QWidget* parent)
     auto* pvLayout = new QVBoxLayout(previewContainer);
     pvLayout->setContentsMargins(0, 0, 0, 0);
     pvLayout->setSpacing(0);
-    auto* pvHeader = new QLabel("Vorschau", previewContainer);
+    auto* pvHeader = new QLabel("Preview", previewContainer);
     pvHeader->setStyleSheet("background:#f3f4f6;color:#6b7280;font-size:10px;"
                             "font-weight:bold;padding:4px 8px;"
                             "border-bottom:1px solid #e5e7eb;");
@@ -166,7 +166,7 @@ ChartEditorDialog::ChartEditorDialog(const ChartData& data, QWidget* parent)
     auto* btnBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     btnBox->setContentsMargins(12, 8, 12, 12);
-    btnBox->button(QDialogButtonBox::Ok)->setText("Übernehmen");
+    btnBox->button(QDialogButtonBox::Ok)->setText("Apply");
     mainLayout->addWidget(btnBox);
 
     connect(btnBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -184,8 +184,8 @@ void ChartEditorDialog::buildDataTab(QTabWidget* tabs) {
     // Toolbar
     auto* toolbar = new QHBoxLayout;
     toolbar->setSpacing(6);
-    auto* addRowBtn = new QPushButton("+ Zeile", w);
-    auto* delRowBtn = new QPushButton("- Zeile", w);
+    auto* addRowBtn = new QPushButton("+ Row", w);
+    auto* delRowBtn = new QPushButton("- Row", w);
     addRowBtn->setFixedHeight(26);
     delRowBtn->setFixedHeight(26);
     toolbar->addWidget(addRowBtn);
@@ -193,8 +193,8 @@ void ChartEditorDialog::buildDataTab(QTabWidget* tabs) {
 
     bool singleSeries = (m_data.type == "pie" || m_data.type == "donut");
     if (!singleSeries) {
-        auto* addSerBtn = new QPushButton("+ Serie", w);
-        auto* delSerBtn = new QPushButton("- Serie", w);
+        auto* addSerBtn = new QPushButton("+ Series", w);
+        auto* delSerBtn = new QPushButton("- Series", w);
         addSerBtn->setFixedHeight(26);
         delSerBtn->setFixedHeight(26);
         toolbar->addWidget(addSerBtn);
@@ -239,8 +239,8 @@ void ChartEditorDialog::buildDataTab(QTabWidget* tabs) {
 
         bool ok;
         QString newName = QInputDialog::getText(
-            this, "Serie umbenennen",
-            "Neuer Name für Serie " + QString::number(serIdx + 1) + ":",
+            this, "Rename Series",
+            "New name for series " + QString::number(serIdx + 1) + ":",
             QLineEdit::Normal,
             m_data.series[serIdx].name, &ok);
         if (!ok || newName.trimmed().isEmpty()) return;
@@ -252,18 +252,18 @@ void ChartEditorDialog::buildDataTab(QTabWidget* tabs) {
     });
 
     // Hint for header renaming
-    auto* headerHint = new QLabel("Tipp: Spaltenüberschrift doppelklicken zum Umbenennen", w);
+    auto* headerHint = new QLabel("Tip: Double-click a column header to rename it", w);
     headerHint->setStyleSheet("color:#6b7280;font-size:9px;font-style:italic;");
     vbox->addWidget(headerHint);
 
     // Hint
     QString hint;
     if (m_data.type == "scatter")
-        hint = "Scatter: Werte als X,Y Paare pro Serie (Spalten X und Y pro Serie)";
+        hint = "Scatter: values as X,Y pairs per series (X and Y columns per series)";
     else if (singleSeries)
-        hint = "Beschriftung und Wert pro Zeile. Farbe optional.";
+        hint = "Label and value per row. Color optional.";
     else
-        hint = "Erste Spalte = Kategoriename, weitere = Serienwerte.";
+        hint = "First column = category name, others = series values.";
     auto* hintLbl = new QLabel(hint, w);
     hintLbl->setStyleSheet("color:#9ca3af;font-size:9px;");
     vbox->addWidget(hintLbl);
@@ -276,7 +276,7 @@ void ChartEditorDialog::buildDataTab(QTabWidget* tabs) {
     connect(m_dataTable, &QTableWidget::cellChanged,
             this, &ChartEditorDialog::onDataCellChanged);
 
-    tabs->addTab(w, "Daten");
+    tabs->addTab(w, "Data");
 }
 
 void ChartEditorDialog::buildSeriesColorRow() {
@@ -286,7 +286,7 @@ void ChartEditorDialog::buildSeriesColorRow() {
         delete child->widget();
         delete child;
     }
-    auto* lbl = new QLabel("Serienfarben:", m_colorRow);
+    auto* lbl = new QLabel("Series colors:", m_colorRow);
     lbl->setStyleSheet("font-size:9px;color:#6b7280;");
     m_colorRow->layout()->addWidget(lbl);
 
@@ -326,7 +326,7 @@ void ChartEditorDialog::rebuildDataTable() {
 
     if (isPieLike) {
         m_dataTable->setColumnCount(2);
-        m_dataTable->setHorizontalHeaderLabels({"Beschriftung", "Wert"});
+        m_dataTable->setHorizontalHeaderLabels({"Label", "Value"});
         int n = m_data.labels.size();
         m_dataTable->setRowCount(n);
         const ChartSeries& s0 = m_data.series.isEmpty() ? ChartSeries{} : m_data.series[0];
@@ -341,7 +341,7 @@ void ChartEditorDialog::rebuildDataTable() {
         m_dataTable->setColumnCount(nSer * 2);
         QStringList headers;
         for (int s = 0; s < nSer; ++s) {
-            QString sName = s < m_data.series.size() ? m_data.series[s].name : QString("Serie %1").arg(s+1);
+            QString sName = s < m_data.series.size() ? m_data.series[s].name : QString("Series %1").arg(s+1);
             headers << sName + " X" << sName + " Y";
         }
         m_dataTable->setHorizontalHeaderLabels(headers);
@@ -359,9 +359,9 @@ void ChartEditorDialog::rebuildDataTable() {
         int nSer = qMax(1, m_data.series.size());
         m_dataTable->setColumnCount(1 + nSer);
         QStringList headers;
-        headers << "Kategorie";
+        headers << "Category";
         for (int s = 0; s < nSer; ++s)
-            headers << (s < m_data.series.size() ? m_data.series[s].name : QString("Serie %1").arg(s+1));
+            headers << (s < m_data.series.size() ? m_data.series[s].name : QString("Series %1").arg(s+1));
         m_dataTable->setHorizontalHeaderLabels(headers);
         int nRows = m_data.labels.size();
         m_dataTable->setRowCount(qMax(nRows, 1));
@@ -372,7 +372,7 @@ void ChartEditorDialog::rebuildDataTable() {
                 m_dataTable->setItem(r, 1+s, new QTableWidgetItem(QString::number(v)));
             }
         }
-        // Series names are editable via the Optionen tab
+        // Series names are editable via the Options tab
     }
     m_dataTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_dataTable->horizontalHeader()->setStretchLastSection(true);
@@ -386,7 +386,7 @@ void ChartEditorDialog::syncDataFromTable() {
 
     if (isPieLike) {
         m_data.labels.clear();
-        if (m_data.series.isEmpty()) m_data.series.append({"Anteile", {}, "", {}});
+        if (m_data.series.isEmpty()) m_data.series.append({"Shares", {}, "", {}});
         m_data.series[0].values.clear();
         for (int r = 0; r < nRows; ++r) {
             QTableWidgetItem* li = m_dataTable->item(r, 0);
@@ -397,7 +397,7 @@ void ChartEditorDialog::syncDataFromTable() {
     } else if (isScatter) {
         int nSer = m_dataTable->columnCount() / 2;
         while (m_data.series.size() < nSer)
-            m_data.series.append({"Serie "+QString::number(m_data.series.size()+1), {}, "", {}});
+            m_data.series.append({"Series "+QString::number(m_data.series.size()+1), {}, "", {}});
         for (int s = 0; s < nSer && s < m_data.series.size(); ++s) {
             m_data.series[s].values.clear();
             for (int r = 0; r < nRows; ++r) {
@@ -411,7 +411,7 @@ void ChartEditorDialog::syncDataFromTable() {
         int nSer = m_dataTable->columnCount() - 1;
         m_data.labels.clear();
         while (m_data.series.size() < nSer)
-            m_data.series.append({"Serie "+QString::number(m_data.series.size()+1), {}, "", {}});
+            m_data.series.append({"Series "+QString::number(m_data.series.size()+1), {}, "", {}});
         while (m_data.series.size() > nSer && !m_data.series.isEmpty())
             m_data.series.removeLast();
         for (int s = 0; s < nSer && s < m_data.series.size(); ++s)
@@ -436,8 +436,8 @@ void ChartEditorDialog::buildNodeTab(QTabWidget* tabs) {
     vbox->setSpacing(6);
 
     auto* toolbar = new QHBoxLayout;
-    auto* addBtn = new QPushButton("+ Knoten", w);
-    auto* delBtn = new QPushButton("- Knoten", w);
+    auto* addBtn = new QPushButton("+ Node", w);
+    auto* delBtn = new QPushButton("- Node", w);
     addBtn->setFixedHeight(26);
     delBtn->setFixedHeight(26);
     toolbar->addWidget(addBtn);
@@ -452,18 +452,18 @@ void ChartEditorDialog::buildNodeTab(QTabWidget* tabs) {
     bool isUml = (m_data.type == "uml");
     if (isUml) {
         m_nodeTable->setColumnCount(5);
-        m_nodeTable->setHorizontalHeaderLabels({"ID","Klasse","Attribute","Methoden","Verbindungen"});
+        m_nodeTable->setHorizontalHeaderLabels({"ID","Class","Attributes","Methods","Connections"});
     } else {
         m_nodeTable->setColumnCount(4);
-        m_nodeTable->setHorizontalHeaderLabels({"ID","Bezeichnung","Form","Verbindungen zu"});
+        m_nodeTable->setHorizontalHeaderLabels({"ID","Label","Shape","Connects to"});
     }
     m_nodeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     vbox->addWidget(m_nodeTable, 1);
 
     auto* hintLbl = new QLabel(
-        isUml ? "Verbindungen: \"id|inheritance\" oder \"id|association\" etc."
-              : "Form: rect | diamond | oval | rounded | parallelogram\n"
-                "Verbindungen: IDs kommagetrennt (z.B. n2,n3)", w);
+        isUml ? "Connections: \"id|inheritance\" or \"id|association\" etc."
+              : "Shape: rect | diamond | oval | rounded | parallelogram\n"
+                "Connections: comma-separated IDs (e.g. n2,n3)", w);
     hintLbl->setStyleSheet("color:#9ca3af;font-size:9px;");
     vbox->addWidget(hintLbl);
 
@@ -474,7 +474,7 @@ void ChartEditorDialog::buildNodeTab(QTabWidget* tabs) {
     connect(m_nodeTable, &QTableWidget::cellChanged,
             this, &ChartEditorDialog::onNodeCellChanged);
 
-    tabs->addTab(w, "Knoten");
+    tabs->addTab(w, "Nodes");
 }
 
 void ChartEditorDialog::rebuildNodeTable() {
@@ -536,8 +536,8 @@ void ChartEditorDialog::buildEventTab(QTabWidget* tabs) {
     vbox->setSpacing(6);
 
     auto* toolbar = new QHBoxLayout;
-    auto* addBtn = new QPushButton("+ Ereignis", w);
-    auto* delBtn = new QPushButton("- Ereignis", w);
+    auto* addBtn = new QPushButton("+ Event", w);
+    auto* delBtn = new QPushButton("- Event", w);
     addBtn->setFixedHeight(26);
     delBtn->setFixedHeight(26);
     toolbar->addWidget(addBtn);
@@ -547,7 +547,7 @@ void ChartEditorDialog::buildEventTab(QTabWidget* tabs) {
 
     m_eventTable = new QTableWidget(w);
     m_eventTable->setColumnCount(4);
-    m_eventTable->setHorizontalHeaderLabels({"Position (0-100)","Bezeichnung","Beschreibung","Farbe (hex)"});
+    m_eventTable->setHorizontalHeaderLabels({"Position (0-100)","Label","Description","Color (hex)"});
     m_eventTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_eventTable->verticalHeader()->setVisible(false);
     m_eventTable->setAlternatingRowColors(true);
@@ -561,7 +561,7 @@ void ChartEditorDialog::buildEventTab(QTabWidget* tabs) {
     connect(m_eventTable, &QTableWidget::cellChanged,
             this, &ChartEditorDialog::onSpecialCellChanged);
 
-    tabs->addTab(w, "Ereignisse");
+    tabs->addTab(w, "Events");
 }
 
 void ChartEditorDialog::rebuildEventTable() {
@@ -601,8 +601,8 @@ void ChartEditorDialog::buildTaskTab(QTabWidget* tabs) {
     vbox->setSpacing(6);
 
     auto* toolbar = new QHBoxLayout;
-    auto* addBtn = new QPushButton("+ Aufgabe", w);
-    auto* delBtn = new QPushButton("- Aufgabe", w);
+    auto* addBtn = new QPushButton("+ Task", w);
+    auto* delBtn = new QPushButton("- Task", w);
     addBtn->setFixedHeight(26);
     delBtn->setFixedHeight(26);
     toolbar->addWidget(addBtn);
@@ -612,14 +612,14 @@ void ChartEditorDialog::buildTaskTab(QTabWidget* tabs) {
 
     m_taskTable = new QTableWidget(w);
     m_taskTable->setColumnCount(4);
-    m_taskTable->setHorizontalHeaderLabels({"Aufgabe","Start (0-100)","Ende (0-100)","Farbe (hex)"});
+    m_taskTable->setHorizontalHeaderLabels({"Task","Start (0-100)","End (0-100)","Color (hex)"});
     m_taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_taskTable->verticalHeader()->setVisible(false);
     m_taskTable->setAlternatingRowColors(true);
     styleTable(m_taskTable);
     vbox->addWidget(m_taskTable, 1);
 
-    auto* axisLbl = new QLabel("Zeitachsen-Beschriftungen (kommagetrennt):", w);
+    auto* axisLbl = new QLabel("Time axis labels (comma-separated):", w);
     axisLbl->setStyleSheet("font-size:9px;color:#374151;margin-top:6px;");
     vbox->addWidget(axisLbl);
     auto* axisEdit = new QLineEdit(m_data.ganttAxisLabels.join(","), w);
@@ -636,7 +636,7 @@ void ChartEditorDialog::buildTaskTab(QTabWidget* tabs) {
     connect(m_taskTable, &QTableWidget::cellChanged,
             this, &ChartEditorDialog::onSpecialCellChanged);
 
-    tabs->addTab(w, "Aufgaben");
+    tabs->addTab(w, "Tasks");
 }
 
 void ChartEditorDialog::rebuildTaskTable() {
@@ -676,8 +676,8 @@ void ChartEditorDialog::buildVennTab(QTabWidget* tabs) {
     vbox->setSpacing(6);
 
     auto* toolbar = new QHBoxLayout;
-    auto* addBtn = new QPushButton("+ Kreis", w);
-    auto* delBtn = new QPushButton("- Kreis", w);
+    auto* addBtn = new QPushButton("+ Circle", w);
+    auto* delBtn = new QPushButton("- Circle", w);
     addBtn->setFixedHeight(26);
     delBtn->setFixedHeight(26);
     toolbar->addWidget(addBtn);
@@ -688,7 +688,7 @@ void ChartEditorDialog::buildVennTab(QTabWidget* tabs) {
     m_vennTable = new QTableWidget(w);
     m_vennTable->setColumnCount(6);
     m_vennTable->setHorizontalHeaderLabels(
-        {"Bezeichnung","X (0-100)","Y (0-100)","Radius (0-50)","Farbe (hex)","Deckkraft (0-1)"});
+        {"Label","X (0-100)","Y (0-100)","Radius (0-50)","Color (hex)","Opacity (0-1)"});
     m_vennTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_vennTable->verticalHeader()->setVisible(false);
     m_vennTable->setAlternatingRowColors(true);
@@ -702,7 +702,7 @@ void ChartEditorDialog::buildVennTab(QTabWidget* tabs) {
     connect(m_vennTable, &QTableWidget::cellChanged,
             this, &ChartEditorDialog::onSpecialCellChanged);
 
-    tabs->addTab(w, "Kreise");
+    tabs->addTab(w, "Circles");
 }
 
 void ChartEditorDialog::rebuildVennTable() {
@@ -747,20 +747,20 @@ void ChartEditorDialog::buildOptionsTab(QTabWidget* tabs) {
     form->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
     m_titleEdit = new QLineEdit(m_data.title, w);
-    form->addRow("Titel:", m_titleEdit);
+    form->addRow("Title:", m_titleEdit);
 
     m_descEdit = new QLineEdit(m_data.description, w);
-    form->addRow("Beschreibung:", m_descEdit);
+    form->addRow("Description:", m_descEdit);
 
-    m_showLegend = new QCheckBox("Legende anzeigen", w);
+    m_showLegend = new QCheckBox("Show legend", w);
     m_showLegend->setChecked(m_data.showLegend);
     form->addRow("", m_showLegend);
 
-    m_showGrid = new QCheckBox("Gitter anzeigen", w);
+    m_showGrid = new QCheckBox("Show grid", w);
     m_showGrid->setChecked(m_data.showGrid);
     form->addRow("", m_showGrid);
 
-    // Diagrammtyp wechseln
+    // Change chart type
     static const char* ALL_TYPES[] = {
         "bar","bar_h","line","area","pie","donut","scatter",
         "flowchart","mindmap","orgchart","uml","timeline","gantt","venn", nullptr
@@ -772,7 +772,7 @@ void ChartEditorDialog::buildOptionsTab(QTabWidget* tabs) {
         int idx = m_typeCombo->findData(m_data.type);
         if (idx >= 0) m_typeCombo->setCurrentIndex(idx);
     }
-    form->addRow("Diagrammtyp:", m_typeCombo);
+    form->addRow("Chart type:", m_typeCombo);
 
     connect(m_titleEdit,  &QLineEdit::textChanged, this, &ChartEditorDialog::onOptionsChanged);
     connect(m_descEdit,   &QLineEdit::textChanged, this, &ChartEditorDialog::onOptionsChanged);
@@ -781,7 +781,7 @@ void ChartEditorDialog::buildOptionsTab(QTabWidget* tabs) {
     connect(m_typeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &ChartEditorDialog::onOptionsChanged);
 
-    tabs->addTab(w, "Optionen");
+    tabs->addTab(w, "Options");
 }
 
 // ─── Slots ────────────────────────────────────────────────────────────────────
@@ -790,7 +790,7 @@ void ChartEditorDialog::onAddRow() {
     if (!m_dataTable) return;
     syncDataFromTable();
     bool isPie = (m_data.type=="pie"||m_data.type=="donut");
-    m_data.labels << (isPie ? "Neu" : "Kategorie");
+    m_data.labels << (isPie ? "New" : "Category");
     if (!m_data.series.isEmpty()) {
         if (isPie) m_data.series[0].values << 0.0;
         else for (auto& s : m_data.series) s.values << 0.0;
@@ -816,7 +816,7 @@ void ChartEditorDialog::onAddSeries() {
     if (!m_dataTable) return;
     syncDataFromTable();
     ChartSeries s;
-    s.name = "Serie " + QString::number(m_data.series.size() + 1);
+    s.name = "Series " + QString::number(m_data.series.size() + 1);
     for (int i = 0; i < m_data.labels.size(); ++i) s.values << 0.0;
     m_data.series.append(s);
     rebuildDataTable();
@@ -846,7 +846,7 @@ void ChartEditorDialog::onCellColorClicked(int /*row*/, int sliceIdx) {
     if (sliceIdx < m_data.series[0].valueColors.size())
         cur = QColor(m_data.series[0].valueColors[sliceIdx]);
     if (!cur.isValid()) cur = QColor(ChartData::defaultColor(sliceIdx));
-    QColor nc = QColorDialog::getColor(cur, this, "Farbe wählen");
+    QColor nc = QColorDialog::getColor(cur, this, "Choose Color");
     if (!nc.isValid()) return;
     while (m_data.series[0].valueColors.size() <= sliceIdx)
         m_data.series[0].valueColors << "";
@@ -860,7 +860,7 @@ void ChartEditorDialog::onSeriesColorClicked(int serIdx) {
     QColor cur = m_data.series[serIdx].color.isEmpty()
                ? QColor(ChartData::defaultColor(serIdx))
                : QColor(m_data.series[serIdx].color);
-    QColor nc = QColorDialog::getColor(cur, this, "Serienfarbe wählen");
+    QColor nc = QColorDialog::getColor(cur, this, "Choose Series Color");
     if (!nc.isValid()) return;
     m_data.series[serIdx].color = nc.name();
     buildSeriesColorRow();
@@ -881,7 +881,7 @@ void ChartEditorDialog::onNodeAddRow() {
     syncNodesFromTable();
     ChartNode n;
     n.id    = "n" + QString::number(m_data.nodes.size() + 1);
-    n.label = "Knoten";
+    n.label = "Node";
     n.shape = (m_data.type == "uml") ? "class" : "rect";
     m_data.nodes.append(n);
     rebuildNodeTable();
@@ -908,7 +908,7 @@ void ChartEditorDialog::onEventAddRow() {
     syncEventsFromTable();
     ChartTimelineEvent ev;
     ev.pos   = m_data.events.isEmpty() ? 0.0 : m_data.events.last().pos + 20.0;
-    ev.label = "Ereignis";
+    ev.label = "Event";
     m_data.events.append(ev);
     rebuildEventTable();
     if (m_previewWidget) m_previewWidget->update();
@@ -927,7 +927,7 @@ void ChartEditorDialog::onEventRemoveRow() {
 void ChartEditorDialog::onTaskAddRow() {
     syncTasksFromTable();
     ChartGanttTask t;
-    t.name  = "Aufgabe " + QString::number(m_data.tasks.size() + 1);
+    t.name  = "Task " + QString::number(m_data.tasks.size() + 1);
     t.start = 0; t.end = 50;
     m_data.tasks.append(t);
     rebuildTaskTable();
@@ -947,7 +947,7 @@ void ChartEditorDialog::onTaskRemoveRow() {
 void ChartEditorDialog::onVennAddRow() {
     syncVennFromTable();
     ChartVennCircle vc;
-    vc.label   = "Menge " + QString::number(m_data.vennCircles.size() + 1);
+    vc.label   = "Set " + QString::number(m_data.vennCircles.size() + 1);
     vc.cx = 50; vc.cy = 50; vc.radius = 30;
     vc.color   = ChartData::defaultColor(m_data.vennCircles.size());
     m_data.vennCircles.append(vc);

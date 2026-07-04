@@ -31,8 +31,8 @@ SlideListPanel::SlideListPanel(QWidget* parent) : QWidget(parent) {
     layout->addWidget(m_list, 1);
 
     auto* btnRow = new QHBoxLayout();
-    m_addBtn    = new QPushButton("+ Neue Slide", this);
-    m_removeBtn = new QPushButton("Löschen", this);
+    m_addBtn    = new QPushButton("+ New Slide", this);
+    m_removeBtn = new QPushButton("Delete", this);
     btnRow->addWidget(m_addBtn);
     btnRow->addWidget(m_removeBtn);
     layout->addLayout(btnRow);
@@ -212,17 +212,17 @@ void SlideListPanel::onContextMenu(const QPoint& pos) {
     if (row < 0 || !m_pres) return;
 
     QMenu menu(this);
-    menu.addAction("Umbenennen", this, [this, row]() {
+    menu.addAction("Rename", this, [this, row]() {
         if (row >= m_pres->slides.size()) return;
         bool ok;
-        QString name = QInputDialog::getText(this, "Slide umbenennen", "Name:",
+        QString name = QInputDialog::getText(this, "Rename Slide", "Name:",
             QLineEdit::Normal, m_pres->slides[row].name, &ok);
         if (ok && !name.isEmpty())
             emit slideRenamed(row, name);
     });
-    menu.addAction("Duplizieren", this, [this, row]() { emit slideDuplicated(row); });
+    menu.addAction("Duplicate", this, [this, row]() { emit slideDuplicated(row); });
     menu.addSeparator();
-    menu.addAction("Löschen",    this, [this, row]() { emit slideRemoved(row); });
+    menu.addAction("Delete",    this, [this, row]() { emit slideRemoved(row); });
     menu.exec(m_list->mapToGlobal(pos));
 }
 
@@ -231,7 +231,7 @@ void SlideListPanel::onItemDoubleClicked(QListWidgetItem* item) {
     int row = m_list->row(item);
     if (row < 0 || row >= m_pres->slides.size()) return;
     bool ok;
-    QString name = QInputDialog::getText(this, "Slide umbenennen", "Name:",
+    QString name = QInputDialog::getText(this, "Rename Slide", "Name:",
         QLineEdit::Normal, m_pres->slides[row].name, &ok);
     if (ok && !name.isEmpty())
         emit slideRenamed(row, name);

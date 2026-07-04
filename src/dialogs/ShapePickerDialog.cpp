@@ -49,35 +49,35 @@ static void starPolygon(QPainterPath& path, int n, double cx, double cy,
 const QVector<ShapeUtils::ShapeDef>& ShapeUtils::allShapes()
 {
     static const QVector<ShapeDef> list = {
-        // Grundformen
-        { "rect",           "Rechteck",             "Grundformen" },
-        { "circle",         "Ellipse",              "Grundformen" },
-        { "triangle",       "Dreieck",              "Grundformen" },
-        { "right-triangle", "Rechtwinkl. Dreieck",  "Grundformen" },
-        { "diamond",        "Raute",                "Grundformen" },
-        { "parallelogram",  "Parallelogramm",       "Grundformen" },
-        { "trapezoid",      "Trapez",               "Grundformen" },
-        { "cross",          "Kreuz",                "Grundformen" },
-        // Polygone
-        { "pentagon",       "Fünfeck",              "Polygone"    },
-        { "hexagon",        "Sechseck",             "Polygone"    },
-        { "octagon",        "Achteck",              "Polygone"    },
-        // Sterne
-        { "star4",          "Stern (4)",            "Sterne"      },
-        { "star5",          "Stern (5)",            "Sterne"      },
-        { "star6",          "Stern (6)",            "Sterne"      },
-        { "star8",          "Stern (8)",            "Sterne"      },
-        // Pfeile
-        { "arrow-right",    "Pfeil rechts",         "Pfeile"      },
-        { "arrow-left",     "Pfeil links",          "Pfeile"      },
-        { "arrow-up",       "Pfeil oben",           "Pfeile"      },
-        { "arrow-down",     "Pfeil unten",          "Pfeile"      },
-        { "arrow-lr",       "Doppelpfeil H",            "Pfeile"  },
-        { "arrow-ud",       "Doppelpfeil V",            "Pfeile"  },
-        { "chevron-right",  "Chevron rechts",       "Pfeile"      },
-        { "chevron-left",   "Chevron links",        "Pfeile"      },
-        // Sonstiges
-        { "heart",          "Herz",                 "Sonstiges"   },
+        // Basic Shapes
+        { "rect",           "Rectangle",            "Basic Shapes" },
+        { "circle",         "Ellipse",              "Basic Shapes" },
+        { "triangle",       "Triangle",             "Basic Shapes" },
+        { "right-triangle", "Right Triangle",       "Basic Shapes" },
+        { "diamond",        "Diamond",              "Basic Shapes" },
+        { "parallelogram",  "Parallelogram",        "Basic Shapes" },
+        { "trapezoid",      "Trapezoid",            "Basic Shapes" },
+        { "cross",          "Cross",                "Basic Shapes" },
+        // Polygons
+        { "pentagon",       "Pentagon",             "Polygons"    },
+        { "hexagon",        "Hexagon",              "Polygons"    },
+        { "octagon",        "Octagon",              "Polygons"    },
+        // Stars
+        { "star4",          "Star (4)",             "Stars"       },
+        { "star5",          "Star (5)",             "Stars"       },
+        { "star6",          "Star (6)",             "Stars"       },
+        { "star8",          "Star (8)",             "Stars"       },
+        // Arrows
+        { "arrow-right",    "Arrow Right",          "Arrows"      },
+        { "arrow-left",     "Arrow Left",           "Arrows"      },
+        { "arrow-up",       "Arrow Up",             "Arrows"      },
+        { "arrow-down",     "Arrow Down",           "Arrows"      },
+        { "arrow-lr",       "Double Arrow H",            "Arrows" },
+        { "arrow-ud",       "Double Arrow V",            "Arrows" },
+        { "chevron-right",  "Chevron Right",        "Arrows"      },
+        { "chevron-left",   "Chevron Left",         "Arrows"      },
+        // Other
+        { "heart",          "Heart",                "Other"       },
     };
     return list;
 }
@@ -336,7 +336,7 @@ QString ShapeUtils::shapeToCssStyle(const QString& type)
 
 ShapePickerDialog::ShapePickerDialog(QWidget* parent) : QDialog(parent)
 {
-    setWindowTitle("Form einfügen");
+    setWindowTitle("Insert Shape");
     setMinimumSize(560, 460);
     resize(580, 520);
 
@@ -430,7 +430,7 @@ ShapePickerDialog::ShapePickerDialog(QWidget* parent) : QDialog(parent)
     // Bottom bar
     auto* bottomBar = new QHBoxLayout();
     bottomBar->addStretch();
-    auto* cancelBtn = new QPushButton("Abbrechen", this);
+    auto* cancelBtn = new QPushButton("Cancel", this);
     cancelBtn->setFixedWidth(110);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     bottomBar->addWidget(cancelBtn);

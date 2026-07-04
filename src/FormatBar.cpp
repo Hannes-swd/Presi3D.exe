@@ -49,25 +49,25 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     m_fontCombo->setFocusPolicy(Qt::StrongFocus);
     tr->addWidget(m_fontCombo);
 
-    tr->addWidget(lbl("Gr:", m_textGroup));
+    tr->addWidget(lbl("Sz:", m_textGroup));
     m_fontSize = new QSpinBox(m_textGroup);
     m_fontSize->setRange(6, 400);
     m_fontSize->setValue(32);
     m_fontSize->setFixedWidth(58);
     m_fontSize->setSuffix("pt");
-    m_fontSize->setToolTip("Schriftgröße – Mausrad = live Größe ändern");
+    m_fontSize->setToolTip("Font size – mouse wheel = change size live");
     tr->addWidget(m_fontSize);
 
     tr->addWidget(makeSep(m_textGroup));
 
     // Color buttons — their style is set dynamically by updateColorSwatch
     m_colorBtn = new QPushButton("A", m_textGroup);
-    m_colorBtn->setToolTip("Textfarbe");
+    m_colorBtn->setToolTip("Text color");
     m_colorBtn->setFixedWidth(32);
     tr->addWidget(m_colorBtn);
 
     m_bgColorBtn = new QPushButton("■", m_textGroup);
-    m_bgColorBtn->setToolTip("Hintergrundfarbe");
+    m_bgColorBtn->setToolTip("Background color");
     m_bgColorBtn->setFixedWidth(32);
     tr->addWidget(m_bgColorBtn);
 
@@ -82,9 +82,9 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         b->setStyleSheet(ALIGN_BTN);
         tr->addWidget(b);
     }
-    m_alignLeft->setToolTip("Linksbündig");
-    m_alignCenter->setToolTip("Zentriert");
-    m_alignRight->setToolTip("Rechtsbündig");
+    m_alignLeft->setToolTip("Align Left");
+    m_alignCenter->setToolTip("Center");
+    m_alignRight->setToolTip("Align Right");
 
     m_vAlignTop    = new QPushButton("┬", m_textGroup); // ┬
     m_vAlignMiddle = new QPushButton("┼", m_textGroup); // ┼
@@ -95,9 +95,9 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         b->setStyleSheet(ALIGN_BTN);
         tr->addWidget(b);
     }
-    m_vAlignTop->setToolTip("Vertikal oben");
-    m_vAlignMiddle->setToolTip("Vertikal zentriert");
-    m_vAlignBottom->setToolTip("Vertikal unten");
+    m_vAlignTop->setToolTip("Align Top");
+    m_vAlignMiddle->setToolTip("Align Middle");
+    m_vAlignBottom->setToolTip("Align Bottom");
 
     tr->addWidget(makeSep(m_textGroup));
 
@@ -109,8 +109,8 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         b->setStyleSheet(ALIGN_BTN);
         tr->addWidget(b);
     }
-    m_listBullet->setToolTip("Aufzählung (•)");
-    m_listNumbered->setToolTip("Nummerierte Liste (1. 2. 3.)");
+    m_listBullet->setToolTip("Bulleted list (•)");
+    m_listNumbered->setToolTip("Numbered list (1. 2. 3.)");
 
     tr->addWidget(makeSep(m_textGroup));
 
@@ -127,26 +127,26 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     }
     m_boldBtn->setStyleSheet(ALIGN_BTN + "QPushButton { font-weight:bold; }");
     m_italicBtn->setStyleSheet(ALIGN_BTN + "QPushButton { font-style:italic; }");
-    m_boldBtn->setToolTip("Fett (B)");
-    m_italicBtn->setToolTip("Kursiv (I)");
-    m_underlineBtn->setToolTip("Unterstrichen (U)");
-    m_strikeBtn->setToolTip("Durchgestrichen");
+    m_boldBtn->setToolTip("Bold (B)");
+    m_italicBtn->setToolTip("Italic (I)");
+    m_underlineBtn->setToolTip("Underline (U)");
+    m_strikeBtn->setToolTip("Strikethrough");
 
     tr->addWidget(makeSep(m_textGroup));
 
     // Underline color + style (only meaningful when underline is on)
     m_ulColorBtn = new QPushButton("U", m_textGroup);
-    m_ulColorBtn->setToolTip("Unterstreichungsfarbe wählen");
+    m_ulColorBtn->setToolTip("Choose underline color");
     m_ulColorBtn->setFixedWidth(28);
     tr->addWidget(m_ulColorBtn);
 
     m_ulStyleCombo = new QComboBox(m_textGroup);
-    m_ulStyleCombo->addItem("─── Durchgezogen");
-    m_ulStyleCombo->addItem("─ ─ Gestrichelt");
-    m_ulStyleCombo->addItem("··· Gepunktet");
-    m_ulStyleCombo->addItem("~~~ Wellig");
+    m_ulStyleCombo->addItem("─── Solid");
+    m_ulStyleCombo->addItem("─ ─ Dashed");
+    m_ulStyleCombo->addItem("··· Dotted");
+    m_ulStyleCombo->addItem("~~~ Wavy");
     m_ulStyleCombo->setFixedWidth(130);
-    m_ulStyleCombo->setToolTip("Stil der Unterstreichung");
+    m_ulStyleCombo->setToolTip("Underline style");
     tr->addWidget(m_ulStyleCombo);
 
     tr->addWidget(makeSep(m_textGroup));
@@ -155,13 +155,13 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     m_linkBtn->setCheckable(true);
     m_linkBtn->setFixedWidth(62);
     m_linkBtn->setStyleSheet(ALIGN_BTN);
-    m_linkBtn->setToolTip("Hyperlink für diesen Text setzen/entfernen");
+    m_linkBtn->setToolTip("Set/remove hyperlink for this text");
     tr->addWidget(m_linkBtn);
 
     tr->addWidget(makeSep(m_textGroup));
 
     m_fmtPainterBtn = new QPushButton("◈ Format", m_textGroup);
-    m_fmtPainterBtn->setToolTip("Format auf anderes Element übertragen");
+    m_fmtPainterBtn->setToolTip("Apply format to another element");
     m_fmtPainterBtn->setFixedWidth(80);
     m_fmtPainterBtn->setStyleSheet(ALIGN_BTN);
     tr->addWidget(m_fmtPainterBtn);
@@ -186,8 +186,8 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     };
     m_posX  = mkDSpin("X:");  m_posX->setToolTip("Position X");
     m_posY  = mkDSpin("Y:");  m_posY->setToolTip("Position Y");
-    m_sizeW = mkDSpin("B:");  m_sizeW->setToolTip("Breite (Mausrad = live)");
-    m_sizeH = mkDSpin("H:");  m_sizeH->setToolTip("Höhe (Mausrad = live)");
+    m_sizeW = mkDSpin("W:");  m_sizeW->setToolTip("Width (mouse wheel = live)");
+    m_sizeH = mkDSpin("H:");  m_sizeH->setToolTip("Height (mouse wheel = live)");
 
     row->addWidget(m_geomGroup);
     row->addStretch();
@@ -402,12 +402,12 @@ void FormatBar::onFontSizeChanged(int v) {
 void FormatBar::onColorClicked() {
     if (auto* cell = currentCell()) {
         QColor init = cell->textColor.isValid() ? cell->textColor : Qt::black;
-        QColor c = QColorDialog::getColor(init, this, "Zelltextfarbe");
+        QColor c = QColorDialog::getColor(init, this, "Cell Text Color");
         if (!c.isValid()) return;
         cell->textColor = c; updateColorSwatch(m_colorBtn, c); emit modified(); return;
     }
     auto* e = currentElem(); if (!e) return;
-    QColor c = QColorDialog::getColor(e->color, this, "Textfarbe");
+    QColor c = QColorDialog::getColor(e->color, this, "Text Color");
     if (!c.isValid()) return;
     e->color = c; updateColorSwatch(m_colorBtn, c); emit modified();
 }
@@ -415,13 +415,13 @@ void FormatBar::onBgColorClicked() {
     if (auto* cell = currentCell()) {
         auto* e = currentElem();
         QColor init = cell->bgColor.isValid() ? cell->bgColor : (e ? e->tableDefaultBg : Qt::white);
-        QColor c = QColorDialog::getColor(init, this, "Zellhintergrund");
+        QColor c = QColorDialog::getColor(init, this, "Cell Background");
         if (!c.isValid()) return;
         cell->bgColor = c; updateColorSwatch(m_bgColorBtn, c); emit modified(); return;
     }
     auto* e = currentElem(); if (!e) return;
     QColor init = e->backgroundColor.isValid() ? e->backgroundColor : Qt::white;
-    QColor c = QColorDialog::getColor(init, this, "Hintergrundfarbe",
+    QColor c = QColorDialog::getColor(init, this, "Background Color",
                                       QColorDialog::ShowAlphaChannel);
     if (!c.isValid()) return;
     e->backgroundColor = c; updateColorSwatch(m_bgColorBtn, c); emit modified();
@@ -526,7 +526,7 @@ void FormatBar::onLinkClicked() {
     if (!e || e->type != SlideElement::Text) { refresh(); return; }
     bool ok = false;
     QString url = QInputDialog::getText(this, "Hyperlink",
-        "Ziel-URL (leer lassen zum Entfernen):", QLineEdit::Normal, e->hyperlink, &ok);
+        "Target URL (leave empty to remove):", QLineEdit::Normal, e->hyperlink, &ok);
     if (!ok) { refresh(); return; }
     e->hyperlink = url.trimmed();
     refresh();
@@ -535,7 +535,7 @@ void FormatBar::onLinkClicked() {
 void FormatBar::onUnderlineColorClicked() {
     auto* e = currentElem(); if (!e) return;
     QColor init = e->underlineColor.isValid() ? e->underlineColor : e->color;
-    QColor c = QColorDialog::getColor(init, this, "Unterstreichungsfarbe");
+    QColor c = QColorDialog::getColor(init, this, "Underline Color");
     if (!c.isValid()) return;
     e->underlineColor = c;
     updateColorSwatch(m_ulColorBtn, c);

@@ -57,32 +57,32 @@ private:
 // ─── Dialog ───────────────────────────────────────────────────────────────────
 
 InsertChartDialog::InsertChartDialog(QWidget* parent) : QDialog(parent) {
-    setWindowTitle("Diagramm einfügen");
+    setWindowTitle("Insert Chart");
     setMinimumWidth(500);
 
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(10);
     layout->setContentsMargins(16, 16, 16, 12);
 
-    auto* hdr = new QLabel("Diagrammtyp auswählen", this);
+    auto* hdr = new QLabel("Select Chart Type", this);
     hdr->setStyleSheet("font-size:14px;font-weight:bold;color:#111827;");
     layout->addWidget(hdr);
 
     static const struct { const char* type; const char* cat; } TYPES[] = {
-        {"bar",       "Datendiagramme"},
-        {"bar_h",     "Datendiagramme"},
-        {"line",      "Datendiagramme"},
-        {"area",      "Datendiagramme"},
-        {"pie",       "Datendiagramme"},
-        {"donut",     "Datendiagramme"},
-        {"scatter",   "Datendiagramme"},
-        {"flowchart", "Strukturdiagramme"},
-        {"mindmap",   "Strukturdiagramme"},
-        {"orgchart",  "Strukturdiagramme"},
-        {"uml",       "Strukturdiagramme"},
-        {"timeline",  "Spezialdiagramme"},
-        {"gantt",     "Spezialdiagramme"},
-        {"venn",      "Spezialdiagramme"},
+        {"bar",       "Data Charts"},
+        {"bar_h",     "Data Charts"},
+        {"line",      "Data Charts"},
+        {"area",      "Data Charts"},
+        {"pie",       "Data Charts"},
+        {"donut",     "Data Charts"},
+        {"scatter",   "Data Charts"},
+        {"flowchart", "Structure Charts"},
+        {"mindmap",   "Structure Charts"},
+        {"orgchart",  "Structure Charts"},
+        {"uml",       "Structure Charts"},
+        {"timeline",  "Special Charts"},
+        {"gantt",     "Special Charts"},
+        {"venn",      "Special Charts"},
         {nullptr, nullptr}
     };
 
@@ -134,7 +134,7 @@ InsertChartDialog::InsertChartDialog(QWidget* parent) : QDialog(parent) {
 
     auto* bbox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    bbox->button(QDialogButtonBox::Ok)->setText("Einfügen");
+    bbox->button(QDialogButtonBox::Ok)->setText("Insert");
     layout->addWidget(bbox);
     connect(bbox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(bbox, &QDialogButtonBox::rejected, this, &QDialog::reject);

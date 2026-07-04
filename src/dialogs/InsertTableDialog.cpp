@@ -52,13 +52,13 @@ void TablePickerWidget::mousePressEvent(QMouseEvent*) {
 // ── InsertTableDialog ─────────────────────────────────────────────────────────
 
 InsertTableDialog::InsertTableDialog(QWidget* parent) : QDialog(parent) {
-    setWindowTitle("Tabelle einfügen");
+    setWindowTitle("Insert Table");
     setModal(true);
 
     auto* vbox = new QVBoxLayout(this);
     vbox->setSpacing(8);
 
-    m_label = new QLabel("3 × 3 Tabelle", this);
+    m_label = new QLabel("3 × 3 Table", this);
     m_label->setAlignment(Qt::AlignCenter);
     m_label->setStyleSheet("font-weight: bold; font-size: 13px; padding: 4px;");
     vbox->addWidget(m_label);
@@ -66,18 +66,18 @@ InsertTableDialog::InsertTableDialog(QWidget* parent) : QDialog(parent) {
     m_picker = new TablePickerWidget(this);
     vbox->addWidget(m_picker, 0, Qt::AlignCenter);
 
-    auto* hint = new QLabel("Zeiger über das Raster bewegen oder Zahlen eingeben:", this);
+    auto* hint = new QLabel("Move the pointer over the grid or enter numbers:", this);
     hint->setStyleSheet("color: #6b7280; font-size: 10px;");
     vbox->addWidget(hint);
 
     auto* spinRow = new QHBoxLayout;
-    spinRow->addWidget(new QLabel("Zeilen:", this));
+    spinRow->addWidget(new QLabel("Rows:", this));
     m_rowSpin = new QSpinBox(this);
     m_rowSpin->setRange(1, 50);
     m_rowSpin->setValue(3);
     spinRow->addWidget(m_rowSpin);
     spinRow->addSpacing(12);
-    spinRow->addWidget(new QLabel("Spalten:", this));
+    spinRow->addWidget(new QLabel("Columns:", this));
     m_colSpin = new QSpinBox(this);
     m_colSpin->setRange(1, 20);
     m_colSpin->setValue(3);
@@ -89,7 +89,7 @@ InsertTableDialog::InsertTableDialog(QWidget* parent) : QDialog(parent) {
     vbox->addWidget(buttons);
 
     auto sync = [this](int r, int c) {
-        m_label->setText(QString("%1 × %2 Tabelle").arg(r).arg(c));
+        m_label->setText(QString("%1 × %2 Table").arg(r).arg(c));
         if (!m_upd) {
             m_upd = true;
             m_rowSpin->setValue(r);

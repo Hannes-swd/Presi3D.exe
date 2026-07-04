@@ -10,23 +10,23 @@ InsertButtonDialog::InsertButtonDialog(QWidget* parent, const QVector<QPair<QStr
                                        const QString& initialLabel, const QString& initialTargetId)
     : QDialog(parent) {
     bool editing = !initialTargetId.isEmpty() || !initialLabel.isEmpty();
-    setWindowTitle(editing ? "Button bearbeiten" : "Button einfügen");
+    setWindowTitle(editing ? "Edit Button" : "Insert Button");
     setMinimumWidth(380);
 
     auto* layout = new QVBoxLayout(this);
     layout->setSpacing(8);
 
-    auto* lblHdr = new QLabel("Beschriftung", this);
+    auto* lblHdr = new QLabel("Label", this);
     lblHdr->setStyleSheet("font-size:14px;font-weight:bold;color:#111827;");
     layout->addWidget(lblHdr);
 
     m_labelEdit = new QLineEdit(this);
-    m_labelEdit->setText(initialLabel.isEmpty() ? "Weiter" : initialLabel);
-    m_labelEdit->setPlaceholderText("Button-Text …");
+    m_labelEdit->setText(initialLabel.isEmpty() ? "Next" : initialLabel);
+    m_labelEdit->setPlaceholderText("Button text …");
     m_labelEdit->setStyleSheet("background:#ffffff; color:#111827;");
     layout->addWidget(m_labelEdit);
 
-    auto* targetHdr = new QLabel("Springt zu Folie", this);
+    auto* targetHdr = new QLabel("Jumps to Slide", this);
     targetHdr->setStyleSheet("font-size:14px;font-weight:bold;color:#111827; margin-top:6px;");
     layout->addWidget(targetHdr);
 
@@ -39,7 +39,7 @@ InsertButtonDialog::InsertButtonDialog(QWidget* parent, const QVector<QPair<QStr
     layout->addWidget(m_targetCombo);
 
     auto* bbox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    bbox->button(QDialogButtonBox::Ok)->setText(editing ? "Übernehmen" : "Einfügen");
+    bbox->button(QDialogButtonBox::Ok)->setText(editing ? "Apply" : "Insert");
     layout->addWidget(bbox);
     connect(bbox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(bbox, &QDialogButtonBox::rejected, this, &QDialog::reject);

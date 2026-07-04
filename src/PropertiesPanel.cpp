@@ -95,7 +95,7 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     vbox->setContentsMargins(6, 6, 6, 6);
     vbox->setSpacing(8);
 
-    auto* title = new QLabel("EIGENSCHAFTEN", inner);
+    auto* title = new QLabel("PROPERTIES", inner);
     title->setStyleSheet("font-weight: bold; font-size: 10px; color: #374151; padding: 8px 8px 4px 8px; letter-spacing: 1px;");
     vbox->addWidget(title);
 
@@ -116,19 +116,19 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
 }
 
 void PropertiesPanel::buildProjectGroup() {
-    m_projectGroup = new QGroupBox("Präsentation", this);
+    m_projectGroup = new QGroupBox("Presentation", this);
     auto* gvbox = new QVBoxLayout(m_projectGroup);
     gvbox->setContentsMargins(4, 8, 4, 4);
     gvbox->setSpacing(2);
 
     // ── Grundeinstellungen (offen) ─────────────────────────────────────────────
-    auto sec1 = makeSection("Grundeinstellungen", true, m_projectGroup);
+    auto sec1 = makeSection("Basic Settings", true, m_projectGroup);
     auto* form1 = makeForm(sec1.content);
 
     m_sceneBgBtn = new QPushButton(sec1.content);
     m_sceneBgBtn->setFixedHeight(24);
-    m_sceneBgBtn->setToolTip("Hintergrundfarbe hinter allen Folien");
-    form1->addRow("Hintergrund:", m_sceneBgBtn);
+    m_sceneBgBtn->setToolTip("Background color behind all slides");
+    form1->addRow("Background:", m_sceneBgBtn);
 
     auto* sizeRow = new QHBoxLayout;
     m_slideW = makeSpin(100, 9999, 10);  m_slideW->setValue(1920);
@@ -136,20 +136,20 @@ void PropertiesPanel::buildProjectGroup() {
     sizeRow->addWidget(m_slideW);
     sizeRow->addWidget(new QLabel("×"));
     sizeRow->addWidget(m_slideH);
-    form1->addRow("Foliengröße:", sizeRow);
+    form1->addRow("Slide Size:", sizeRow);
 
     gvbox->addWidget(sec1.outer);
 
     // ── Standard Sichtbarkeit (eingeklappt) ────────────────────────────────────
-    auto sec2 = makeSection("Standard Sichtbarkeit", false, m_projectGroup);
+    auto sec2 = makeSection("Default Visibility", false, m_projectGroup);
     auto* form2 = makeForm(sec2.content);
 
     m_defaultInactiveOpa = makeSpin(0.0, 1.0, 0.05);
     m_defaultInactiveOpa->setDecimals(2);
     m_defaultInactiveOpa->setValue(0.3);
-    m_defaultInactiveOpa->setToolTip("Standard-Deckkraft für Folien ohne eigene Einstellung\n"
-                                     "(gilt wenn keine per-Folie-Überschreibung gesetzt ist)");
-    form2->addRow("Inaktiv Standard:", m_defaultInactiveOpa);
+    m_defaultInactiveOpa->setToolTip("Default opacity for slides without their own setting\n"
+                                     "(applies when no per-slide override is set)");
+    form2->addRow("Inactive Default:", m_defaultInactiveOpa);
 
     gvbox->addWidget(sec2.outer);
 
@@ -167,7 +167,7 @@ void PropertiesPanel::buildSlideGroup() {
     gvbox->setSpacing(2);
 
     // ── Grundeinstellungen (offen) ─────────────────────────────────────────────
-    auto secBase = makeSection("Grundeinstellungen", true, m_slideGroup);
+    auto secBase = makeSection("Basic Settings", true, m_slideGroup);
     auto* formBase = makeForm(secBase.content);
 
     m_slideName = new QLineEdit(secBase.content);
@@ -175,7 +175,7 @@ void PropertiesPanel::buildSlideGroup() {
 
     m_bgColorBtn = new QPushButton(secBase.content);
     m_bgColorBtn->setFixedHeight(24);
-    formBase->addRow("Hintergrund:", m_bgColorBtn);
+    formBase->addRow("Background:", m_bgColorBtn);
 
     gvbox->addWidget(secBase.outer);
 
@@ -204,23 +204,23 @@ void PropertiesPanel::buildSlideGroup() {
     formRot->addRow("Rot Z:", m_rotZ);
 
     m_scale = makeSpin(0.01, 10.0, 0.1);
-    m_scale->setToolTip("Zoom der Kamera auf dieser Folie:\n"
-                        "1.0 = Folie füllt die Ansicht\n"
-                        "< 1 = reinzoomen (weniger Kontext)\n"
-                        "> 1 = rauszoomen (mehr Kontext)");
+    m_scale->setToolTip("Camera zoom on this slide:\n"
+                        "1.0 = slide fills the view\n"
+                        "< 1 = zoom in (less context)\n"
+                        "> 1 = zoom out (more context)");
     formRot->addRow("Zoom:", m_scale);
 
     gvbox->addWidget(secRot.outer);
 
     // ── Sichtfeld (eingeklappt) ────────────────────────────────────────────────
-    auto secView = makeSection("Sichtfeld (nur 3D)", false, m_slideGroup);
+    auto secView = makeSection("Field of View (3D only)", false, m_slideGroup);
     auto* formView = makeForm(secView.content);
 
     auto* viewOffRow = new QHBoxLayout;
     m_viewOffX = makeSpin(-9999, 9999, 50);
-    m_viewOffX->setToolTip("Sichtfeld-Mitte X-Verschiebung\n(0 = Folie zentriert)");
+    m_viewOffX->setToolTip("Field of view center X offset\n(0 = slide centered)");
     m_viewOffY = makeSpin(-9999, 9999, 50);
-    m_viewOffY->setToolTip("Sichtfeld-Mitte Y-Verschiebung\n(0 = Folie zentriert)");
+    m_viewOffY->setToolTip("Field of view center Y offset\n(0 = slide centered)");
     viewOffRow->addWidget(m_viewOffX);
     viewOffRow->addWidget(new QLabel("Y:"));
     viewOffRow->addWidget(m_viewOffY);
@@ -229,34 +229,34 @@ void PropertiesPanel::buildSlideGroup() {
     gvbox->addWidget(secView.outer);
 
     // ── Eigene Foliengröße (eingeklappt) ──────────────────────────────────────
-    auto secSize = makeSection("Eigene Foliengröße", false, m_slideGroup);
+    auto secSize = makeSection("Custom Slide Size", false, m_slideGroup);
     auto* formSize = makeForm(secSize.content);
 
     auto* ownSizeRow = new QHBoxLayout;
     m_slideOwnW = makeSpin(0, 9999, 10);
     m_slideOwnW->setDecimals(0);
-    m_slideOwnW->setToolTip("Breite dieser Folie (0 = Präsentationsstandard verwenden)");
+    m_slideOwnW->setToolTip("Width of this slide (0 = use presentation default)");
     m_slideOwnH = makeSpin(0, 9999, 10);
     m_slideOwnH->setDecimals(0);
-    m_slideOwnH->setToolTip("Höhe dieser Folie (0 = Präsentationsstandard verwenden)");
+    m_slideOwnH->setToolTip("Height of this slide (0 = use presentation default)");
     ownSizeRow->addWidget(m_slideOwnW);
     ownSizeRow->addWidget(new QLabel("×"));
     ownSizeRow->addWidget(m_slideOwnH);
-    formSize->addRow("Größe:", ownSizeRow);
+    formSize->addRow("Size:", ownSizeRow);
 
-    auto* sizeHint = new QLabel("(0 = Standard)", secSize.content);
+    auto* sizeHint = new QLabel("(0 = default)", secSize.content);
     sizeHint->setStyleSheet("color: #6b7280; font-size: 9px;");
     formSize->addRow(sizeHint);
 
     gvbox->addWidget(secSize.outer);
 
     // ── Sichtbarkeit anderer Folien (eingeklappt) ──────────────────────────────
-    auto secVis = makeSection("Sichtbarkeit anderer Folien", false, m_slideGroup);
+    auto secVis = makeSection("Visibility of Other Slides", false, m_slideGroup);
     auto* visVBox = new QVBoxLayout(secVis.content);
     visVBox->setContentsMargins(4, 2, 4, 4);
     visVBox->setSpacing(2);
 
-    auto* visHint = new QLabel("Wenn diese Folie aktiv ist:", secVis.content);
+    auto* visHint = new QLabel("When this slide is active:", secVis.content);
     visHint->setStyleSheet("color: #6b7280; font-size: 9px;");
     visVBox->addWidget(visHint);
 
@@ -293,61 +293,61 @@ void PropertiesPanel::buildElementGroup() {
     gvbox->setSpacing(2);
 
     // ── Grundeinstellungen (offen) ─────────────────────────────────────────────
-    auto secBase = makeSection("Grundeinstellungen", true, m_elemGroup);
+    auto secBase = makeSection("Basic Settings", true, m_elemGroup);
     auto* formBase = makeForm(secBase.content);
 
     m_elemType = new QLabel("—", secBase.content);
     m_elemType->setStyleSheet("color: #374151;");
-    formBase->addRow("Typ:", m_elemType);
+    formBase->addRow("Type:", m_elemType);
 
     m_elemContent = new QLineEdit(secBase.content);
-    formBase->addRow("Inhalt:", m_elemContent);
+    formBase->addRow("Content:", m_elemContent);
 
     m_eX = makeSpin(-9999, 9999); m_eY = makeSpin(-9999, 9999);
     m_eW = makeSpin(1, 9999);     m_eH = makeSpin(1, 9999);
     formBase->addRow("X:", m_eX);
     formBase->addRow("Y:", m_eY);
-    formBase->addRow("Breite:", m_eW);
-    formBase->addRow("Höhe:",   m_eH);
+    formBase->addRow("Width:", m_eW);
+    formBase->addRow("Height:",   m_eH);
 
     gvbox->addWidget(secBase.outer);
 
     // ── Darstellung (offen) ────────────────────────────────────────────────────
-    auto secStyle = makeSection("Darstellung", true, m_elemGroup);
+    auto secStyle = makeSection("Appearance", true, m_elemGroup);
     auto* formStyle = makeForm(secStyle.content);
 
     m_eColorBtn   = new QPushButton(secStyle.content); m_eColorBtn->setFixedHeight(24);
     m_eBgColorBtn = new QPushButton(secStyle.content); m_eBgColorBtn->setFixedHeight(24);
-    formStyle->addRow("Farbe:",       m_eColorBtn);
-    formStyle->addRow("Hintergrund:", m_eBgColorBtn);
+    formStyle->addRow("Color:",       m_eColorBtn);
+    formStyle->addRow("Background:", m_eBgColorBtn);
 
     m_eFontSize = new QSpinBox(secStyle.content);
     m_eFontSize->setRange(6, 200);
     m_eFontSize->setValue(32);
-    formStyle->addRow("Schriftgröße:", m_eFontSize);
+    formStyle->addRow("Font Size:", m_eFontSize);
 
     m_eAlign = new QComboBox(secStyle.content);
-    m_eAlign->addItems({"Links", "Zentriert", "Rechts"});
-    formStyle->addRow("Ausrichtung:", m_eAlign);
+    m_eAlign->addItems({"Left", "Center", "Right"});
+    formStyle->addRow("Alignment:", m_eAlign);
 
     gvbox->addWidget(secStyle.outer);
 
     // ── Form – nur für Shapes (offen, aber initial ausgeblendet) ──────────────
-    auto secForm = makeSection("Form", true, m_elemGroup);
+    auto secForm = makeSection("Shape", true, m_elemGroup);
     auto* formForm = makeForm(secForm.content);
 
     m_eBorderW = makeSpin(0, 200, 1);
     m_eBorderW->setDecimals(0);
-    formForm->addRow("Randbreite px:", m_eBorderW);
+    formForm->addRow("Border Width px:", m_eBorderW);
 
     m_eBorderColorBtn = new QPushButton(secForm.content);
     m_eBorderColorBtn->setFixedHeight(24);
-    formForm->addRow("Randfarbe:", m_eBorderColorBtn);
+    formForm->addRow("Border Color:", m_eBorderColorBtn);
 
     m_eCornerRadius = makeSpin(0, 999, 5);
     m_eCornerRadius->setDecimals(0);
-    m_eCornerRadius->setToolTip("Abrundung der Ecken in Folien-Pixeln (0 = keine Abrundung)");
-    formForm->addRow("Eckenradius:", m_eCornerRadius);
+    m_eCornerRadius->setToolTip("Corner rounding in slide pixels (0 = no rounding)");
+    formForm->addRow("Corner Radius:", m_eCornerRadius);
 
     m_elemFormSection = secForm.outer;
     gvbox->addWidget(secForm.outer);
@@ -357,22 +357,22 @@ void PropertiesPanel::buildElementGroup() {
     auto* formAnim = makeForm(secAnim.content);
 
     m_eAnimType = new QComboBox(secAnim.content);
-    m_eAnimType->addItem("Keine",          "");
-    m_eAnimType->addItem("Einblenden",     "fadeIn");
-    m_eAnimType->addItem("Von links",      "slideLeft");
-    m_eAnimType->addItem("Von rechts",     "slideRight");
-    m_eAnimType->addItem("Von oben",       "slideUp");
-    m_eAnimType->addItem("Von unten",      "slideDown");
+    m_eAnimType->addItem("None",          "");
+    m_eAnimType->addItem("Fade In",     "fadeIn");
+    m_eAnimType->addItem("From Left",      "slideLeft");
+    m_eAnimType->addItem("From Right",     "slideRight");
+    m_eAnimType->addItem("From Top",       "slideUp");
+    m_eAnimType->addItem("From Bottom",     "slideDown");
     m_eAnimType->addItem("Zoom",           "zoomIn");
     formAnim->addRow("Animation:", m_eAnimType);
 
-    m_animDelayLabel = new QLabel("Verzögerung (s):", secAnim.content);
+    m_animDelayLabel = new QLabel("Delay (s):", secAnim.content);
     m_eAnimDelay = makeSpin(0.0, 10.0, 0.1);
     m_eAnimDelay->setDecimals(1);
     m_eAnimDelay->setValue(0.3);
     formAnim->addRow(m_animDelayLabel, m_eAnimDelay);
 
-    m_animDurLabel = new QLabel("Dauer (s):", secAnim.content);
+    m_animDurLabel = new QLabel("Duration (s):", secAnim.content);
     m_eAnimDuration = makeSpin(0.05, 10.0, 0.1);
     m_eAnimDuration->setDecimals(1);
     m_eAnimDuration->setValue(0.5);
@@ -404,61 +404,61 @@ void PropertiesPanel::buildElementGroup() {
 }
 
 void PropertiesPanel::buildTableGroup() {
-    m_tableGroup = new QGroupBox("Tabelle", this);
+    m_tableGroup = new QGroupBox("Table", this);
     auto* gvbox = new QVBoxLayout(m_tableGroup);
     gvbox->setContentsMargins(4, 8, 4, 4);
     gvbox->setSpacing(2);
 
     // ── Tabellendesign ────────────────────────────────────────────────────────
-    auto secDesign = makeSection("Tabellendesign", true, m_tableGroup);
+    auto secDesign = makeSection("Table Design", true, m_tableGroup);
     auto* formD    = makeForm(secDesign.content);
 
     m_tBorderColorBtn = new QPushButton(secDesign.content);
     m_tBorderColorBtn->setFixedHeight(24);
-    formD->addRow("Rahmenfarbe:", m_tBorderColorBtn);
+    formD->addRow("Border Color:", m_tBorderColorBtn);
 
     m_tBorderWidth = makeSpin(0, 20, 0.5);
     m_tBorderWidth->setDecimals(1);
-    formD->addRow("Rahmenbreite:", m_tBorderWidth);
+    formD->addRow("Border Width:", m_tBorderWidth);
 
     m_tFontSize = new QSpinBox(secDesign.content);
     m_tFontSize->setRange(6, 120);
     m_tFontSize->setValue(20);
-    formD->addRow("Schriftgröße:", m_tFontSize);
+    formD->addRow("Font Size:", m_tFontSize);
 
     m_tDefaultBgBtn = new QPushButton(secDesign.content);
     m_tDefaultBgBtn->setFixedHeight(24);
-    formD->addRow("Zell-Hintergrund:", m_tDefaultBgBtn);
+    formD->addRow("Cell Background:", m_tDefaultBgBtn);
 
     m_tDefaultTextBtn = new QPushButton(secDesign.content);
     m_tDefaultTextBtn->setFixedHeight(24);
-    formD->addRow("Zell-Textfarbe:", m_tDefaultTextBtn);
+    formD->addRow("Cell Text Color:", m_tDefaultTextBtn);
 
     // Header row
-    m_tHasHeader = new QCheckBox("Kopfzeile", secDesign.content);
+    m_tHasHeader = new QCheckBox("Header Row", secDesign.content);
     formD->addRow(m_tHasHeader);
 
     m_tHeaderBgBtn = new QPushButton(secDesign.content);
     m_tHeaderBgBtn->setFixedHeight(24);
-    formD->addRow("Kopf-Hintergrund:", m_tHeaderBgBtn);
+    formD->addRow("Header Background:", m_tHeaderBgBtn);
 
     m_tHeaderTextBtn = new QPushButton(secDesign.content);
     m_tHeaderTextBtn->setFixedHeight(24);
-    formD->addRow("Kopf-Textfarbe:", m_tHeaderTextBtn);
+    formD->addRow("Header Text Color:", m_tHeaderTextBtn);
 
     gvbox->addWidget(secDesign.outer);
 
     // ── Zeilen / Spalten ──────────────────────────────────────────────────────
-    auto secRC = makeSection("Zeilen / Spalten", true, m_tableGroup);
+    auto secRC = makeSection("Rows / Columns", true, m_tableGroup);
     auto* rcVbox = new QVBoxLayout(secRC.content);
     rcVbox->setContentsMargins(4, 2, 4, 4);
     rcVbox->setSpacing(4);
 
     auto* rowBtnRow = new QHBoxLayout;
-    auto* addRowBtn = new QPushButton("+ Zeile", secRC.content);
-    auto* delRowBtn = new QPushButton("- Zeile", secRC.content);
-    auto* addColBtn = new QPushButton("+ Spalte", secRC.content);
-    auto* delColBtn = new QPushButton("- Spalte", secRC.content);
+    auto* addRowBtn = new QPushButton("+ Row", secRC.content);
+    auto* delRowBtn = new QPushButton("- Row", secRC.content);
+    auto* addColBtn = new QPushButton("+ Column", secRC.content);
+    auto* delColBtn = new QPushButton("- Column", secRC.content);
     rowBtnRow->addWidget(addRowBtn);
     rowBtnRow->addWidget(delRowBtn);
     rowBtnRow->addWidget(addColBtn);
@@ -468,27 +468,27 @@ void PropertiesPanel::buildTableGroup() {
     gvbox->addWidget(secRC.outer);
 
     // ── Ausgewählte Zelle ─────────────────────────────────────────────────────
-    auto secCell = makeSection("Ausgewählte Zelle", true, m_tableGroup);
+    auto secCell = makeSection("Selected Cell", true, m_tableGroup);
     auto* formC  = makeForm(secCell.content);
 
     m_cellBgBtn = new QPushButton(secCell.content);
     m_cellBgBtn->setFixedHeight(24);
-    formC->addRow("Hintergrund:", m_cellBgBtn);
+    formC->addRow("Background:", m_cellBgBtn);
 
     m_cellTextBtn = new QPushButton(secCell.content);
     m_cellTextBtn->setFixedHeight(24);
-    formC->addRow("Textfarbe:", m_cellTextBtn);
+    formC->addRow("Text Color:", m_cellTextBtn);
 
-    m_cellBoldChk   = new QCheckBox("Fett",         secCell.content);
-    m_cellItalicChk = new QCheckBox("Kursiv",       secCell.content);
+    m_cellBoldChk   = new QCheckBox("Bold",         secCell.content);
+    m_cellItalicChk = new QCheckBox("Italic",       secCell.content);
     auto* styleRow  = new QHBoxLayout;
     styleRow->addWidget(m_cellBoldChk);
     styleRow->addWidget(m_cellItalicChk);
     formC->addRow(styleRow);
 
     m_cellAlignCombo = new QComboBox(secCell.content);
-    m_cellAlignCombo->addItems({"Links", "Zentriert", "Rechts"});
-    formC->addRow("Ausrichtung:", m_cellAlignCombo);
+    m_cellAlignCombo->addItems({"Left", "Center", "Right"});
+    formC->addRow("Alignment:", m_cellAlignCombo);
 
     m_cellSection = secCell.outer;
     gvbox->addWidget(secCell.outer);
@@ -707,7 +707,7 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Form", "Bild", "Tabelle", "Diagramm", "Formel", "iFrame", "Button"};
+    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button"};
     m_elemType->setText(typeNames[e.type]);
 
     m_elemContent->setEnabled(e.type != SlideElement::Shape);
@@ -774,7 +774,7 @@ void PropertiesPanel::updateColorButton(QPushButton* btn, const QColor& c) {
 void PropertiesPanel::onSceneBgClicked() {
     if (!m_pres) return;
     QColor c = QColorDialog::getColor(m_pres->sceneBackground, this,
-                                      "Projektshintergrund");
+                                      "Project Background");
     if (!c.isValid()) return;
     m_pres->sceneBackground = c;
     updateColorButton(m_sceneBgBtn, c);
@@ -809,7 +809,7 @@ void PropertiesPanel::onBgColorClicked() {
     if (!s) return;
     QColor init = (s->backgroundColor.isValid() && s->backgroundColor != Qt::transparent)
                   ? s->backgroundColor : Qt::white;
-    QColor c = QColorDialog::getColor(init, this, "Folienhintergrund (Alpha=0 → transparent)",
+    QColor c = QColorDialog::getColor(init, this, "Slide Background (Alpha=0 → transparent)",
                                       QColorDialog::ShowAlphaChannel);
     if (c.isValid()) {
         s->backgroundColor = (c.alpha() == 0) ? Qt::transparent : c;
@@ -882,7 +882,7 @@ void PropertiesPanel::onElemContentChanged(const QString& text) {
 void PropertiesPanel::onElemColorClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    QColor c = QColorDialog::getColor(e->color, this, "Textfarbe");
+    QColor c = QColorDialog::getColor(e->color, this, "Text Color");
     if (c.isValid()) {
         e->color = c;
         updateColorButton(m_eColorBtn, c);
@@ -895,7 +895,7 @@ void PropertiesPanel::onElemBgColorClicked() {
     if (!e) return;
     QColor c = QColorDialog::getColor(
         e->backgroundColor == Qt::transparent ? Qt::white : e->backgroundColor,
-        this, "Hintergrundfarbe");
+        this, "Background Color");
     if (c.isValid()) {
         e->backgroundColor = c;
         updateColorButton(m_eBgColorBtn, c);
@@ -949,7 +949,7 @@ void PropertiesPanel::onElemBorderColorClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
     QColor init = e->borderColor.isValid() ? e->borderColor : Qt::darkGray;
-    QColor c = QColorDialog::getColor(init, this, "Randfarbe");
+    QColor c = QColorDialog::getColor(init, this, "Border Color");
     if (c.isValid()) {
         e->borderColor = c;
         updateColorButton(m_eBorderColorBtn, c);
@@ -1045,31 +1045,31 @@ static TableCell* getCell(Presentation* p, int si, int ei, int row, int col) {
 void PropertiesPanel::onTableBorderColorClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    QColor c = QColorDialog::getColor(e->tableBorderColor, this, "Rahmenfarbe");
+    QColor c = QColorDialog::getColor(e->tableBorderColor, this, "Border Color");
     if (c.isValid()) { e->tableBorderColor = c; updateColorButton(m_tBorderColorBtn, c); emit elementModified(); }
 }
 void PropertiesPanel::onTableHeaderBgClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    QColor c = QColorDialog::getColor(e->tableHeaderBg, this, "Kopfzeilen-Hintergrund");
+    QColor c = QColorDialog::getColor(e->tableHeaderBg, this, "Header Row Background");
     if (c.isValid()) { e->tableHeaderBg = c; updateColorButton(m_tHeaderBgBtn, c); emit elementModified(); }
 }
 void PropertiesPanel::onTableHeaderTextClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    QColor c = QColorDialog::getColor(e->tableHeaderText, this, "Kopfzeilen-Textfarbe");
+    QColor c = QColorDialog::getColor(e->tableHeaderText, this, "Header Row Text Color");
     if (c.isValid()) { e->tableHeaderText = c; updateColorButton(m_tHeaderTextBtn, c); emit elementModified(); }
 }
 void PropertiesPanel::onTableDefaultBgClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    QColor c = QColorDialog::getColor(e->tableDefaultBg, this, "Zellen-Standardhintergrund");
+    QColor c = QColorDialog::getColor(e->tableDefaultBg, this, "Default Cell Background");
     if (c.isValid()) { e->tableDefaultBg = c; updateColorButton(m_tDefaultBgBtn, c); emit elementModified(); }
 }
 void PropertiesPanel::onTableDefaultTextClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    QColor c = QColorDialog::getColor(e->tableDefaultText, this, "Zellen-Standardtextfarbe");
+    QColor c = QColorDialog::getColor(e->tableDefaultText, this, "Default Cell Text Color");
     if (c.isValid()) { e->tableDefaultText = c; updateColorButton(m_tDefaultTextBtn, c); emit elementModified(); }
 }
 
@@ -1121,7 +1121,7 @@ void PropertiesPanel::onCellBgColorClicked() {
     if (!cell) return;
     const auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     QColor init = cell->bgColor.isValid() ? cell->bgColor : (e ? e->tableDefaultBg : Qt::white);
-    QColor c = QColorDialog::getColor(init, this, "Zellenhintergrund");
+    QColor c = QColorDialog::getColor(init, this, "Cell Background");
     if (c.isValid()) { cell->bgColor = c; updateColorButton(m_cellBgBtn, c); emit elementModified(); }
 }
 void PropertiesPanel::onCellTextColorClicked() {
@@ -1129,7 +1129,7 @@ void PropertiesPanel::onCellTextColorClicked() {
     if (!cell) return;
     const auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     QColor init = cell->textColor.isValid() ? cell->textColor : (e ? e->tableDefaultText : Qt::black);
-    QColor c = QColorDialog::getColor(init, this, "Zellenfarbe");
+    QColor c = QColorDialog::getColor(init, this, "Cell Text Color");
     if (c.isValid()) { cell->textColor = c; updateColorButton(m_cellTextBtn, c); emit elementModified(); }
 }
 void PropertiesPanel::onCellBoldChanged(bool on) {
@@ -1153,7 +1153,7 @@ void PropertiesPanel::onCellAlignChanged(int idx) {
 // ── Chart group ───────────────────────────────────────────────────────────────
 
 void PropertiesPanel::buildChartGroup() {
-    m_chartGroup = new QGroupBox("Diagramm", this);
+    m_chartGroup = new QGroupBox("Chart", this);
     auto* vbox = new QVBoxLayout(m_chartGroup);
     vbox->setContentsMargins(8, 8, 8, 8);
     vbox->setSpacing(6);
@@ -1165,11 +1165,11 @@ void PropertiesPanel::buildChartGroup() {
     m_chartTypeLabel  = new QLabel(this);
     m_chartTitleLabel = new QLabel(this);
     m_chartTitleLabel->setWordWrap(true);
-    form->addRow("Typ:", m_chartTypeLabel);
-    form->addRow("Titel:", m_chartTitleLabel);
+    form->addRow("Type:", m_chartTypeLabel);
+    form->addRow("Title:", m_chartTitleLabel);
     vbox->addLayout(form);
 
-    m_chartEditBtn = new QPushButton("Diagramm bearbeiten...", this);
+    m_chartEditBtn = new QPushButton("Edit Chart...", this);
     m_chartEditBtn->setStyleSheet(
         "QPushButton { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; "
         "              border-radius:4px; padding:4px 8px; }"
@@ -1196,5 +1196,5 @@ void PropertiesPanel::refreshChart() {
     if (!e || e->type != SlideElement::Chart) return;
     m_chartTypeLabel->setText(ChartRenderer::typeName(e->chartData.type));
     m_chartTitleLabel->setText(e->chartData.title.isEmpty()
-                               ? "(kein Titel)" : e->chartData.title);
+                               ? "(no title)" : e->chartData.title);
 }

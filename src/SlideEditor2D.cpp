@@ -476,7 +476,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.fillRect(wr, QColor(180, 180, 200));
             p.setPen(Qt::darkGray);
             p.drawText(wr, Qt::AlignCenter,
-                       e.content.isEmpty() ? "[Bild]" : QFileInfo(e.content).fileName());
+                       e.content.isEmpty() ? "[Image]" : QFileInfo(e.content).fileName());
         }
 
     } else if (e.type == SlideElement::Chart) {
@@ -491,7 +491,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.setFont(QFont("Arial", qMax(6, int(9 * sr.height() / SLIDE_H_DEFAULT))));
             p.drawText(QRectF(wr.x(), wr.bottom() - 18 * sr.height()/SLIDE_H_DEFAULT,
                               wr.width(), 18 * sr.height()/SLIDE_H_DEFAULT),
-                       Qt::AlignCenter, "Doppelklick zum Bearbeiten");
+                       Qt::AlignCenter, "Double-click to edit");
             p.restore();
         }
 
@@ -503,7 +503,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.save();
             p.setPen(QColor(150, 150, 150));
             p.setFont(QFont(e.fontFamily, qMax(6, int(9 * scaleY))));
-            p.drawText(wr, Qt::AlignCenter, "∑ Formel");
+            p.drawText(wr, Qt::AlignCenter, "∑ Formula");
             p.restore();
         } else {
             LatexRenderer::paint(p, wr, e.content, e.fontFamily,
@@ -516,7 +516,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.setPen(QColor(37, 99, 235, 200));
             p.setFont(QFont("Arial", qMax(6, int(9 * scaleY))));
             p.drawText(QRectF(wr.x(), wr.bottom() - 18 * scaleY, wr.width(), 18 * scaleY),
-                       Qt::AlignCenter, "Doppelklick zum Bearbeiten");
+                       Qt::AlignCenter, "Double-click to edit");
             p.restore();
         }
 
@@ -537,7 +537,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.setFont(labelFont);
         QRectF labelRect(wr.x() + 4, wr.y() + wr.height() * 0.6, wr.width() - 8, wr.height() * 0.35);
         p.drawText(labelRect, Qt::AlignCenter | Qt::TextWordWrap,
-                   e.content.isEmpty() ? "iFrame – Doppelklick für Link" : e.content);
+                   e.content.isEmpty() ? "iFrame – double-click for link" : e.content);
         p.restore();
 
     } else if (e.type == SlideElement::Button) {
@@ -569,7 +569,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.setPen(QColor(37, 99, 235, 220));
             p.setFont(QFont("Arial", qMax(6, int(9 * scaleY))));
             p.drawText(QRectF(wr.x(), wr.bottom() - 16 * scaleY, wr.width(), 16 * scaleY),
-                       Qt::AlignCenter, "Doppelklick: Ziel-Folie wählen");
+                       Qt::AlignCenter, "Double-click: choose target slide");
             p.restore();
         }
     }
@@ -1341,13 +1341,13 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
             }
 
             if (multiSel) {
-                menu.addAction("Zellen verbinden", this, &SlideEditor2D::mergeCells);
+                menu.addAction("Merge Cells", this, &SlideEditor2D::mergeCells);
             }
             if (isSpanning) {
-                menu.addAction("Zellen trennen", this, &SlideEditor2D::unmergeCells);
+                menu.addAction("Split Cells", this, &SlideEditor2D::unmergeCells);
             }
             if (multiSel || isSpanning) menu.addSeparator();
-            menu.addAction("Tabelle verlassen", this, &SlideEditor2D::exitTableEditMode);
+            menu.addAction("Exit Table", this, &SlideEditor2D::exitTableEditMode);
             menu.exec(e->globalPos());
             return;
         }
@@ -1355,20 +1355,20 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
 
     QMenu menu(this);
     if (m_selectedElem >= 0) {
-        menu.addAction("Kopieren  (Strg+C)", this, &SlideEditor2D::copySelectedElement);
-        menu.addAction("Ausschneiden (Strg+X)", this, [this]() {
+        menu.addAction("Copy  (Ctrl+C)", this, &SlideEditor2D::copySelectedElement);
+        menu.addAction("Cut (Ctrl+X)", this, [this]() {
             copySelectedElement(); deleteSelectedElement();
         });
         menu.addSeparator();
-        menu.addAction("Vordergrund",          this, &SlideEditor2D::bringToFront);
-        menu.addAction("Eine Ebene nach oben", this, &SlideEditor2D::bringForward);
-        menu.addAction("Eine Ebene nach unten",this, &SlideEditor2D::sendBackward);
-        menu.addAction("Hintergrund",          this, &SlideEditor2D::sendToBack);
+        menu.addAction("Bring to Front",       this, &SlideEditor2D::bringToFront);
+        menu.addAction("Move One Layer Up",    this, &SlideEditor2D::bringForward);
+        menu.addAction("Move One Layer Down",  this, &SlideEditor2D::sendBackward);
+        menu.addAction("Send to Back",         this, &SlideEditor2D::sendToBack);
         menu.addSeparator();
-        menu.addAction("Element löschen",      this, &SlideEditor2D::deleteSelectedElement);
+        menu.addAction("Delete Element",       this, &SlideEditor2D::deleteSelectedElement);
         menu.addSeparator();
     }
-    auto* pasteAct = menu.addAction("Einfügen (Strg+V)", this, &SlideEditor2D::pasteElement);
+    auto* pasteAct = menu.addAction("Paste (Ctrl+V)", this, &SlideEditor2D::pasteElement);
     pasteAct->setEnabled(s_hasClipboard);
     menu.exec(e->globalPos());
 }
@@ -1379,7 +1379,7 @@ void SlideEditor2D::addTextElement() {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s) return;
     SlideElement e;
-    e.type = SlideElement::Text; e.content = "Text eingeben";
+    e.type = SlideElement::Text; e.content = "Enter text";
     e.x = 200; e.y = 200; e.width = 700; e.height = 90; e.fontSize = 36;
     s->elements.append(e);
     m_selectedElem = s->elements.size() - 1;
@@ -1535,7 +1535,7 @@ static QVector<QPair<QString, QString>> slideListForButtonTarget(const Presentat
     QVector<QPair<QString, QString>> slides;
     if (!pres) return slides;
     for (const Slide& s : pres->slides)
-        slides.append({s.id, s.name.isEmpty() ? QString("Folie %1").arg(slides.size() + 1) : s.name});
+        slides.append({s.id, s.name.isEmpty() ? QString("Slide %1").arg(slides.size() + 1) : s.name});
     return slides;
 }
 
@@ -1544,7 +1544,7 @@ void SlideEditor2D::addButtonElement(const QString& label, const QString& target
     if (!s) return;
     SlideElement e;
     e.type            = SlideElement::Button;
-    e.content         = label.isEmpty() ? "Weiter" : label;
+    e.content         = label.isEmpty() ? "Next" : label;
     e.targetSlideId   = targetSlideId;
     e.x = 300.f; e.y = 300.f; e.width = 240.f; e.height = 70.f;
     e.fontSize        = 24;
@@ -1567,7 +1567,7 @@ void SlideEditor2D::openButtonEditor() {
 
     InsertButtonDialog dlg(this, slideListForButtonTarget(m_pres), e.content, e.targetSlideId);
     if (dlg.exec() == QDialog::Accepted) {
-        e.content       = dlg.label().isEmpty() ? "Weiter" : dlg.label();
+        e.content       = dlg.label().isEmpty() ? "Next" : dlg.label();
         e.targetSlideId = dlg.targetSlideId();
         update();
         emit presentationModified();
@@ -1575,8 +1575,8 @@ void SlideEditor2D::openButtonEditor() {
 }
 
 void SlideEditor2D::addImageElement() {
-    QString path = QFileDialog::getOpenFileName(nullptr, "Bild öffnen", {},
-        "Bilder (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Alle Dateien (*)");
+    QString path = QFileDialog::getOpenFileName(nullptr, "Open Image", {},
+        "Images (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;All Files (*)");
     if (path.isEmpty()) return;
     addImageFromPath(path);
 }

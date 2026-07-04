@@ -18,7 +18,7 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
                                              const QString& outputDir) {
     QDir dir(outputDir);
     if (!dir.exists() && !dir.mkpath("."))
-        return {false, "Ordner konnte nicht erstellt werden:\n" + outputDir};
+        return {false, "Could not create folder:\n" + outputDir};
 
     dir.mkpath("assets");
     QString assetsPath = dir.filePath("assets");
@@ -27,8 +27,8 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
     QString jsDest = dir.filePath("impress.js");
     if (!QFile::exists(jsDest)) {
         if (!QFile::copy(QString::fromUtf8(IMPRESS_JS_SRC), jsDest))
-            return {false, QString("impress.js konnte nicht kopiert werden.\n"
-                                   "Erwartet unter: %1").arg(IMPRESS_JS_SRC)};
+            return {false, QString("Could not copy impress.js.\n"
+                                   "Expected at: %1").arg(IMPRESS_JS_SRC)};
     }
 
     QStringList imgErrors;
@@ -38,7 +38,7 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
     {
         QFile f(dir.filePath("styles.css"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
-            return {false, "Kann styles.css nicht schreiben."};
+            return {false, "Cannot write styles.css."};
         QTextStream s(&f);
         s << generateCss(pres);
     }
@@ -47,7 +47,7 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
     {
         QFile f(dir.filePath("index.html"));
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
-            return {false, "Kann index.html nicht schreiben."};
+            return {false, "Cannot write index.html."};
         QTextStream s(&f);
         s.setEncoding(QStringConverter::Utf8);
         s << generateHtml(pres);
@@ -55,7 +55,7 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
 
     QString warn;
     if (!imgErrors.isEmpty())
-        warn = "\n\nWarnung – folgende Bilder konnten nicht kopiert werden:\n"
+        warn = "\n\nWarning - the following images could not be copied:\n"
                + imgErrors.join("\n");
 
     return {true, warn};
@@ -152,10 +152,10 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
     double defOpa = qBound(0.0, double(pres.defaultInactiveOpacity), 1.0);
 
     out << "<!DOCTYPE html>\n"
-        << "<html lang=\"de\">\n"
+        << "<html lang=\"en\">\n"
         << "<head>\n"
         << "  <meta charset=\"UTF-8\">\n"
-        << "  <title>Präsentation</title>\n"
+        << "  <title>Presentation</title>\n"
         << "  <link rel=\"stylesheet\" href=\"styles.css\">\n";
     if (hasFormulaElement(pres))
         out << "  <script id=\"MathJax-script\" async "
@@ -582,7 +582,7 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             "<a href=\"%2\" target=\"_blank\" rel=\"noopener\" "
             "style=\"position:absolute;top:4px;right:4px;z-index:2;background:rgba(17,17,17,.75);"
             "color:#fff;font:11px sans-serif;padding:3px 7px;border-radius:4px;text-decoration:none;\" "
-            "title=\"Falls die Seite das Einbetten blockiert: hier in neuem Tab öffnen\">↗ Öffnen</a>"
+            "title=\"If the page blocks embedding: open here in a new tab\">↗ Open</a>"
             "</div>")
             .arg(base, url, e.id);
 
@@ -602,7 +602,7 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             style += QString("border-radius:%1px;").arg(int(e.cornerRadius));
         if (e.bold) style += "font-weight:bold;";
 
-        QString label = e.content.isEmpty() ? "Weiter" : e.content.toHtmlEscaped();
+        QString label = e.content.isEmpty() ? "Next" : e.content.toHtmlEscaped();
         QString targetHtmlId = uuidToHtmlId.value(e.targetSlideId);
         if (targetHtmlId.isEmpty())
             return QString("<div data-type=\"button\" style=\"%1opacity:.5;\">%2</div>").arg(style, label);
@@ -634,11 +634,11 @@ bool HtmlExporter::copyImages(const Presentation& pres,
             if (elem.type != SlideElement::Image || elem.content.isEmpty()) continue;
             QFileInfo fi(elem.content);
             if (!fi.exists()) {
-                errors << "Nicht gefunden: " + elem.content; ok = false; continue;
+                errors << "Not found: " + elem.content; ok = false; continue;
             }
             QString dest = QDir(assetsDir).filePath(fi.fileName());
             if (!QFile::exists(dest) && !QFile::copy(elem.content, dest)) {
-                errors << "Kopieren fehlgeschlagen: " + elem.content; ok = false;
+                errors << "Copy failed: " + elem.content; ok = false;
             }
         }
     }

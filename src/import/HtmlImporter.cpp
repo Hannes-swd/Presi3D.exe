@@ -289,8 +289,8 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
     QDir dir(folderPath);
 
     if (!QFile::exists(dir.filePath("index.html"))) {
-        errorMsg = "Kein gültiger Präsentationsordner.\n"
-                   "index.html nicht gefunden in:\n" + folderPath;
+        errorMsg = "Not a valid presentation folder.\n"
+                   "index.html not found in:\n" + folderPath;
         return nullptr;
     }
 
@@ -304,7 +304,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
     QString css  = readFile(dir.filePath("styles.css"));
 
     if (html.isEmpty()) {
-        errorMsg = "index.html konnte nicht gelesen werden.";
+        errorMsg = "index.html could not be read.";
         return nullptr;
     }
 
@@ -359,7 +359,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
             htmlIdToUuid[sid] = QUuid::createUuid().toString(QUuid::WithoutBraces);
     }
     if (steps.isEmpty()) {
-        errorMsg = "Keine Folien (class=\"step\") in index.html gefunden.";
+        errorMsg = "No slides (class=\"step\") found in index.html.";
         delete pres;
         return nullptr;
     }
@@ -393,7 +393,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
         else if (!sid.isEmpty())
             slide.name = sid.startsWith("slide-") ? sid.mid(6) : sid;
         else
-            slide.name = QString("Folie %1").arg(pres->slides.size() + 1);
+            slide.name = QString("Slide %1").arg(pres->slides.size() + 1);
 
         // Camera view offset (our custom attributes)
         float offX = attrVal(tag, "data-view-offset-x").toFloat();
@@ -806,7 +806,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
     }
 
     if (pres->slides.isEmpty()) {
-        errorMsg = "Keine Folien geladen.";
+        errorMsg = "No slides loaded.";
         delete pres;
         return nullptr;
     }
