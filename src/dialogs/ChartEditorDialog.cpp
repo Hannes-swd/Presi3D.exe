@@ -85,7 +85,9 @@ QPushButton* ChartEditorDialog::makeColorButton(const QColor& c, QWidget* parent
 void ChartEditorDialog::updateColorButton(QPushButton* btn, const QColor& c) {
     QString hex = c.isValid() ? c.name() : "#ffffff";
     btn->setStyleSheet(QString("QPushButton{background:%1;border:1px solid #aaa;"
-                               "border-radius:3px;}").arg(hex));
+                               "border-radius:3px;}"
+                               "QToolTip{background:#1f2937;color:#f9fafb;border:none;"
+                               "padding:4px 8px;border-radius:4px;font-size:10px;}").arg(hex));
     btn->setProperty("color", c);
 }
 
@@ -107,8 +109,10 @@ ChartEditorDialog::ChartEditorDialog(const ChartData& data, QWidget* parent)
     header->setFixedHeight(44);
     auto* hRow = new QHBoxLayout(header);
     hRow->setContentsMargins(16, 8, 16, 8);
-    auto* titleLbl = new QLabel(ChartRenderer::typeIcon(data.type) + "  " +
-                                 ChartRenderer::typeName(data.type), header);
+    auto* titleIconLbl = new QLabel(header);
+    titleIconLbl->setPixmap(ChartRenderer::typeIconPixmap(data.type, 18, QColor("#111827")));
+    hRow->addWidget(titleIconLbl);
+    auto* titleLbl = new QLabel(ChartRenderer::typeName(data.type), header);
     titleLbl->setStyleSheet("font-size:13px;font-weight:bold;color:#111827;");
     hRow->addWidget(titleLbl);
     hRow->addStretch();

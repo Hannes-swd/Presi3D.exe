@@ -13,6 +13,7 @@
 #include <QTextDocument>
 #include <QTextCursor>
 #include <QTextFormat>
+#include <QIcon>
 
 // ── GLSL shaders ──────────────────────────────────────────────────────────────
 
@@ -620,6 +621,20 @@ void SlideEditor3D::renderRotateGizmo(const Slide& sl) {
     glEnable(GL_DEPTH_TEST);
 }
 
+namespace {
+QPixmap tintedIcon(const QString& name, const QColor& color, int size) {
+    QPixmap src = QIcon(":/icons/" + name + ".svg").pixmap(size, size);
+    QPixmap tinted(src.size());
+    tinted.fill(Qt::transparent);
+    QPainter tp(&tinted);
+    tp.drawPixmap(0, 0, src);
+    tp.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    tp.fillRect(tinted.rect(), color);
+    tp.end();
+    return tinted;
+}
+} // namespace
+
 void SlideEditor3D::paintGL() {
     // Scene background from presentation settings
     if (m_pres && m_pres->sceneBackground.isValid()) {
@@ -648,12 +663,14 @@ void SlideEditor3D::paintGL() {
     painter.setRenderHint(QPainter::Antialiasing);
 
     // Mode indicator
-    QString modeStr = m_gizmoMode == GizmoMode::Move ? "⬜ Move [W]" : "↻ Rotate [E]";
-    painter.setPen(QColor(0,0,0,140));
+    static const QPixmap moveIcon   = tintedIcon("open_with",   QColor(80,200,255), 14);
+    static const QPixmap rotateIcon = tintedIcon("3d_rotation", QColor(255,200,80), 14);
+    const bool isMove = m_gizmoMode == GizmoMode::Move;
     painter.fillRect(6, 6, 160, 20, QColor(0,0,0,100));
-    painter.setPen(m_gizmoMode == GizmoMode::Move ? QColor(80,200,255) : QColor(255,200,80));
+    painter.drawPixmap(9, 9, isMove ? moveIcon : rotateIcon);
+    painter.setPen(isMove ? QColor(80,200,255) : QColor(255,200,80));
     painter.setFont(QFont("Arial", 9));
-    painter.drawText(10, 20, modeStr);
+    painter.drawText(28, 20, isMove ? "Move [W]" : "Rotate [E]");
 
     // Controls hint
     painter.setPen(QColor(200,200,200,160));

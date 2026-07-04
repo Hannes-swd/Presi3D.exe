@@ -14,6 +14,14 @@
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QFrame>
+#include <QIcon>
+
+// Any widget with its own stylesheet stops inheriting the app-wide dark
+// QToolTip style, so every local stylesheet below re-declares it explicitly
+// (otherwise tooltips fall back to an unreadable white-on-white look).
+static const char* kToolTipSS =
+    "QToolTip { background:#1f2937; color:#f9fafb; border:none; padding:4px 8px; "
+    "           border-radius:4px; font-size:10px; }";
 
 EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     auto* mainLayout = new QVBoxLayout(this);
@@ -23,7 +31,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     // ── Top bar: mode toggle ──────────────────────────────────────────
     auto* topBar = new QWidget(this);
     topBar->setFixedHeight(38);
-    topBar->setStyleSheet("background:#ffffff; border-bottom:1px solid #e5e7eb;");
+    topBar->setStyleSheet(QString("background:#ffffff; border-bottom:1px solid #e5e7eb;") + kToolTipSS);
     auto* topRow = new QHBoxLayout(topBar);
     topRow->setContentsMargins(8, 4, 8, 4);
 
@@ -44,26 +52,27 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     // ── Element toolbar (2D only) ─────────────────────────────────────
     m_elemToolbar = new QWidget(this);
     m_elemToolbar->setFixedHeight(36);
-    m_elemToolbar->setStyleSheet("background:#f9fafb; border-bottom:1px solid #e5e7eb;");
+    m_elemToolbar->setStyleSheet(QString("background:#f9fafb; border-bottom:1px solid #e5e7eb;") + kToolTipSS);
     auto* tbRow = new QHBoxLayout(m_elemToolbar);
     tbRow->setContentsMargins(8, 3, 8, 3);
     tbRow->setSpacing(6);
 
-    auto mkBtn = [&](const QString& text, const QString& tip) {
-        auto* b = new QPushButton(text, m_elemToolbar);
+    auto mkBtn = [&](const QString& icon, const QString& text, const QString& tip) {
+        auto* b = new QPushButton(QIcon(":/icons/" + icon + ".svg"), text, m_elemToolbar);
+        b->setIconSize(QSize(16, 16));
         b->setToolTip(tip);
-        b->setFixedWidth(80);
+        b->setMinimumWidth(80);
         tbRow->addWidget(b);
         return b;
     };
-    m_btnText   = mkBtn("T Text",    "Add text box");
-    m_btnShape  = mkBtn("⬡ Shapes",  "Insert shape");
-    m_btnImage  = mkBtn("□ Image",    "Import image");
-    m_btnTable   = mkBtn("⊞ Table",  "Insert table");
-    m_btnChart   = mkBtn("📊 Chart","Insert chart");
-    m_btnFormula = mkBtn("∑ Formula",  "Insert formula (LaTeX)");
-    m_btnIFrame  = mkBtn("🌐 iFrame", "Embed website/link");
-    m_btnButton  = mkBtn("⏵ Button", "Insert navigation button (jumps to a slide)");
+    m_btnText   = mkBtn("title",        "Text",    "Add text box");
+    m_btnShape  = mkBtn("shapes",       "Shapes",  "Insert shape");
+    m_btnImage  = mkBtn("image",        "Image",   "Import image");
+    m_btnTable   = mkBtn("table",        "Table",  "Insert table");
+    m_btnChart   = mkBtn("bar_chart",    "Chart",  "Insert chart");
+    m_btnFormula = mkBtn("functions",    "Formula", "Insert formula (LaTeX)");
+    m_btnIFrame  = mkBtn("language",     "iFrame", "Embed website/link");
+    m_btnButton  = mkBtn("smart_button", "Button", "Insert navigation button (jumps to a slide)");
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -75,46 +84,52 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         "QPushButton { padding:1px 3px; min-height:0; font-size:13px; color:#111827; "
         "              background:#ffffff; border:1px solid #d1d5db; border-radius:4px; }"
         "QPushButton:hover   { background:#f3f4f6; }"
-        "QPushButton:pressed { background:#eff6ff; color:#2563eb; }";
+        "QPushButton:pressed { background:#eff6ff; color:#2563eb; }"
+        "QToolTip { background:#1f2937; color:#f9fafb; border:none; padding:4px 8px; "
+        "           border-radius:4px; font-size:10px; }";
 
-    auto mkLayerBtn = [&](const QString& text, const QString& tip) {
-        auto* b = new QPushButton(text, m_elemToolbar);
+    auto mkLayerBtn = [&](const QString& icon, const QString& tip) {
+        auto* b = new QPushButton(QIcon(":/icons/" + icon + ".svg"), QString(), m_elemToolbar);
+        b->setIconSize(QSize(16, 16));
         b->setToolTip(tip);
         b->setFixedWidth(32);
         b->setStyleSheet(LAYER_BTN_SS);
         tbRow->addWidget(b);
         return b;
     };
-    m_btnFront    = mkLayerBtn("▲▲", "Bring to Front (Topmost)");
-    m_btnForward  = mkLayerBtn("▲",  "Move one layer up");
-    m_btnBackward = mkLayerBtn("▼",  "Move one layer down");
-    m_btnBack     = mkLayerBtn("▼▼", "Send to Back (Bottommost)");
+    m_btnFront    = mkLayerBtn("flip_to_front",  "Bring to Front (Topmost)");
+    m_btnForward  = mkLayerBtn("arrow_upward",   "Move one layer up");
+    m_btnBackward = mkLayerBtn("arrow_downward", "Move one layer down");
+    m_btnBack     = mkLayerBtn("flip_to_back",   "Send to Back (Bottommost)");
 
     tbRow->addStretch();
-    m_btnDelete = mkBtn("× Delete", "Delete selected element");
+    m_btnDelete = mkBtn("delete", "Delete", "Delete selected element");
     m_btnDelete->setStyleSheet(
         "QPushButton { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:3px; border-radius:4px; }"
-        "QPushButton:hover { background:#fee2e2; border-color:#f87171; }");
+        "QPushButton:hover { background:#fee2e2; border-color:#f87171; }"
+        "QToolTip { background:#1f2937; color:#f9fafb; border:none; padding:4px 8px; "
+        "           border-radius:4px; font-size:10px; }");
     mainLayout->addWidget(m_elemToolbar);
 
     // ── 3D Gizmo toolbar (shown only in 3D mode) ──────────────────────
     m_gizmoToolbar = new QWidget(this);
     m_gizmoToolbar->setFixedHeight(36);
-    m_gizmoToolbar->setStyleSheet("background:#f9fafb; border-bottom:1px solid #e5e7eb;");
+    m_gizmoToolbar->setStyleSheet(QString("background:#f9fafb; border-bottom:1px solid #e5e7eb;") + kToolTipSS);
     auto* gRow = new QHBoxLayout(m_gizmoToolbar);
     gRow->setContentsMargins(8, 3, 8, 3);
     gRow->setSpacing(6);
 
-    auto mkGizmoBtn = [&](const QString& text, const QString& tip) {
-        auto* b = new QPushButton(text, m_gizmoToolbar);
+    auto mkGizmoBtn = [&](const QString& icon, const QString& text, const QString& tip) {
+        auto* b = new QPushButton(QIcon(":/icons/" + icon + ".svg"), text, m_gizmoToolbar);
+        b->setIconSize(QSize(16, 16));
         b->setToolTip(tip);
         b->setCheckable(true);
         b->setFixedWidth(110);
         gRow->addWidget(b);
         return b;
     };
-    m_btnGizmoMove   = mkGizmoBtn("[W] Move",  "Move slide in 3D (drag X/Y/Z arrows)");
-    m_btnGizmoRotate = mkGizmoBtn("[E] Rotate",   "Rotate slide in 3D (drag X/Y/Z rings)");
+    m_btnGizmoMove   = mkGizmoBtn("open_with",   "Move [W]",   "Move slide in 3D (drag X/Y/Z arrows)");
+    m_btnGizmoRotate = mkGizmoBtn("3d_rotation", "Rotate [E]", "Rotate slide in 3D (drag X/Y/Z rings)");
     m_btnGizmoMove->setChecked(true);
 
     gRow->addStretch();

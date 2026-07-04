@@ -1,4 +1,6 @@
 #include <QApplication>
+#include <QPalette>
+#include <QColor>
 #include "MainWindow.h"
 #include "dialogs/StartDialog.h"
 
@@ -114,6 +116,16 @@ int main(int argc, char* argv[]) {
     app.setStyleSheet(QString::fromUtf8(DARK_QSS));
     app.setApplicationVersion(QStringLiteral(APP_VERSION));
     app.setOrganizationName("presiEditor");
+
+    // QToolTip on Windows sometimes ignores the QSS above (e.g. when a
+    // widget/container in between has its own local style sheet, or when
+    // Windows dark mode is active) and falls back to an unreadable
+    // white-on-white tooltip. Setting the palette roles directly makes
+    // tooltips readable everywhere regardless of that.
+    QPalette pal = app.palette();
+    pal.setColor(QPalette::ToolTipBase, QColor("#1f2937"));
+    pal.setColor(QPalette::ToolTipText, QColor("#f9fafb"));
+    app.setPalette(pal);
 
     StartDialog start;
     if (start.exec() != QDialog::Accepted)

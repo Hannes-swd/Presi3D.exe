@@ -10,6 +10,21 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QDir>
+#include <QIcon>
+#include <QPainter>
+
+// Renders a Material Symbols SVG icon tinted with the given color.
+static QPixmap tintedIcon(const QString& name, const QColor& color, int size) {
+    QPixmap src = QIcon(":/icons/" + name + ".svg").pixmap(size, size);
+    QPixmap tinted(src.size());
+    tinted.fill(Qt::transparent);
+    QPainter p(&tinted);
+    p.drawPixmap(0, 0, src);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(tinted.rect(), color);
+    p.end();
+    return tinted;
+}
 
 ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     : QDialog(parent), m_pres(pres)
@@ -70,10 +85,17 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     vbox->addWidget(m_previewLbl);
 
     // Status
+    auto* statusRow = new QHBoxLayout;
+    statusRow->setSpacing(6);
+    m_statusIcon = new QLabel(this);
+    m_statusIcon->setFixedSize(16, 16);
+    m_statusIcon->setAlignment(Qt::AlignTop);
+    statusRow->addWidget(m_statusIcon, 0, Qt::AlignTop);
     m_status = new QLabel("", this);
     m_status->setWordWrap(true);
     m_status->setMinimumHeight(40);
-    vbox->addWidget(m_status);
+    statusRow->addWidget(m_status, 1);
+    vbox->addLayout(statusRow);
 
     vbox->addStretch();
 
@@ -130,11 +152,13 @@ void ExportDialog::doExport() {
     QString name   = m_nameEdit->text().trimmed();
 
     if (parent.isEmpty() || name.isEmpty()) {
+        m_statusIcon->clear();
         m_status->setStyleSheet("color: red;");
         m_status->setText("Please provide a folder name and location.");
         return;
     }
     if (!m_pres || m_pres->slides.isEmpty()) {
+        m_statusIcon->clear();
         m_status->setStyleSheet("color: red;");
         m_status->setText("No slides available.");
         return;
@@ -144,6 +168,7 @@ void ExportDialog::doExport() {
     QDir().mkpath(outDir);
 
     m_expBtn->setEnabled(false);
+    m_statusIcon->clear();
     m_status->setStyleSheet("color: orange;");
     m_status->setText("Exporting…");
     repaint();
@@ -155,8 +180,9 @@ void ExportDialog::doExport() {
         // Remember the export path on the presentation object
         if (m_pres) m_pres->exportPath = outDir;
 
+        m_statusIcon->setPixmap(tintedIcon("check_circle", QColor("#44cc44"), 16));
         m_status->setStyleSheet("color: #4c4;");
-        QString msg = QString("✓ Successfully exported to:\n%1").arg(outDir);
+        QString msg = QString("Successfully exported to:\n%1").arg(outDir);
         if (!result.errorMessage.isEmpty()) msg += result.errorMessage;
         m_status->setText(msg);
 
@@ -166,6 +192,7 @@ void ExportDialog::doExport() {
             QDesktopServices::openUrl(QUrl::fromLocalFile(outDir));
         });
     } else {
+        m_statusIcon->clear();
         m_status->setStyleSheet("color: red;");
         m_status->setText("Error: " + result.errorMessage);
     }

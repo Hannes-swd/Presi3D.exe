@@ -10,12 +10,15 @@
 #include <QColorDialog>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QIcon>
 
 static const QString ALIGN_BTN =
     "QPushButton { border:1px solid #d1d5db; padding:2px 5px; min-width:26px; font-size:12px; background:#ffffff; color:#111827; }"
     "QPushButton:hover   { background:#f3f4f6; border-color:#9ca3af; }"
     "QPushButton:checked { background:#eff6ff; color:#2563eb; border-color:#2563eb; }"
-    "QPushButton:disabled { color:#9ca3af; }";
+    "QPushButton:disabled { color:#9ca3af; }"
+    "QToolTip { background:#1f2937; color:#f9fafb; border:none; padding:4px 8px; "
+    "           border-radius:4px; font-size:10px; }";
 
 static QFrame* makeSep(QWidget* parent) {
     auto* sep = new QFrame(parent);
@@ -66,18 +69,19 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     m_colorBtn->setFixedWidth(32);
     tr->addWidget(m_colorBtn);
 
-    m_bgColorBtn = new QPushButton("■", m_textGroup);
+    m_bgColorBtn = new QPushButton("Bg", m_textGroup);
     m_bgColorBtn->setToolTip("Background color");
     m_bgColorBtn->setFixedWidth(32);
     tr->addWidget(m_bgColorBtn);
 
     tr->addWidget(makeSep(m_textGroup));
 
-    m_alignLeft   = new QPushButton("≡L", m_textGroup);
-    m_alignCenter = new QPushButton("≡≡", m_textGroup);
-    m_alignRight  = new QPushButton("R≡", m_textGroup);
+    m_alignLeft   = new QPushButton(QIcon(":/icons/format_align_left.svg"),   "", m_textGroup);
+    m_alignCenter = new QPushButton(QIcon(":/icons/format_align_center.svg"), "", m_textGroup);
+    m_alignRight  = new QPushButton(QIcon(":/icons/format_align_right.svg"),  "", m_textGroup);
     for (auto* b : {m_alignLeft, m_alignCenter, m_alignRight}) {
         b->setCheckable(true);
+        b->setIconSize(QSize(16, 16));
         b->setFixedWidth(30);
         b->setStyleSheet(ALIGN_BTN);
         tr->addWidget(b);
@@ -86,11 +90,12 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     m_alignCenter->setToolTip("Center");
     m_alignRight->setToolTip("Align Right");
 
-    m_vAlignTop    = new QPushButton("┬", m_textGroup); // ┬
-    m_vAlignMiddle = new QPushButton("┼", m_textGroup); // ┼
-    m_vAlignBottom = new QPushButton("┴", m_textGroup); // ┴
+    m_vAlignTop    = new QPushButton(QIcon(":/icons/vertical_align_top.svg"),    "", m_textGroup);
+    m_vAlignMiddle = new QPushButton(QIcon(":/icons/vertical_align_center.svg"), "", m_textGroup);
+    m_vAlignBottom = new QPushButton(QIcon(":/icons/vertical_align_bottom.svg"), "", m_textGroup);
     for (auto* b : {m_vAlignTop, m_vAlignMiddle, m_vAlignBottom}) {
         b->setCheckable(true);
+        b->setIconSize(QSize(16, 16));
         b->setFixedWidth(30);
         b->setStyleSheet(ALIGN_BTN);
         tr->addWidget(b);
@@ -101,16 +106,17 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
 
     tr->addWidget(makeSep(m_textGroup));
 
-    m_listBullet   = new QPushButton("•", m_textGroup);
-    m_listNumbered = new QPushButton("1.",     m_textGroup);
+    m_listBullet   = new QPushButton(QIcon(":/icons/format_list_bulleted.svg"), "", m_textGroup);
+    m_listNumbered = new QPushButton(QIcon(":/icons/format_list_numbered.svg"), "", m_textGroup);
     for (auto* b : {m_listBullet, m_listNumbered}) {
         b->setCheckable(true);
+        b->setIconSize(QSize(16, 16));
         b->setFixedWidth(30);
         b->setStyleSheet(ALIGN_BTN);
         tr->addWidget(b);
     }
-    m_listBullet->setToolTip("Bulleted list (•)");
-    m_listNumbered->setToolTip("Numbered list (1. 2. 3.)");
+    m_listBullet->setToolTip("Bulleted list");
+    m_listNumbered->setToolTip("Numbered list");
 
     tr->addWidget(makeSep(m_textGroup));
 
@@ -151,19 +157,19 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
 
     tr->addWidget(makeSep(m_textGroup));
 
-    m_linkBtn = new QPushButton("🔗 Link", m_textGroup);
+    m_linkBtn = new QPushButton(QIcon(":/icons/link.svg"), "Link", m_textGroup);
+    m_linkBtn->setIconSize(QSize(14, 14));
     m_linkBtn->setCheckable(true);
-    m_linkBtn->setFixedWidth(62);
-    m_linkBtn->setStyleSheet(ALIGN_BTN);
+    m_linkBtn->setStyleSheet(ALIGN_BTN + "QPushButton { min-width:78px; }");
     m_linkBtn->setToolTip("Set/remove hyperlink for this text");
     tr->addWidget(m_linkBtn);
 
     tr->addWidget(makeSep(m_textGroup));
 
-    m_fmtPainterBtn = new QPushButton("◈ Format", m_textGroup);
+    m_fmtPainterBtn = new QPushButton(QIcon(":/icons/format_paint.svg"), "Format", m_textGroup);
+    m_fmtPainterBtn->setIconSize(QSize(14, 14));
     m_fmtPainterBtn->setToolTip("Apply format to another element");
-    m_fmtPainterBtn->setFixedWidth(80);
-    m_fmtPainterBtn->setStyleSheet(ALIGN_BTN);
+    m_fmtPainterBtn->setStyleSheet(ALIGN_BTN + "QPushButton { min-width:92px; }");
     tr->addWidget(m_fmtPainterBtn);
 
     row->addWidget(m_textGroup);
@@ -380,7 +386,9 @@ void FormatBar::updateColorSwatch(QPushButton* btn, const QColor& c) {
         QString("QPushButton { background:%1; color:%2; border:1px solid #d1d5db; "
                 "padding:2px 5px; min-width:28px; font-weight:bold; border-radius:4px; }"
                 "QPushButton:hover { border:1px solid #9ca3af; }"
-                "QPushButton:disabled { opacity:0.4; }").arg(hex, fg));
+                "QPushButton:disabled { opacity:0.4; }"
+                "QToolTip { background:#1f2937; color:#f9fafb; border:none; padding:4px 8px; "
+                "           border-radius:4px; font-size:10px; }").arg(hex, fg));
 }
 
 void FormatBar::onFontChanged(const QFont& f) {

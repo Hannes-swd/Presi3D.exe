@@ -22,6 +22,7 @@ private:
     QLineEdit*    m_parentEdit  = nullptr;
     QLabel*       m_previewLbl  = nullptr;
     QLabel*       m_status      = nullptr;
+    QLabel*       m_statusIcon  = nullptr;
     QPushButton*  m_expBtn      = nullptr;
     QPushButton*  m_openBtn     = nullptr;
 };

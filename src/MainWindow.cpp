@@ -112,18 +112,19 @@ void MainWindow::setupToolBar() {
     // ── File toolbar ──
     QToolBar* tb = addToolBar("File");
     tb->setMovable(false);
+    tb->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     tb->addAction(m_undoAction);
-    m_undoAction->setText("↶");
+    m_undoAction->setIcon(QIcon(":/icons/undo.svg"));
     m_undoAction->setToolTip("Undo (Ctrl+Z)");
     tb->addAction(m_redoAction);
-    m_redoAction->setText("↷");
+    m_redoAction->setIcon(QIcon(":/icons/redo.svg"));
     m_redoAction->setToolTip("Redo (Ctrl+Y)");
     tb->addSeparator();
     tb->addAction("New",          this, &MainWindow::newPresentation);
     tb->addAction("Open",         this, &MainWindow::openPresentation);
     tb->addAction("Save",         this, &MainWindow::savePresentation);
     tb->addSeparator();
-    m_browserAction = tb->addAction("▷ Open in Browser", this, &MainWindow::openInBrowser);
+    m_browserAction = tb->addAction(QIcon(":/icons/open_in_browser.svg"), "Open in Browser", this, &MainWindow::openInBrowser);
     m_browserAction->setToolTip("Open exported presentation in browser\n(F = Fullscreen)");
     m_browserAction->setEnabled(false);
 
@@ -162,16 +163,9 @@ void MainWindow::setupUpdateButton() {
 }
 
 void MainWindow::refreshUpdateButtonIcon() {
-    QPixmap pix(24, 24);
-    pix.fill(Qt::transparent);
+    QPixmap pix = QIcon(":/icons/more_vert.svg").pixmap(24, 24);
     QPainter p(&pix);
     p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QColor("#111827"));
-    QFont f = p.font();
-    f.setPointSize(14);
-    f.setBold(true);
-    p.setFont(f);
-    p.drawText(pix.rect(), Qt::AlignCenter, QString::fromUtf8("⋮"));
     if (m_updateAvailable) {
         p.setPen(Qt::NoPen);
         p.setBrush(QColor("#ef4444"));

@@ -2,6 +2,7 @@
 #include <QPainterPath>
 #include <QMap>
 #include <QtMath>
+#include <QIcon>
 #include <algorithm>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -25,8 +26,20 @@ void ChartRenderer::drawPlaceholder(QPainter& p, const QRectF& r, const QString&
     p.drawRect(r.adjusted(0.5, 0.5, -0.5, -0.5));
     p.setPen(QColor(150, 150, 150));
     float sc = qMin(float(r.width()), float(r.height())) / 300.f;
-    p.setFont(scaledFont("Arial", 13, qBound(0.4f, sc, 2.f)));
-    p.drawText(r, Qt::AlignCenter, typeIcon(type) + "  " + typeName(type) + "\n(no data)");
+    const float clampedSc = qBound(0.4f, sc, 2.f);
+    p.setFont(scaledFont("Arial", 13, clampedSc));
+
+    const int iconSize = qMax(12, int(28 * clampedSc));
+    QPixmap icon = typeIconPixmap(type, iconSize, QColor(170, 170, 170));
+    const QString label = typeName(type) + "\n(no data)";
+    QRectF textRect = p.fontMetrics().boundingRect(r.toRect(), Qt::AlignCenter, label);
+
+    QPointF center = r.center();
+    QRectF iconRect(center.x() - iconSize / 2.0, center.y() - iconSize - textRect.height() / 2.0 - 4,
+                     iconSize, iconSize);
+    p.drawPixmap(iconRect.topLeft(), icon);
+    p.drawText(QRectF(r.left(), iconRect.bottom() + 4, r.width(), textRect.height() + 4),
+               Qt::AlignHCenter | Qt::AlignTop, label);
     p.restore();
 }
 
@@ -1234,20 +1247,39 @@ QString ChartRenderer::typeName(const QString& type) {
 
 QString ChartRenderer::typeIcon(const QString& type) {
     static const QMap<QString, QString> icons = {
-        {"bar",       "▮"},
-        {"bar_h",     "▬"},
-        {"line",      "╱"},
-        {"area",      "△"},
-        {"pie",       "◑"},
-        {"donut",     "◎"},
-        {"scatter",   "⁚"},
-        {"flowchart", "⬡"},
-        {"mindmap",   "✦"},
-        {"orgchart",  "⊤"},
-        {"timeline",  "──"},
-        {"gantt",     "▤"},
-        {"uml",       "⊞"},
-        {"venn",      "⊕"},
+        {"bar",       "bar_chart"},
+        {"bar_h",     "leaderboard"},
+        {"line",      "show_chart"},
+        {"area",      "area_chart"},
+        {"pie",       "pie_chart"},
+        {"donut",     "donut_large"},
+        {"scatter",   "scatter_plot"},
+        {"flowchart", "schema"},
+        {"mindmap",   "hub"},
+        {"orgchart",  "account_tree"},
+        {"timeline",  "timeline"},
+        {"gantt",     "view_timeline"},
+        {"uml",       "view_module"},
+        {"venn",      "join_full"},
     };
-    return icons.value(type, "□");
+    return icons.value(type, "bar_chart");
+}
+
+QPixmap ChartRenderer::typeIconPixmap(const QString& type, int size, const QColor& color) {
+    static QMap<QString, QPixmap> cache;
+    const QString key = type + "@" + QString::number(size) + "#" + color.name(QColor::HexArgb);
+    auto it = cache.constFind(key);
+    if (it != cache.constEnd()) return it.value();
+
+    QPixmap src = QIcon(":/icons/" + typeIcon(type) + ".svg").pixmap(size, size);
+    QPixmap tinted(src.size());
+    tinted.fill(Qt::transparent);
+    QPainter tp(&tinted);
+    tp.drawPixmap(0, 0, src);
+    tp.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    tp.fillRect(tinted.rect(), color);
+    tp.end();
+
+    cache.insert(key, tinted);
+    return tinted;
 }

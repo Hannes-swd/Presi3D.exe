@@ -1,5 +1,6 @@
 #pragma once
 #include <QPainter>
+#include <QPixmap>
 #include <QRectF>
 #include "models/ChartData.h"
 
@@ -12,8 +13,10 @@ public:
 
     // Human-readable chart type name (German)
     static QString typeName(const QString& type);
-    // Short icon/emoji for chart type
+    // Material Symbols icon resource name for chart type (see resources/icons)
     static QString typeIcon(const QString& type);
+    // Rendered icon pixmap for chart type, tinted with `color`
+    static QPixmap typeIconPixmap(const QString& type, int size, const QColor& color = QColor(80, 80, 80));
 
 private:
     // ── Per-type renderers ────────────────────────────────────────────────

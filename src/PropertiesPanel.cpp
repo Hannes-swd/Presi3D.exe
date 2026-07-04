@@ -757,13 +757,16 @@ void PropertiesPanel::refreshElement() {
 }
 
 void PropertiesPanel::updateColorButton(QPushButton* btn, const QColor& c) {
+    static const QString kToolTipSS =
+        "QToolTip { background:#1f2937; color:#f9fafb; border:none; padding:4px 8px; "
+        "           border-radius:4px; font-size:10px; }";
     if (!c.isValid() || c == Qt::transparent) {
-        btn->setStyleSheet("background: transparent; border: 1px dashed #888;");
+        btn->setStyleSheet("background: transparent; border: 1px dashed #888;" + kToolTipSS);
         btn->setText("Transparent");
     } else {
         QString hex = c.name(QColor::HexRgb);
         QString fg  = c.lightnessF() > 0.5f ? "#000" : "#fff";
-        btn->setStyleSheet(QString("background:%1; color:%2; border:1px solid #666;").arg(hex,fg));
+        btn->setStyleSheet(QString("background:%1; color:%2; border:1px solid #666;").arg(hex,fg) + kToolTipSS);
         btn->setText(hex);
     }
     btn->setProperty("color", c);
