@@ -7,9 +7,9 @@
 #define MyAppName "Presi 3D"
 #define MyAppVersion "1.3"
 #define MyAppExeName "Presi3D.exe"
-#define DepsUrl "https://github.com/Hannes-swd/Presi3D.exe/releases/download/deps-v2/Presi3D-deps.zip"
+#define DepsUrl "https://github.com/Hannes-swd/Presi3D.exe/releases/download/deps-v3/Presi3D-deps.zip"
 #define DepsFileName "Presi3D-deps.zip"
-#define DepsSHA256 "110ba2ce37f355a5d4e4cfd6141f6e805e386e623496e865c9cf88e6fdb2cf3a"
+#define DepsSHA256 "e2c6f84406f16efaab1fa7b1ce8cd8f243befaf8e5eb315d5726a5c386c094a6"
 
 [Setup]
 AppId={{82A24654-F772-4B0A-8DF7-86A06925ABC0}
