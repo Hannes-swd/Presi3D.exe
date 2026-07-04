@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Presi3D VERSION 1.0 LANGUAGES CXX)
+project(Presi3D VERSION 1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,6 +12,7 @@ set(SOURCES
     src/main.cpp
     src/MainWindow.cpp
     src/LocalHttpServer.cpp
+    src/UpdateChecker.cpp
     src/SlideListPanel.cpp
     src/EditorArea.cpp
     src/SlideEditor2D.cpp
@@ -38,6 +39,8 @@ set(SOURCES
 add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE src)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Core

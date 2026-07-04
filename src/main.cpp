@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Presi 3D");
     app.setStyleSheet(QString::fromUtf8(DARK_QSS));
-    app.setApplicationVersion("1.0");
+    app.setApplicationVersion(QStringLiteral(APP_VERSION));
     app.setOrganizationName("presiEditor");
 
     StartDialog start;

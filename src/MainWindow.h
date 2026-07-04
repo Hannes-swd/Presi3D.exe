@@ -10,6 +10,8 @@ class PropertiesPanel;
 class FormatBar;
 class QTimer;
 class LocalHttpServer;
+class UpdateChecker;
+class QToolButton;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -43,6 +45,14 @@ private slots:
     void undo();
     void redo();
 
+    void checkForUpdatesManually();
+    void onUpdateAvailable(const QString& version, const QString& downloadUrl);
+    void onUpdateCheckFailed(const QString& error);
+    void onUpToDate();
+    void downloadAndInstallUpdate();
+    void onInstallerReady(const QString& installerPath);
+    void onUpdateDownloadFailed(const QString& error);
+
 private:
     void setupUI();
     void setupMenuBar();
@@ -51,6 +61,8 @@ private:
     void updateTitle();
     bool maybeSave();
     void refreshAll();
+    void setupUpdateButton();
+    void refreshUpdateButtonIcon();
 
     // ── Undo/Redo (snapshot-based; Qt's implicit-sharing containers keep
     //    unmodified slides/elements shared between snapshots, so this stays
@@ -64,6 +76,14 @@ private:
     int              m_selectedSlide = -1;
     QAction*         m_browserAction = nullptr;
     LocalHttpServer* m_previewServer = nullptr;
+
+    UpdateChecker*   m_updateChecker      = nullptr;
+    QToolButton*     m_updateButton       = nullptr;
+    QAction*         m_checkUpdateAction  = nullptr;
+    QAction*         m_downloadUpdateAction = nullptr;
+    bool             m_updateAvailable    = false;
+    QString          m_updateVersion;
+    QString          m_updateDownloadUrl;
 
     SlideListPanel*  m_slidePanel    = nullptr;
     EditorArea*      m_editorArea    = nullptr;

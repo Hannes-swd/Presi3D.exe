@@ -8,9 +8,13 @@
 #include "import/HtmlImporter.h"
 #include "export/HtmlExporter.h"
 #include "LocalHttpServer.h"
+#include "UpdateChecker.h"
 
+#include <QApplication>
 #include <QMenuBar>
+#include <QMenu>
 #include <QToolBar>
+#include <QToolButton>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QCloseEvent>
@@ -22,6 +26,9 @@
 #include <QUrl>
 #include <QProcess>
 #include <QTimer>
+#include <QPainter>
+#include <QPixmap>
+#include <QIcon>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_presentation = new Presentation();
@@ -29,6 +36,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setupUI();
     setupMenuBar();
     setupToolBar();
+    setupUpdateButton();
     connectSignals();
 
     m_presentation->addSlide("Slide 1");
@@ -42,6 +50,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     updateTitle();
     resize(1440, 860);
+
+    QTimer::singleShot(2000, this, [this]() { m_updateChecker->checkForUpdates(); });
 }
 
 MainWindow::~MainWindow() {
@@ -123,6 +133,102 @@ void MainWindow::setupToolBar() {
     ftb->setMovable(false);
     m_formatBar = new FormatBar(ftb);
     ftb->addWidget(m_formatBar);
+}
+
+void MainWindow::setupUpdateButton() {
+    m_updateChecker = new UpdateChecker(this);
+
+    m_updateButton = new QToolButton(this);
+    m_updateButton->setAutoRaise(true);
+    m_updateButton->setPopupMode(QToolButton::InstantPopup);
+    m_updateButton->setToolTip("More");
+
+    QMenu* menu = new QMenu(m_updateButton);
+    m_checkUpdateAction = menu->addAction("Check for Updates...", this, &MainWindow::checkForUpdatesManually);
+    m_updateButton->setMenu(menu);
+
+    menuBar()->setCornerWidget(m_updateButton, Qt::TopRightCorner);
+    refreshUpdateButtonIcon();
+
+    connect(m_updateChecker, &UpdateChecker::updateAvailable, this, &MainWindow::onUpdateAvailable);
+    connect(m_updateChecker, &UpdateChecker::upToDate,        this, &MainWindow::onUpToDate);
+    connect(m_updateChecker, &UpdateChecker::checkFailed,     this, &MainWindow::onUpdateCheckFailed);
+    connect(m_updateChecker, &UpdateChecker::installerReady,  this, &MainWindow::onInstallerReady);
+    connect(m_updateChecker, &UpdateChecker::downloadFailed,  this, &MainWindow::onUpdateDownloadFailed);
+    connect(m_updateChecker, &UpdateChecker::downloadProgress, this, [this](qint64 received, qint64 total) {
+        if (total > 0)
+            statusBar()->showMessage(QString("Downloading update... %1%").arg(received * 100 / total));
+    });
+}
+
+void MainWindow::refreshUpdateButtonIcon() {
+    QPixmap pix(24, 24);
+    pix.fill(Qt::transparent);
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QColor("#111827"));
+    QFont f = p.font();
+    f.setPointSize(14);
+    f.setBold(true);
+    p.setFont(f);
+    p.drawText(pix.rect(), Qt::AlignCenter, QString::fromUtf8("⋮"));
+    if (m_updateAvailable) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor("#ef4444"));
+        p.drawEllipse(QPointF(18, 6), 4, 4);
+    }
+    p.end();
+
+    m_updateButton->setText(QString());
+    m_updateButton->setIconSize(QSize(24, 24));
+    m_updateButton->setIcon(QIcon(pix));
+}
+
+void MainWindow::checkForUpdatesManually() {
+    statusBar()->showMessage("Checking for updates...");
+    m_updateChecker->checkForUpdates();
+}
+
+void MainWindow::onUpdateAvailable(const QString& version, const QString& downloadUrl) {
+    m_updateAvailable   = true;
+    m_updateVersion     = version;
+    m_updateDownloadUrl = downloadUrl;
+    refreshUpdateButtonIcon();
+    m_updateButton->setToolTip(QString("Update to %1 available").arg(version));
+
+    if (!m_downloadUpdateAction) {
+        m_downloadUpdateAction = new QAction(this);
+        m_updateButton->menu()->insertAction(m_checkUpdateAction, m_downloadUpdateAction);
+        connect(m_downloadUpdateAction, &QAction::triggered, this, &MainWindow::downloadAndInstallUpdate);
+    }
+    m_downloadUpdateAction->setText(QString("Update to %1...").arg(version));
+
+    statusBar()->showMessage(QString("Update %1 available").arg(version), 4000);
+}
+
+void MainWindow::onUpToDate() {
+    statusBar()->showMessage("You're up to date.", 4000);
+}
+
+void MainWindow::onUpdateCheckFailed(const QString& error) {
+    statusBar()->showMessage(QString("Update check failed: %1").arg(error), 4000);
+}
+
+void MainWindow::downloadAndInstallUpdate() {
+    if (m_updateDownloadUrl.isEmpty() || !maybeSave())
+        return;
+    statusBar()->showMessage("Downloading update...");
+    m_updateChecker->downloadAndInstall(m_updateDownloadUrl);
+}
+
+void MainWindow::onInstallerReady(const QString& installerPath) {
+    QProcess::startDetached(installerPath, {});
+    QApplication::quit();
+}
+
+void MainWindow::onUpdateDownloadFailed(const QString& error) {
+    QMessageBox::warning(this, "Update Failed",
+        QString("Could not download the update:\n%1").arg(error));
 }
 
 void MainWindow::connectSignals() {
