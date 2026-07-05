@@ -136,6 +136,7 @@ public:
     bool           modified = false;
 
     // Project-wide settings
+    QString title                 = "Presentation"; // used as <title> on HTML export
     QColor sceneBackground        = QColor(0x11, 0x11, 0x11);
     float  slideWidth             = 1920.f;
     float  slideHeight            = 1080.f;

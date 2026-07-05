@@ -44,6 +44,7 @@ private slots:
     void onCellItalicChanged(bool);
     void onCellAlignChanged(int);
 
+    void onTitleChanged(const QString&);
     void onSceneBgClicked();
     void onSlideSizeChanged();
     void onDefaultInactiveOpaChanged();
@@ -93,6 +94,7 @@ private:
 
     // Project settings
     QGroupBox*      m_projectGroup        = nullptr;
+    QLineEdit*      m_titleEdit           = nullptr;
     QPushButton*    m_sceneBgBtn          = nullptr;
     QDoubleSpinBox* m_slideW              = nullptr;
     QDoubleSpinBox* m_slideH              = nullptr;

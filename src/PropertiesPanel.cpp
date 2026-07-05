@@ -125,6 +125,10 @@ void PropertiesPanel::buildProjectGroup() {
     auto sec1 = makeSection("Basic Settings", true, m_projectGroup);
     auto* form1 = makeForm(sec1.content);
 
+    m_titleEdit = new QLineEdit(sec1.content);
+    m_titleEdit->setToolTip("Title shown in the browser tab of the exported presentation");
+    form1->addRow("Title:", m_titleEdit);
+
     m_sceneBgBtn = new QPushButton(sec1.content);
     m_sceneBgBtn->setFixedHeight(24);
     m_sceneBgBtn->setToolTip("Background color behind all slides");
@@ -153,6 +157,7 @@ void PropertiesPanel::buildProjectGroup() {
 
     gvbox->addWidget(sec2.outer);
 
+    connect(m_titleEdit, &QLineEdit::textEdited, this, &PropertiesPanel::onTitleChanged);
     connect(m_sceneBgBtn, &QPushButton::clicked, this, &PropertiesPanel::onSceneBgClicked);
     connect(m_slideW, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideSizeChanged(); });
     connect(m_slideH, &QDoubleSpinBox::valueChanged, this, [this](double) { onSlideSizeChanged(); });
@@ -661,6 +666,7 @@ void PropertiesPanel::rebuildVisibilitySection() {
 void PropertiesPanel::refreshProject() {
     if (!m_pres) return;
     m_updating = true;
+    m_titleEdit->setText(m_pres->title);
     updateColorButton(m_sceneBgBtn, m_pres->sceneBackground);
     m_slideW->setValue(m_pres->slideWidth);
     m_slideH->setValue(m_pres->slideHeight);
@@ -773,6 +779,12 @@ void PropertiesPanel::updateColorButton(QPushButton* btn, const QColor& c) {
 }
 
 // ── Project slots ─────────────────────────────────────────────────────────────
+
+void PropertiesPanel::onTitleChanged(const QString& text) {
+    if (m_updating || !m_pres) return;
+    m_pres->title = text;
+    emit presentationSettingsModified();
+}
 
 void PropertiesPanel::onSceneBgClicked() {
     if (!m_pres) return;

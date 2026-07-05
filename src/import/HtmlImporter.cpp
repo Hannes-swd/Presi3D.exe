@@ -311,6 +311,17 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
     auto* pres = new Presentation();
     pres->exportPath = folderPath;
 
+    // ── Parse <title> ──────────────────────────────────────────────────────────
+    {
+        QRegularExpression re(R"(<title>([^<]*)</title>)");
+        auto m = re.match(html);
+        if (m.hasMatch())
+            pres->title = m.captured(1).trimmed()
+                              .replace("&lt;", "<").replace("&gt;", ">")
+                              .replace("&quot;", "\"").replace("&#39;", "'")
+                              .replace("&amp;", "&");
+    }
+
     // ── Parse CSS: scene background and slide dimensions ──────────────────────
     if (!css.isEmpty()) {
         QString bodyBlk = cssBlock(css, "body");

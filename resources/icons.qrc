@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
+        <file>impress.js</file>
         <file>icons/3d_rotation.svg</file>
         <file>icons/account_tree.svg</file>
         <file>icons/area_chart.svg</file>

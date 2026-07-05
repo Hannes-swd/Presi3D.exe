@@ -10,9 +10,8 @@
 #include <QBuffer>
 #include <QJsonDocument>
 
-// Bundled impress.js — copied from local installation
-static const char* IMPRESS_JS_SRC =
-    "C:/Users/hanne/Web/impress.js lernen/impress.js";
+// Bundled impress.js — embedded via Qt resource system (resources/icons.qrc)
+static const char* IMPRESS_JS_SRC = ":/impress.js";
 
 HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
                                              const QString& outputDir) {
@@ -155,7 +154,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "<html lang=\"en\">\n"
         << "<head>\n"
         << "  <meta charset=\"UTF-8\">\n"
-        << "  <title>Presentation</title>\n"
+        << "  <title>" << (pres.title.isEmpty() ? QString("Presentation") : pres.title).toHtmlEscaped() << "</title>\n"
         << "  <link rel=\"stylesheet\" href=\"styles.css\">\n";
     if (hasFormulaElement(pres))
         out << "  <script id=\"MathJax-script\" async "
