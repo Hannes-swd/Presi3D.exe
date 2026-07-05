@@ -16,6 +16,7 @@ public:
     QString selectedPath() const { return m_selectedPath; }
 
     static void   addRecentProject(const QString& path);
+    static void   removeRecentProject(const QString& path);
     static QStringList recentProjects();
 
 private slots:
@@ -23,6 +24,7 @@ private slots:
     void onOpenProject();
     void onRecentDoubleClicked();
     void onRecentClicked();
+    void onRecentContextMenu(const QPoint& pos);
 
     void onCheckUpdateClicked();
     void onUpdateAvailable(const QString& version, const QString& downloadUrl);

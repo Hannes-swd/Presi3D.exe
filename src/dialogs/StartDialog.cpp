@@ -16,6 +16,12 @@
 #include <QApplication>
 #include <QProcess>
 #include <QTimer>
+#include <QMenu>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QDir>
+#include <QDesktopServices>
+#include <QUrl>
 
 static constexpr int kMaxRecent = 10;
 static const char* kSettingsKey = "recentProjects";
@@ -29,6 +35,14 @@ void StartDialog::addRecentProject(const QString& path) {
     list.removeAll(path);
     list.prepend(path);
     while (list.size() > kMaxRecent) list.removeLast();
+    s.setValue(kSettingsKey, list);
+}
+
+void StartDialog::removeRecentProject(const QString& path) {
+    if (path.isEmpty()) return;
+    QSettings s;
+    QStringList list = s.value(kSettingsKey).toStringList();
+    list.removeAll(path);
     s.setValue(kSettingsKey, list);
 }
 
@@ -95,6 +109,7 @@ void StartDialog::buildUi() {
     vbox->addWidget(recentLabel);
 
     m_recentList = new QListWidget(this);
+    m_recentList->setContextMenuPolicy(Qt::CustomContextMenu);
     vbox->addWidget(m_recentList, 1);
 
     // Bottom row
@@ -121,6 +136,7 @@ void StartDialog::buildUi() {
     connect(m_openRecentBtn, &QPushButton::clicked,         this, &StartDialog::onRecentDoubleClicked);
     connect(m_recentList,    &QListWidget::itemDoubleClicked, this, &StartDialog::onRecentDoubleClicked);
     connect(m_recentList,    &QListWidget::itemClicked,       this, &StartDialog::onRecentClicked);
+    connect(m_recentList,    &QListWidget::customContextMenuRequested, this, &StartDialog::onRecentContextMenu);
     connect(cancelBtn,       &QPushButton::clicked,         this, &QDialog::reject);
 }
 
@@ -171,6 +187,68 @@ void StartDialog::onRecentDoubleClicked() {
 void StartDialog::onRecentClicked() {
     auto* item = m_recentList->currentItem();
     m_openRecentBtn->setEnabled(item && !item->data(Qt::UserRole).toString().isEmpty());
+}
+
+void StartDialog::onRecentContextMenu(const QPoint& pos) {
+    auto* item = m_recentList->itemAt(pos);
+    if (!item) return;
+    const QString path = item->data(Qt::UserRole).toString();
+    if (path.isEmpty()) return;
+
+    QMenu menu(this);
+    QAction* openAct   = menu.addAction("Im Explorer öffnen");
+    QAction* renameAct = menu.addAction("Umbenennen...");
+    menu.addSeparator();
+    QAction* removeAct = menu.addAction("Aus Liste entfernen");
+    QAction* deleteAct = menu.addAction("Projektordner löschen...");
+
+    QAction* chosen = menu.exec(m_recentList->viewport()->mapToGlobal(pos));
+    if (!chosen) return;
+
+    if (chosen == openAct) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    } else if (chosen == removeAct) {
+        removeRecentProject(path);
+        loadRecentList();
+    } else if (chosen == deleteAct) {
+        auto reply = QMessageBox::warning(this, "Projektordner löschen",
+            QString("Soll der Ordner\n\n%1\n\nunwiderruflich gelöscht werden?").arg(path),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (reply != QMessageBox::Yes) return;
+        QDir dir(path);
+        if (!dir.removeRecursively()) {
+            QMessageBox::warning(this, "Löschen fehlgeschlagen",
+                "Der Ordner konnte nicht vollständig gelöscht werden.");
+        }
+        removeRecentProject(path);
+        loadRecentList();
+    } else if (chosen == renameAct) {
+        QFileInfo fi(path);
+        QDir parentDir = fi.dir();
+        bool ok = false;
+        QString newName = QInputDialog::getText(this, "Projekt umbenennen",
+            "Neuer Ordnername:", QLineEdit::Normal, fi.fileName(), &ok);
+        if (!ok) return;
+        newName = newName.trimmed();
+        if (newName.isEmpty() || newName == fi.fileName()) return;
+        if (parentDir.exists(newName)) {
+            QMessageBox::warning(this, "Umbenennen fehlgeschlagen",
+                "Es existiert bereits ein Ordner mit diesem Namen.");
+            return;
+        }
+        if (!parentDir.rename(fi.fileName(), newName)) {
+            QMessageBox::warning(this, "Umbenennen fehlgeschlagen",
+                "Der Ordner konnte nicht umbenannt werden.");
+            return;
+        }
+        const QString newPath = parentDir.filePath(newName);
+        QSettings s;
+        QStringList list = s.value(kSettingsKey).toStringList();
+        int idx = list.indexOf(path);
+        if (idx >= 0) list[idx] = newPath;
+        s.setValue(kSettingsKey, list);
+        loadRecentList();
+    }
 }
 
 // ── Update check ──────────────────────────────────────────────────────────────
