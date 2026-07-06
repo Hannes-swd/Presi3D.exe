@@ -1,6 +1,6 @@
 # Feature-Roadmap – Impress.js Editor
 
-> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung, LaTeX-Formeln), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export + Properties-Panel-UI), Undo/Redo (debounced, 50 Schritte), Datei speichern/öffnen (Projektordner-Format)
+> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung, LaTeX-Formeln), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, HTML-Import, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter/Hyperlinks), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export + Properties-Panel-UI), Undo/Redo (debounced, 50 Schritte), Datei speichern/öffnen (Projektordner-Format), Variablen-System (Editor-Dialog, Text/Zahl/Boolean, Berechnungen, `{heute}`/`{jetzt}`, global/lokal, Live-Vorschau im Editor + in Diagrammen)
 
 ---
 
@@ -28,7 +28,6 @@
 | **Videos** | Lokale Videodateien einbetten, Autoplay-/Loop-Optionen |
 | **GIFs** | Animierte GIFs auf Folien platzieren |
 | **Audio** | Hintergrundmusik oder Sound-Effekte pro Folie |
-| **Hyperlinks** | Text oder Elemente als Klick-Link definieren |
 | **QR-Code-Generator** | URL eingeben → QR-Code wird direkt als Element eingefügt |
 
 ---
@@ -66,7 +65,6 @@
 | Feature | Beschreibung |
 |---|---|
 | **CSV-Import für Diagramme** | Diagramm-Daten direkt aus CSV-Dateien laden |
-| **Dynamische Diagramme** | Diagramm-Daten können Variablen als Quelle nutzen |
 
 ---
 
@@ -76,15 +74,9 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 | Feature | Beschreibung |
 |---|---|
-| **Variablen-Editor** | Panel oder Dialog: Liste aller Variablen mit Name + Wert; keine Coding-Kenntnisse nötig |
-| **Variable einfügen** | Im Texteditor `{{variablenname}}` einfügen (oder per Dropdown auswählen) |
-| **Live-Vorschau** | Im Editor wird sofort der Wert angezeigt, nicht der Platzhalter |
-| **Variable Typen** | Text, Zahl (Integer/Float), Datum, Boolean (ja/nein), Farbe |
-| **Berechnungen** | Einfache Formeln: `{{preis * 1.19}}`, `{{a + b}}`, `{{max - min}}` |
-| **Datum-Variablen** | `{{heute}}`, `{{jetzt}}` – aktuelles Datum/Uhrzeit beim Präsentieren |
+| **Variable Typen** | Text, Zahl (Integer/Float), Datum, Boolean (ja/nein), Farbe – aktuell nur Text/Zahl/Boolean, Datum & Farbe fehlen |
 | **Import aus CSV/JSON** | Variablenwerte aus externer Datei laden (z. B. aktuelle Verkaufszahlen) |
-| **Globale vs. lokale Variablen** | Global = gilt für die ganze Präsentation; lokal = nur diese Folie |
-| **Bedingte Sichtbarkeit** | Element nur anzeigen wenn `{{zeige_abschnitt}} == true` |
+| **Bedingte Sichtbarkeit** | Element nur anzeigen wenn `{zeige_abschnitt} == true` |
 
 ---
 
@@ -126,7 +118,6 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 | **PowerPoint-Import (.pptx)** | PPTX einlesen und in das interne Format umwandeln |
 | **PowerPoint-Export (.pptx)** | Presentation als PPTX speichern |
 | **Keynote-Import (.key)** | Apple Keynote importieren |
-| **HTML-Import** | Vorhandene Impress.js-HTML-Dateien öffnen (HtmlImporter bereits vorhanden) |
 | **Zip-Export** | HTML + Assets als fertige ZIP-Datei |
 | **Thumbnail-Export** | Alle Folien als kleines Vorschaubild exportieren |
 
@@ -172,8 +163,7 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 ## Zusammenfassung: Die wichtigsten noch fehlenden Features
 
-1. **Variablen ohne Code** – absolutes Alleinstellungsmerkmal, kein Konkurrent hat das
-2. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
-3. **Autosave** – schützt vor Datenverlust bei Absturz
-4. **Gruppenbildung** – baut auf Mehrfachauswahl auf
-5. **Lineale, Führungslinien & Zoom im 2D-Editor** – grundlegende Editier-Komfortfunktionen
+1. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
+2. **Autosave** – schützt vor Datenverlust bei Absturz
+3. **Gruppenbildung** – baut auf Mehrfachauswahl auf
+4. **Lineale, Führungslinien & Zoom im 2D-Editor** – grundlegende Editier-Komfortfunktionen
