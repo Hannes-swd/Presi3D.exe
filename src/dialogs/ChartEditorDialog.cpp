@@ -320,6 +320,14 @@ void ChartEditorDialog::buildSeriesColorRow() {
     static_cast<QHBoxLayout*>(m_colorRow->layout())->addStretch();
 }
 
+// A cell shows its {expr} text verbatim when one is stored for that index,
+// otherwise the plain formatted number — see ChartSeries::valueExprs.
+static QString dataCellText(const ChartSeries& s, int idx, double val) {
+    if (idx >= 0 && idx < s.valueExprs.size() && !s.valueExprs[idx].trimmed().isEmpty())
+        return s.valueExprs[idx];
+    return QString::number(val);
+}
+
 void ChartEditorDialog::rebuildDataTable() {
     if (!m_dataTable) return;
     QSignalBlocker blk(m_dataTable);
@@ -338,7 +346,7 @@ void ChartEditorDialog::rebuildDataTable() {
             m_dataTable->setItem(r, 0, new QTableWidgetItem(
                 r < m_data.labels.size() ? m_data.labels[r] : ""));
             double val = (r < s0.values.size()) ? s0.values[r] : 0.0;
-            m_dataTable->setItem(r, 1, new QTableWidgetItem(QString::number(val)));
+            m_dataTable->setItem(r, 1, new QTableWidgetItem(dataCellText(s0, r, val)));
         }
     } else if (isScatter) {
         int nSer = qMax(1, m_data.series.size());
@@ -353,10 +361,10 @@ void ChartEditorDialog::rebuildDataTable() {
         for (const auto& s : m_data.series) nRows = qMax(nRows, s.values.size() / 2);
         m_dataTable->setRowCount(qMax(nRows, 1));
         for (int s = 0; s < m_data.series.size(); ++s) {
-            const auto& vals = m_data.series[s].values;
-            for (int r = 0; r < vals.size() / 2; ++r) {
-                m_dataTable->setItem(r, s*2,   new QTableWidgetItem(QString::number(vals[r*2])));
-                m_dataTable->setItem(r, s*2+1, new QTableWidgetItem(QString::number(vals[r*2+1])));
+            const auto& ser = m_data.series[s];
+            for (int r = 0; r < ser.values.size() / 2; ++r) {
+                m_dataTable->setItem(r, s*2,   new QTableWidgetItem(dataCellText(ser, r*2,   ser.values[r*2])));
+                m_dataTable->setItem(r, s*2+1, new QTableWidgetItem(dataCellText(ser, r*2+1, ser.values[r*2+1])));
             }
         }
     } else {
@@ -372,14 +380,25 @@ void ChartEditorDialog::rebuildDataTable() {
         for (int r = 0; r < m_data.labels.size(); ++r) {
             m_dataTable->setItem(r, 0, new QTableWidgetItem(m_data.labels[r]));
             for (int s = 0; s < m_data.series.size(); ++s) {
-                double v = (r < m_data.series[s].values.size()) ? m_data.series[s].values[r] : 0.0;
-                m_dataTable->setItem(r, 1+s, new QTableWidgetItem(QString::number(v)));
+                const auto& ser = m_data.series[s];
+                double v = (r < ser.values.size()) ? ser.values[r] : 0.0;
+                m_dataTable->setItem(r, 1+s, new QTableWidgetItem(dataCellText(ser, r, v)));
             }
         }
         // Series names are editable via the Options tab
     }
     m_dataTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_dataTable->horizontalHeader()->setStretchLastSection(true);
+}
+
+// A cell's text is either a plain number (stored as a fixed value) or a
+// {variable} expression (stored verbatim in valueExprs, resolved at render
+// time — see ChartRenderer::substituteVars). Never silently drops the text.
+static void appendValueCell(ChartSeries& s, const QString& raw) {
+    bool ok = false;
+    double v = raw.toDouble(&ok);
+    s.values << (ok ? v : 0.0);
+    s.valueExprs << (ok ? QString() : raw);
 }
 
 void ChartEditorDialog::syncDataFromTable() {
@@ -390,42 +409,47 @@ void ChartEditorDialog::syncDataFromTable() {
 
     if (isPieLike) {
         m_data.labels.clear();
-        if (m_data.series.isEmpty()) m_data.series.append({"Shares", {}, "", {}});
+        if (m_data.series.isEmpty()) m_data.series.append({"Shares", {}, "", {}, {}});
         m_data.series[0].values.clear();
+        m_data.series[0].valueExprs.clear();
         for (int r = 0; r < nRows; ++r) {
             QTableWidgetItem* li = m_dataTable->item(r, 0);
             QTableWidgetItem* vi = m_dataTable->item(r, 1);
             m_data.labels << (li ? li->text() : "");
-            m_data.series[0].values << (vi ? vi->text().toDouble() : 0.0);
+            appendValueCell(m_data.series[0], vi ? vi->text() : QString());
         }
     } else if (isScatter) {
         int nSer = m_dataTable->columnCount() / 2;
         while (m_data.series.size() < nSer)
-            m_data.series.append({"Series "+QString::number(m_data.series.size()+1), {}, "", {}});
+            m_data.series.append({"Series "+QString::number(m_data.series.size()+1), {}, "", {}, {}});
         for (int s = 0; s < nSer && s < m_data.series.size(); ++s) {
             m_data.series[s].values.clear();
+            m_data.series[s].valueExprs.clear();
             for (int r = 0; r < nRows; ++r) {
                 QTableWidgetItem* xi = m_dataTable->item(r, s*2);
                 QTableWidgetItem* yi = m_dataTable->item(r, s*2+1);
                 if (!xi || !yi) continue;
-                m_data.series[s].values << xi->text().toDouble() << yi->text().toDouble();
+                appendValueCell(m_data.series[s], xi->text());
+                appendValueCell(m_data.series[s], yi->text());
             }
         }
     } else {
         int nSer = m_dataTable->columnCount() - 1;
         m_data.labels.clear();
         while (m_data.series.size() < nSer)
-            m_data.series.append({"Series "+QString::number(m_data.series.size()+1), {}, "", {}});
+            m_data.series.append({"Series "+QString::number(m_data.series.size()+1), {}, "", {}, {}});
         while (m_data.series.size() > nSer && !m_data.series.isEmpty())
             m_data.series.removeLast();
-        for (int s = 0; s < nSer && s < m_data.series.size(); ++s)
+        for (int s = 0; s < nSer && s < m_data.series.size(); ++s) {
             m_data.series[s].values.clear();
+            m_data.series[s].valueExprs.clear();
+        }
         for (int r = 0; r < nRows; ++r) {
             QTableWidgetItem* li = m_dataTable->item(r, 0);
             m_data.labels << (li ? li->text() : "");
             for (int s = 0; s < nSer && s < m_data.series.size(); ++s) {
                 QTableWidgetItem* vi = m_dataTable->item(r, 1+s);
-                m_data.series[s].values << (vi ? vi->text().toDouble() : 0.0);
+                appendValueCell(m_data.series[s], vi ? vi->text() : QString());
             }
         }
     }
@@ -796,8 +820,8 @@ void ChartEditorDialog::onAddRow() {
     bool isPie = (m_data.type=="pie"||m_data.type=="donut");
     m_data.labels << (isPie ? "New" : "Category");
     if (!m_data.series.isEmpty()) {
-        if (isPie) m_data.series[0].values << 0.0;
-        else for (auto& s : m_data.series) s.values << 0.0;
+        if (isPie) { m_data.series[0].values << 0.0; m_data.series[0].valueExprs << QString(); }
+        else for (auto& s : m_data.series) { s.values << 0.0; s.valueExprs << QString(); }
     }
     rebuildDataTable();
     if (m_previewWidget) m_previewWidget->update();
@@ -810,8 +834,10 @@ void ChartEditorDialog::onRemoveRow() {
     if (row < 0) return;
     syncDataFromTable();
     if (row < m_data.labels.size()) m_data.labels.removeAt(row);
-    for (auto& s : m_data.series)
-        if (row < s.values.size()) s.values.removeAt(row);
+    for (auto& s : m_data.series) {
+        if (row < s.values.size())     s.values.removeAt(row);
+        if (row < s.valueExprs.size()) s.valueExprs.removeAt(row);
+    }
     rebuildDataTable();
     if (m_previewWidget) m_previewWidget->update();
 }

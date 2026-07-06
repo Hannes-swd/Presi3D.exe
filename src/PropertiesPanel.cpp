@@ -713,7 +713,7 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button"};
+    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button", "Checkbox", "Slider"};
     m_elemType->setText(typeNames[e.type]);
 
     m_elemContent->setEnabled(e.type != SlideElement::Shape);
@@ -729,7 +729,8 @@ void PropertiesPanel::refreshElement() {
                                          ? Qt::white : e.backgroundColor);
 
     m_eFontSize->setEnabled(e.type == SlideElement::Text || e.type == SlideElement::Formula
-                             || e.type == SlideElement::Button);
+                             || e.type == SlideElement::Button || e.type == SlideElement::Checkbox
+                             || e.type == SlideElement::Slider);
     m_eFontSize->setValue(e.fontSize);
 
     m_eAlign->setEnabled(e.type == SlideElement::Text);

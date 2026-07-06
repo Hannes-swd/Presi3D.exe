@@ -8,6 +8,7 @@
 #include <QUuid>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -39,6 +40,57 @@ static QColor parseCssColor(const QString& raw) {
     }
     QColor col(c);
     return col.isValid() ? col : Qt::transparent;
+}
+
+// Finds the "var presVariables = [...];" JSON array embedded in the bootstrap
+// <script> by HtmlExporter::buildVariablesJson() and parses it back into
+// Presentation::variables. Uses a manual bracket-depth scan (like
+// extractStepBlocks below) rather than a regex, so a "]" inside a text
+// variable's value can't be mistaken for the end of the array.
+static void parseVariablesJson(const QString& html, Presentation* pres,
+                               const QMap<QString, QString>& htmlIdToUuid) {
+    int markerPos = html.indexOf("var presVariables = ");
+    if (markerPos < 0) return;
+    int arrStart = html.indexOf('[', markerPos);
+    if (arrStart < 0) return;
+
+    int depth = 0, i = arrStart;
+    bool inString = false;
+    int arrEnd = -1;
+    while (i < html.size()) {
+        QChar c = html[i];
+        if (inString) {
+            if (c == '\\') { i += 2; continue; } // skip escaped character
+            if (c == '"') inString = false;
+        } else {
+            if (c == '"') inString = true;
+            else if (c == '[') ++depth;
+            else if (c == ']') { --depth; if (depth == 0) { arrEnd = i; break; } }
+        }
+        ++i;
+    }
+    if (arrEnd < 0) return;
+
+    // JSON's "\/" escape (used at export time so a value can't close </script>)
+    // is decoded back to "/" by QJsonDocument automatically.
+    QByteArray jsonBa = html.mid(arrStart, arrEnd - arrStart + 1).toUtf8();
+    QJsonParseError perr;
+    QJsonDocument doc = QJsonDocument::fromJson(jsonBa, &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isArray()) return;
+
+    for (const auto& item : doc.array()) {
+        QJsonObject o = item.toObject();
+        Variable v;
+        v.id          = o["id"].toString();
+        v.name        = o["name"].toString();
+        v.type        = Variable::Type(o["type"].toInt(int(Variable::Text)));
+        v.textValue   = o["textValue"].toString();
+        v.numberValue = o["numberValue"].toDouble();
+        v.boolValue   = o["boolValue"].toBool();
+        QString scopeHtmlId = o["scopeSlideId"].toString();
+        v.scopeSlideId = scopeHtmlId.isEmpty() ? QString() : htmlIdToUuid.value(scopeHtmlId);
+        pres->variables.items << v;
+    }
 }
 
 // Extract all <div class="step" ...>...</div> blocks from HTML (improved version)
@@ -375,6 +427,8 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
         return nullptr;
     }
 
+    parseVariablesJson(html, pres, htmlIdToUuid);
+
     QString assetsDir = dir.filePath("assets");
 
     for (const QString& stepBlock : steps) {
@@ -620,6 +674,46 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     continue;
                 }
 
+                // Slider element: range input bound to a Number variable
+                if (dtype == "slider") {
+                    SlideElement se;
+                    se.type   = SlideElement::Slider;
+                    se.x      = cssProp(style, "left").remove("px").toFloat();
+                    se.y      = cssProp(style, "top").remove("px").toFloat();
+                    se.width  = cssProp(style, "width").remove("px").toFloat();
+                    se.height = cssProp(style, "height").remove("px").toFloat();
+                    QString ff = cssProp(style, "font-family");
+                    ff.remove('\'').remove('"');
+                    if (!ff.isEmpty()) se.fontFamily = ff;
+                    QString fs = cssProp(style, "font-size").remove("px");
+                    if (!fs.isEmpty()) se.fontSize = fs.toInt();
+                    QColor fc = parseCssColor(cssProp(style, "color"));
+                    if (fc.isValid()) se.color = fc;
+
+                    QRegularExpression labelRe("<span[^>]*\\sdata-slider-label=\"([^\"]*)\"");
+                    auto labelM = labelRe.match(line);
+                    if (labelM.hasMatch()) {
+                        QString lbl = labelM.captured(1);
+                        lbl.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                           .replace("&quot;", "\"").replace("&#39;", "'");
+                        se.content = lbl;
+                    }
+                    QRegularExpression inputRe("<input[^>]*type=\"range\"[^>]*>");
+                    auto inputM = inputRe.match(line);
+                    if (inputM.hasMatch()) {
+                        QString inputTag = inputM.captured(0);
+                        se.boundVariableId = attrVal(inputTag, "data-var-id");
+                        QString minS = attrVal(inputTag, "min");
+                        QString maxS = attrVal(inputTag, "max");
+                        QString stepS = attrVal(inputTag, "step");
+                        if (!minS.isEmpty())  se.sliderMin  = minS.toDouble();
+                        if (!maxS.isEmpty())  se.sliderMax  = maxS.toDouble();
+                        if (!stepS.isEmpty()) se.sliderStep = stepS.toDouble();
+                    }
+                    slide.elements.append(se);
+                    continue;
+                }
+
                 // Classify: prefer explicit data-type, fall back to style inspection
                 bool isText = (dtype == "text") ||
                               (dtype.isEmpty() && style.contains("font-family"));
@@ -797,9 +891,23 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 QString brad = cssProp(style, "border-radius");
                 if (!brad.isEmpty()) e.cornerRadius = brad.remove("px").toFloat();
 
-                QString targetId = attrVal(line, "data-target");
-                if (!targetId.isEmpty() && htmlIdToUuid.contains(targetId))
-                    e.targetSlideId = htmlIdToUuid[targetId];
+                QString varId = attrVal(line, "data-var-id");
+                if (!varId.isEmpty()) {
+                    e.buttonAction    = "changeVariable";
+                    e.boundVariableId = varId;
+                    QString op = attrVal(line, "data-var-op");
+                    if (!op.isEmpty()) e.varOp = op;
+                    e.varOpNumber = attrVal(line, "data-var-number").toDouble();
+                    e.varOpBool   = attrVal(line, "data-var-bool") == "true";
+                    QString varText = attrVal(line, "data-var-text");
+                    varText.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                            .replace("&quot;", "\"").replace("&#39;", "'");
+                    e.varOpText = varText;
+                } else {
+                    QString targetId = attrVal(line, "data-target");
+                    if (!targetId.isEmpty() && htmlIdToUuid.contains(targetId))
+                        e.targetSlideId = htmlIdToUuid[targetId];
+                }
 
                 int aTagEnd = line.indexOf('>');
                 int aEnd    = line.lastIndexOf("</a>");
@@ -808,6 +916,38 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     label.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
                          .replace("&quot;", "\"").replace("&#39;", "'");
                     e.content = label;
+                }
+                slide.elements.append(e);
+
+            } else if (line.startsWith("<label") && attrVal(line, "data-type") == "checkbox") {
+                // ── Checkbox element ─────────────────────────────────────────────
+                SlideElement e;
+                e.type = SlideElement::Checkbox;
+                QString style = attrVal(line, "style");
+                e.x      = cssProp(style, "left").remove("px").toFloat();
+                e.y      = cssProp(style, "top").remove("px").toFloat();
+                e.width  = cssProp(style, "width").remove("px").toFloat();
+                e.height = cssProp(style, "height").remove("px").toFloat();
+                QString ff = cssProp(style, "font-family");
+                ff.remove('\'').remove('"');
+                if (!ff.isEmpty()) e.fontFamily = ff;
+                QString fs = cssProp(style, "font-size").remove("px");
+                if (!fs.isEmpty()) e.fontSize = fs.toInt();
+                QColor fc = parseCssColor(cssProp(style, "color"));
+                if (fc.isValid()) e.color = fc;
+
+                QRegularExpression inputRe("<input[^>]*type=\"checkbox\"[^>]*>");
+                auto inputM = inputRe.match(line);
+                if (inputM.hasMatch())
+                    e.boundVariableId = attrVal(inputM.captured(0), "data-var-id");
+
+                QRegularExpression spanRe("<span[^>]*>(.*)</span>");
+                auto spanM = spanRe.match(line);
+                if (spanM.hasMatch()) {
+                    QString lbl = spanM.captured(1);
+                    lbl.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+                       .replace("&quot;", "\"").replace("&#39;", "'");
+                    e.content = lbl;
                 }
                 slide.elements.append(e);
             }

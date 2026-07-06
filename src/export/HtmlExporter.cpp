@@ -9,6 +9,8 @@
 #include <QPainter>
 #include <QBuffer>
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 
 // Bundled impress.js — embedded via Qt resource system (resources/icons.qrc)
 static const char* IMPRESS_JS_SRC = ":/impress.js";
@@ -132,6 +134,26 @@ static void buildVisibilityData(const Presentation& pres,
     }
 }
 
+QString HtmlExporter::buildVariablesJson(const Presentation& pres,
+                                         const QMap<QString, QString>& uuidToHtmlId) {
+    QJsonArray arr;
+    for (const Variable& v : pres.variables.items) {
+        QJsonObject o;
+        o["id"]           = v.id;
+        o["name"]         = v.name;
+        o["type"]         = int(v.type); // Text=0, Number=1, Boolean=2 (mirrors Variable::Type)
+        o["textValue"]    = v.textValue;
+        o["numberValue"]  = v.numberValue;
+        o["boolValue"]    = v.boolValue;
+        // Scope is stored as a Slide UUID internally; translate to the exported step's html id.
+        o["scopeSlideId"] = v.scopeSlideId.isEmpty() ? QString() : uuidToHtmlId.value(v.scopeSlideId);
+        arr.append(o);
+    }
+    QString json = QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+    json.replace("</", "<\\/"); // don't let a text value accidentally close the <script> tag
+    return json;
+}
+
 // Does any slide contain a formula element? Only then load MathJax.
 static bool hasFormulaElement(const Presentation& pres) {
     for (const Slide& s : pres.slides)
@@ -171,7 +193,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << QString::number(defOpa, 'f', 2) << "\">\n\n";
 
     for (int i = 0; i < pres.slides.size(); ++i)
-        out << slideToHtml(pres.slides[i], i + 1, uuidToHtmlId, uuidToVisString) << "\n\n";
+        out << slideToHtml(pres.slides[i], i + 1, uuidToHtmlId, uuidToVisString, pres.variables) << "\n\n";
 
     out << "</div>\n\n"
         << "<script src=\"impress.js\"></script>\n"
@@ -181,6 +203,509 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "var steps = Array.from(document.querySelectorAll('.step'));\n"
         << "var impEl = document.getElementById('impress');\n"
         << "var defaultInactiveOpacity = parseFloat(impEl.dataset.defaultInactiveOpacity || 0.3);\n"
+        << "\n"
+        << "// ── Variables: tiny expression engine + live substitution/interaction ────\n"
+        << "// Mirrors src/models/VariableEngine.cpp — keep both in sync (see VARIABLEN_PLAN.md).\n"
+        << "var presVariables = " << buildVariablesJson(pres, uuidToHtmlId) << ";\n"
+        << "function findVarById(id) {\n"
+        << "  for (var i = 0; i < presVariables.length; i++) if (presVariables[i].id === id) return presVariables[i];\n"
+        << "  return null;\n"
+        << "}\n"
+        << "function findVarByName(name, slideId) {\n"
+        << "  var local = null, global = null;\n"
+        << "  for (var i = 0; i < presVariables.length; i++) {\n"
+        << "    var v = presVariables[i];\n"
+        << "    if (v.name.toLowerCase() !== name.toLowerCase()) continue;\n"
+        << "    if (v.scopeSlideId && v.scopeSlideId === slideId) local = v;\n"
+        << "    else if (!v.scopeSlideId) global = v;\n"
+        << "  }\n"
+        << "  return local || global;\n"
+        << "}\n"
+        << "function pad2(n) { return (n < 10 ? '0' : '') + n; }\n"
+        << "function formatNum(n) {\n"
+        << "  var r = Math.round(n);\n"
+        << "  return (Math.abs(n - r) < 1e-9) ? String(r) : n.toFixed(2);\n"
+        << "}\n"
+        << "function isVarLetter(ch) { return /[A-Za-zÀ-ÖØ-öø-ÿ_]/.test(ch); }\n"
+        << "function tokenizeExpr(src) {\n"
+        << "  var tokens = [], i = 0, n = src.length;\n"
+        << "  while (i < n) {\n"
+        << "    var c = src[i];\n"
+        << "    if (/\\s/.test(c)) { i++; continue; }\n"
+        << "    if (/[0-9]/.test(c) || (c === '.' && i + 1 < n && /[0-9]/.test(src[i+1]))) {\n"
+        << "      var start = i;\n"
+        << "      while (i < n && /[0-9.]/.test(src[i])) i++;\n"
+        << "      tokens.push({k:'num', v: parseFloat(src.slice(start, i))});\n"
+        << "      continue;\n"
+        << "    }\n"
+        << "    if (c === '\"') {\n"
+        << "      i++; var s2 = i;\n"
+        << "      while (i < n && src[i] !== '\"') i++;\n"
+        << "      tokens.push({k:'str', v: src.slice(s2, i)});\n"
+        << "      if (i < n) i++;\n"
+        << "      continue;\n"
+        << "    }\n"
+        << "    if (isVarLetter(c)) {\n"
+        << "      var s3 = i;\n"
+        << "      while (i < n && (isVarLetter(src[i]) || /[0-9]/.test(src[i]))) i++;\n"
+        << "      tokens.push({k:'ident', v: src.slice(s3, i)});\n"
+        << "      continue;\n"
+        << "    }\n"
+        << "    var two = src.substr(i, 2);\n"
+        << "    if (['==','!=','<=','>='].indexOf(two) !== -1) { tokens.push({k:'op', v: two}); i += 2; continue; }\n"
+        << "    if ('+-*/()<>'.indexOf(c) !== -1) { tokens.push({k:'op', v: c}); i++; continue; }\n"
+        << "    throw new Error('unerwartetes Zeichen \"' + c + '\"');\n"
+        << "  }\n"
+        << "  tokens.push({k:'end', v:''});\n"
+        << "  return tokens;\n"
+        << "}\n"
+        << "function evalExpr(expr, slideId) {\n"
+        << "  var tokens = tokenizeExpr(expr.trim());\n"
+        << "  var pos = 0;\n"
+        << "  function cur() { return tokens[pos]; }\n"
+        << "  function atOp(s) { return cur().k === 'op' && cur().v === s; }\n"
+        << "  function advance() { if (pos + 1 < tokens.length) pos++; }\n"
+        << "  function asNumber(v) {\n"
+        << "    if (v.kind === 'num') return v.value;\n"
+        << "    if (v.kind === 'bool') return v.value ? 1 : 0;\n"
+        << "    throw new Error('erwarte eine Zahl');\n"
+        << "  }\n"
+        << "  function toDisplay(v) {\n"
+        << "    if (v.kind === 'num') return formatNum(v.value);\n"
+        << "    if (v.kind === 'bool') return v.value ? 'wahr' : 'falsch';\n"
+        << "    return v.value;\n"
+        << "  }\n"
+        << "  function resolveIdent(name) {\n"
+        << "    var lname = name.toLowerCase();\n"
+        << "    if (lname === 'heute' || lname === 'jetzt') {\n"
+        << "      var d = new Date();\n"
+        << "      var s = pad2(d.getDate()) + '.' + pad2(d.getMonth()+1) + '.' + d.getFullYear();\n"
+        << "      if (lname === 'jetzt') s += ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());\n"
+        << "      return {kind:'text', value: s};\n"
+        << "    }\n"
+        << "    var v = findVarByName(name, slideId);\n"
+        << "    if (!v) throw new Error('unbekannte Variable \"' + name + '\"');\n"
+        << "    if (v.type === 1) return {kind:'num', value: v.numberValue};\n"
+        << "    if (v.type === 2) return {kind:'bool', value: v.boolValue};\n"
+        << "    return {kind:'text', value: v.textValue};\n"
+        << "  }\n"
+        << "  function parsePrimary() {\n"
+        << "    var t = cur();\n"
+        << "    if (t.k === 'num') { advance(); return {kind:'num', value:t.v}; }\n"
+        << "    if (t.k === 'str') { advance(); return {kind:'text', value:t.v}; }\n"
+        << "    if (t.k === 'ident') { advance(); return resolveIdent(t.v); }\n"
+        << "    if (atOp('(')) { advance(); var v2 = parseComparison(); if (!atOp(')')) throw new Error('schließende Klammer fehlt'); advance(); return v2; }\n"
+        << "    throw new Error('Ausdruck erwartet');\n"
+        << "  }\n"
+        << "  function parseUnary() {\n"
+        << "    if (atOp('-')) { advance(); return {kind:'num', value: -asNumber(parseUnary())}; }\n"
+        << "    return parsePrimary();\n"
+        << "  }\n"
+        << "  function parseProduct() {\n"
+        << "    var left = parseUnary();\n"
+        << "    while (atOp('*') || atOp('/')) {\n"
+        << "      var op = cur().v; advance();\n"
+        << "      var right = parseUnary();\n"
+        << "      var a = asNumber(left), b = asNumber(right);\n"
+        << "      if (op === '*') left = {kind:'num', value: a*b};\n"
+        << "      else { if (b === 0) throw new Error('Division durch 0'); left = {kind:'num', value: a/b}; }\n"
+        << "    }\n"
+        << "    return left;\n"
+        << "  }\n"
+        << "  function parseSum() {\n"
+        << "    var left = parseProduct();\n"
+        << "    while (atOp('+') || atOp('-')) {\n"
+        << "      var op = cur().v; advance();\n"
+        << "      var right = parseProduct();\n"
+        << "      if (op === '+') {\n"
+        << "        if (left.kind === 'num' && right.kind === 'num') left = {kind:'num', value: left.value + right.value};\n"
+        << "        else left = {kind:'text', value: toDisplay(left) + toDisplay(right)};\n"
+        << "      } else {\n"
+        << "        left = {kind:'num', value: asNumber(left) - asNumber(right)};\n"
+        << "      }\n"
+        << "    }\n"
+        << "    return left;\n"
+        << "  }\n"
+        << "  function parseComparison() {\n"
+        << "    var left = parseSum();\n"
+        << "    if (atOp('==')||atOp('!=')||atOp('<')||atOp('>')||atOp('<=')||atOp('>=')) {\n"
+        << "      var op = cur().v; advance();\n"
+        << "      var right = parseSum();\n"
+        << "      var result;\n"
+        << "      if (left.kind === 'num' && right.kind === 'num') {\n"
+        << "        var a=left.value,b=right.value;\n"
+        << "        result = op==='=='?a===b:op==='!='?a!==b:op==='<'?a<b:op==='>'?a>b:op==='<='?a<=b:a>=b;\n"
+        << "      } else if (left.kind==='bool' && right.kind==='bool') {\n"
+        << "        if (op==='==') result = left.value===right.value;\n"
+        << "        else if (op==='!=') result = left.value!==right.value;\n"
+        << "        else throw new Error('Wahr/Falsch-Werte lassen sich nur mit == oder != vergleichen');\n"
+        << "      } else {\n"
+        << "        var sa=toDisplay(left), sb=toDisplay(right);\n"
+        << "        var c = sa<sb?-1:(sa>sb?1:0);\n"
+        << "        result = op==='=='?c===0:op==='!='?c!==0:op==='<'?c<0:op==='>'?c>0:op==='<='?c<=0:c>=0;\n"
+        << "      }\n"
+        << "      return {kind:'bool', value: result};\n"
+        << "    }\n"
+        << "    return left;\n"
+        << "  }\n"
+        << "  var result = parseComparison();\n"
+        << "  if (cur().k !== 'end') throw new Error('unerwartetes Zeichen am Ende');\n"
+        << "  return toDisplay(result);\n"
+        << "}\n"
+        << "function substituteTemplate(raw, slideId) {\n"
+        << "  if (raw.indexOf('{') === -1) return raw;\n"
+        << "  var out = '', i = 0, n = raw.length;\n"
+        << "  while (i < n) {\n"
+        << "    var c = raw[i];\n"
+        << "    if (c === '{') {\n"
+        << "      var close = raw.indexOf('}', i + 1);\n"
+        << "      if (close < 0) { out += raw.slice(i); break; }\n"
+        << "      var expr = raw.slice(i + 1, close);\n"
+        << "      try { out += evalExpr(expr, slideId); }\n"
+        << "      catch (err) { out += '⟨?' + expr.trim() + '?⟩'; }\n"
+        << "      i = close + 1;\n"
+        << "    } else { out += c; i++; }\n"
+        << "  }\n"
+        << "  return out;\n"
+        << "}\n"
+        << "function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }\n"
+        << "function setTemplateContent(el, text) { el.innerHTML = text.split('\\n').map(escapeHtml).join('<br>'); }\n"
+        << "function currentSlideId() {\n"
+        << "  var active = document.querySelector('.step.active');\n"
+        << "  return active ? active.id : (steps.length ? steps[0].id : '');\n"
+        << "}\n"
+        << "function renderAll() {\n"
+        << "  var slideId = currentSlideId();\n"
+        << "  document.querySelectorAll('[data-var-template]').forEach(function(el) {\n"
+        << "    setTemplateContent(el, substituteTemplate(el.dataset.varTemplate, slideId));\n"
+        << "  });\n"
+        << "  document.querySelectorAll('[data-type=\"slider\"]').forEach(function(wrap) {\n"
+        << "    var input = wrap.querySelector('input[type=\"range\"]');\n"
+        << "    if (!input) return;\n"
+        << "    var v = findVarById(input.dataset.varId);\n"
+        << "    var num = v ? v.numberValue : parseFloat(input.min);\n"
+        << "    input.value = num;\n"
+        << "    var labelSpan = wrap.querySelector('[data-slider-label]');\n"
+        << "    if (labelSpan) {\n"
+        << "      var tmpl = labelSpan.dataset.sliderLabel || '';\n"
+        << "      var labelText = tmpl ? substituteTemplate(tmpl, slideId) + '  ' : '';\n"
+        << "      labelSpan.textContent = labelText + formatNum(num);\n"
+        << "    }\n"
+        << "  });\n"
+        << "  document.querySelectorAll('[data-type=\"checkbox\"] input[type=\"checkbox\"]').forEach(function(input) {\n"
+        << "    var v = findVarById(input.dataset.varId);\n"
+        << "    input.checked = !!(v && v.boolValue);\n"
+        << "  });\n"
+        << "  renderAllCharts();\n"
+        << "}\n"
+        << "function onSliderInput(input) {\n"
+        << "  var v = findVarById(input.dataset.varId);\n"
+        << "  if (v) v.numberValue = parseFloat(input.value);\n"
+        << "  renderAll();\n"
+        << "}\n"
+        << "function onCheckboxChange(input) {\n"
+        << "  var v = findVarById(input.dataset.varId);\n"
+        << "  if (v) v.boolValue = input.checked;\n"
+        << "  renderAll();\n"
+        << "}\n"
+        << "function runButtonAction(btn) {\n"
+        << "  var v = findVarById(btn.dataset.varId);\n"
+        << "  if (!v) return;\n"
+        << "  var op = btn.dataset.varOp;\n"
+        << "  if (v.type === 1) {\n"
+        << "    var amt = parseFloat(btn.dataset.varNumber || '0');\n"
+        << "    if (op === 'inc') v.numberValue += amt;\n"
+        << "    else if (op === 'dec') v.numberValue -= amt;\n"
+        << "    else if (op === 'set') v.numberValue = amt;\n"
+        << "  } else if (v.type === 2) {\n"
+        << "    if (op === 'toggle') v.boolValue = !v.boolValue;\n"
+        << "    else if (op === 'set') v.boolValue = (btn.dataset.varBool === 'true');\n"
+        << "  } else {\n"
+        << "    if (op === 'set') v.textValue = btn.dataset.varText || '';\n"
+        << "  }\n"
+        << "  renderAll();\n"
+        << "}\n"
+        << "\n"
+        << "// ── Live chart rendering (data-driven types only: bar/bar_h/line/area/\n"
+        << "// pie/donut/scatter) — mirrors src/rendering/ChartRenderer.cpp closely\n"
+        << "// enough to look right, not pixel-for-pixel. Structural/special chart\n"
+        << "// types (flowchart, gantt, venn, ...) stay a static image; see VARIABLEN_PLAN.md.\n"
+        << "var CHART_PALETTE = [\"#4e79a7\",\"#f28e2b\",\"#e15759\",\"#76b7b2\",\"#59a14f\","
+        << "\"#edc948\",\"#b07aa1\",\"#ff9da7\",\"#9c755f\",\"#bab0ac\"];\n"
+        << "function chartColor(hex, idx) {\n"
+        << "  if (hex) return hex;\n"
+        << "  var i = ((idx % CHART_PALETTE.length) + CHART_PALETTE.length) % CHART_PALETTE.length;\n"
+        << "  return CHART_PALETTE[i];\n"
+        << "}\n"
+        << "function hexToRgba(hex, alpha) {\n"
+        << "  var h = (hex || '#4e79a7').replace('#', '');\n"
+        << "  if (h.length === 3) h = h.split('').map(function(c) { return c + c; }).join('');\n"
+        << "  var r = parseInt(h.substr(0,2),16), g = parseInt(h.substr(2,2),16), b = parseInt(h.substr(4,2),16);\n"
+        << "  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';\n"
+        << "}\n"
+        << "function b64DecodeUtf8(b64) {\n"
+        << "  var binary = atob(b64);\n"
+        << "  var bytes = new Uint8Array(binary.length);\n"
+        << "  for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);\n"
+        << "  return new TextDecoder('utf-8').decode(bytes);\n"
+        << "}\n"
+        << "function resolveChartData(raw, slideId) {\n"
+        << "  var d = JSON.parse(JSON.stringify(raw));\n"
+        << "  d.title = substituteTemplate(d.title || '', slideId);\n"
+        << "  d.labels = (d.labels || []).map(function(l) { return substituteTemplate(l, slideId); });\n"
+        << "  (d.series || []).forEach(function(s) {\n"
+        << "    s.name = substituteTemplate(s.name || '', slideId);\n"
+        << "    var exprs = s.valueExprs || [];\n"
+        << "    for (var i = 0; i < exprs.length && i < s.values.length; i++) {\n"
+        << "      var expr = exprs[i];\n"
+        << "      if (!expr || !expr.trim()) continue;\n"
+        << "      var num = parseFloat(substituteTemplate(expr, slideId));\n"
+        << "      if (!isNaN(num)) s.values[i] = num;\n"
+        << "    }\n"
+        << "  });\n"
+        << "  return d;\n"
+        << "}\n"
+        << "function drawChartLegend(ctx, lx, ly, lw, lh, d, sc) {\n"
+        << "  if (!d.series.length) return;\n"
+        << "  var itemH = Math.max(14, 16*sc), boxSz = itemH * 0.7;\n"
+        << "  ctx.font = Math.max(5, 9.5*sc) + 'px Arial';\n"
+        << "  var y = ly + 4;\n"
+        << "  for (var i = 0; i < d.series.length && y + itemH <= ly + lh; i++) {\n"
+        << "    ctx.fillStyle = chartColor(d.series[i].color, i);\n"
+        << "    ctx.fillRect(lx, y + (itemH-boxSz)/2, boxSz, boxSz);\n"
+        << "    ctx.fillStyle = '#000';\n"
+        << "    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';\n"
+        << "    ctx.fillText(d.series[i].name, lx + boxSz + 4, y + itemH/2);\n"
+        << "    y += itemH + 2;\n"
+        << "  }\n"
+        << "}\n"
+        << "function drawBarChart(ctx, w, h, d, sc, horiz) {\n"
+        << "  var nCats = d.labels.length, nSer = d.series.length;\n"
+        << "  if (!nSer || !nCats) return;\n"
+        << "  var maxVal = 1;\n"
+        << "  d.series.forEach(function(s) { s.values.forEach(function(v) { if (v > maxVal) maxVal = v; }); });\n"
+        << "  var titleH = d.title ? 22*sc : 0;\n"
+        << "  var legendW = (d.showLegend && nSer > 1) ? 90*sc : 0;\n"
+        << "  var axisL = horiz ? 80*sc : 40*sc, axisB = horiz ? 30*sc : 28*sc, pad = 8*sc;\n"
+        << "  if (d.title) {\n"
+        << "    ctx.fillStyle = '#282828'; ctx.font = 'bold ' + Math.max(5,12*sc) + 'px Arial';\n"
+        << "    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(d.title, w/2, 0);\n"
+        << "  }\n"
+        << "  var plotX = axisL, plotY = titleH + pad;\n"
+        << "  var plotW = w - axisL - legendW - pad, plotH = h - titleH - axisB - pad*2;\n"
+        << "  if (plotW < 10 || plotH < 10) return;\n"
+        << "  if (d.showGrid) {\n"
+        << "    ctx.strokeStyle = 'rgb(210,210,210)'; ctx.lineWidth = 0.8*sc;\n"
+        << "    for (var g = 0; g <= 5; g++) {\n"
+        << "      ctx.beginPath();\n"
+        << "      if (horiz) { var x = plotX+g*plotW/5; ctx.moveTo(x,plotY); ctx.lineTo(x,plotY+plotH); }\n"
+        << "      else       { var y = plotY+(5-g)*plotH/5; ctx.moveTo(plotX,y); ctx.lineTo(plotX+plotW,y); }\n"
+        << "      ctx.stroke();\n"
+        << "    }\n"
+        << "  }\n"
+        << "  var catSize = (horiz ? plotH : plotW) / nCats;\n"
+        << "  var barSize = catSize * 0.75 / nSer, barGap = catSize * 0.25 / 2;\n"
+        << "  for (var cat = 0; cat < nCats; cat++) {\n"
+        << "    for (var ser = 0; ser < nSer; ser++) {\n"
+        << "      var s = d.series[ser];\n"
+        << "      var val = cat < s.values.length ? s.values[cat] : 0;\n"
+        << "      var barLen = val / maxVal * (horiz ? plotW : plotH);\n"
+        << "      ctx.fillStyle = (s.valueColors && s.valueColors[cat]) ? s.valueColors[cat] : chartColor(s.color, ser);\n"
+        << "      if (horiz) { var y2 = plotY+cat*catSize+barGap+ser*barSize; ctx.fillRect(plotX, y2, barLen, barSize-1.5*sc); }\n"
+        << "      else       { var x2 = plotX+cat*catSize+barGap+ser*barSize; ctx.fillRect(x2, plotY+plotH-barLen, barSize-1.5*sc, barLen); }\n"
+        << "    }\n"
+        << "    ctx.fillStyle = '#505050'; ctx.font = Math.max(5,8.5*sc) + 'px Arial';\n"
+        << "    var lbl = d.labels[cat] || String(cat+1);\n"
+        << "    if (horiz) { ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(lbl, axisL-4, plotY+cat*catSize+catSize/2); }\n"
+        << "    else       { ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(lbl, plotX+cat*catSize+catSize/2, plotY+plotH+2); }\n"
+        << "  }\n"
+        << "  ctx.fillStyle = '#646464'; ctx.font = Math.max(5,8*sc) + 'px Arial';\n"
+        << "  for (var g2 = 0; g2 <= 5; g2++) {\n"
+        << "    var val2 = maxVal*g2/5;\n"
+        << "    var lbl2 = val2>=10000 ? Math.round(val2/1000)+'k' : (val2>=1000 ? String(Math.round(val2/100)*100) : String(Math.round(val2)));\n"
+        << "    if (horiz) { ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(lbl2, plotX+g2*plotW/5, plotY+plotH+2); }\n"
+        << "    else       { ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(lbl2, axisL-4, plotY+(5-g2)*plotH/5); }\n"
+        << "  }\n"
+        << "  ctx.strokeStyle = '#646464'; ctx.lineWidth = 1.2*sc;\n"
+        << "  ctx.beginPath(); ctx.moveTo(plotX,plotY+plotH); ctx.lineTo(horiz?plotX+plotW:plotX, horiz?plotY+plotH:plotY); ctx.stroke();\n"
+        << "  ctx.beginPath(); ctx.moveTo(plotX,plotY+plotH); ctx.lineTo(horiz?plotX:plotX+plotW, horiz?plotY:plotY+plotH); ctx.stroke();\n"
+        << "  if (d.showLegend && nSer > 1) drawChartLegend(ctx, w-legendW, titleH+pad, legendW, h-titleH-pad, d, sc);\n"
+        << "}\n"
+        << "function drawLineChart(ctx, w, h, d, sc, filled) {\n"
+        << "  var nCats = d.labels.length, nSer = d.series.length;\n"
+        << "  if (!nSer || !nCats) return;\n"
+        << "  var maxVal = 1;\n"
+        << "  d.series.forEach(function(s) { s.values.forEach(function(v) { if (v > maxVal) maxVal = v; }); });\n"
+        << "  var titleH = d.title ? 22*sc : 0;\n"
+        << "  var legendW = (d.showLegend && nSer > 1) ? 90*sc : 0;\n"
+        << "  var axisL = 40*sc, axisB = 28*sc, pad = 8*sc;\n"
+        << "  if (d.title) {\n"
+        << "    ctx.fillStyle='#282828'; ctx.font='bold '+Math.max(5,12*sc)+'px Arial';\n"
+        << "    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(d.title, w/2, 0);\n"
+        << "  }\n"
+        << "  var plotX = axisL, plotY = titleH+pad;\n"
+        << "  var plotW = w-axisL-legendW-pad, plotH = h-titleH-axisB-pad*2;\n"
+        << "  if (plotW<10||plotH<10) return;\n"
+        << "  if (d.showGrid) {\n"
+        << "    ctx.strokeStyle='rgb(210,210,210)'; ctx.lineWidth=0.8*sc;\n"
+        << "    for (var g=0; g<=5; g++) { var y=plotY+(5-g)*plotH/5; ctx.beginPath(); ctx.moveTo(plotX,y); ctx.lineTo(plotX+plotW,y); ctx.stroke(); }\n"
+        << "  }\n"
+        << "  var stepX = nCats>1 ? plotW/(nCats-1) : 0;\n"
+        << "  for (var ser=0; ser<nSer; ser++) {\n"
+        << "    var s = d.series[ser];\n"
+        << "    var c = chartColor(s.color, ser);\n"
+        << "    var pts = [];\n"
+        << "    for (var cat=0; cat<nCats; cat++) {\n"
+        << "      var v = cat<s.values.length ? s.values[cat] : 0;\n"
+        << "      pts.push([plotX+cat*stepX, plotY+plotH-(v/maxVal*plotH)]);\n"
+        << "    }\n"
+        << "    if (filled && pts.length>=2) {\n"
+        << "      ctx.beginPath(); ctx.moveTo(pts[0][0], plotY+plotH);\n"
+        << "      pts.forEach(function(pt){ ctx.lineTo(pt[0],pt[1]); });\n"
+        << "      ctx.lineTo(pts[pts.length-1][0], plotY+plotH); ctx.closePath();\n"
+        << "      ctx.fillStyle = hexToRgba(c, 0.3); ctx.fill();\n"
+        << "    }\n"
+        << "    ctx.strokeStyle=c; ctx.lineWidth=2*sc; ctx.lineCap='round'; ctx.lineJoin='round';\n"
+        << "    ctx.beginPath(); pts.forEach(function(pt,i){ if(i===0) ctx.moveTo(pt[0],pt[1]); else ctx.lineTo(pt[0],pt[1]); }); ctx.stroke();\n"
+        << "    var r = 3.5*sc;\n"
+        << "    pts.forEach(function(pt) {\n"
+        << "      ctx.fillStyle=c; ctx.beginPath(); ctx.arc(pt[0],pt[1],r,0,2*Math.PI); ctx.fill();\n"
+        << "      ctx.strokeStyle='#fff'; ctx.lineWidth=1*sc; ctx.stroke();\n"
+        << "    });\n"
+        << "  }\n"
+        << "  ctx.fillStyle='#505050'; ctx.font=Math.max(5,8.5*sc)+'px Arial';\n"
+        << "  ctx.textAlign='center'; ctx.textBaseline='top';\n"
+        << "  for (var cat2=0; cat2<nCats; cat2++)\n"
+        << "    ctx.fillText(d.labels[cat2] || String(cat2+1), plotX+cat2*stepX, plotY+plotH+2);\n"
+        << "  ctx.fillStyle='#646464'; ctx.font=Math.max(5,8*sc)+'px Arial';\n"
+        << "  ctx.textAlign='right'; ctx.textBaseline='middle';\n"
+        << "  for (var g2=0; g2<=5; g2++) {\n"
+        << "    var val=maxVal*g2/5;\n"
+        << "    var lbl2 = val>=1000 ? Math.round(val/1000)+'k' : String(Math.round(val));\n"
+        << "    ctx.fillText(lbl2, axisL-4, plotY+plotH-g2*plotH/5);\n"
+        << "  }\n"
+        << "  ctx.strokeStyle='#646464'; ctx.lineWidth=1.2*sc;\n"
+        << "  ctx.beginPath(); ctx.moveTo(plotX,plotY+plotH); ctx.lineTo(plotX+plotW,plotY+plotH); ctx.stroke();\n"
+        << "  ctx.beginPath(); ctx.moveTo(plotX,plotY+plotH); ctx.lineTo(plotX,plotY); ctx.stroke();\n"
+        << "  if (d.showLegend && nSer>1) drawChartLegend(ctx, w-legendW, titleH+pad, legendW, h-titleH-pad, d, sc);\n"
+        << "}\n"
+        << "function drawPieChart(ctx, w, h, d, sc, donut) {\n"
+        << "  if (!d.series.length || !d.series[0].values.length) return;\n"
+        << "  var s0 = d.series[0];\n"
+        << "  var titleH = d.title ? 22*sc : 0, pad = 8*sc;\n"
+        << "  if (d.title) {\n"
+        << "    ctx.fillStyle='#282828'; ctx.font='bold '+Math.max(5,12*sc)+'px Arial';\n"
+        << "    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(d.title, w/2, 0);\n"
+        << "  }\n"
+        << "  var contentY = titleH+pad, contentH = h-titleH-pad;\n"
+        << "  var nSlices = Math.min(s0.values.length, d.labels.length);\n"
+        << "  var total = 0; for (var i=0;i<nSlices;i++) total += s0.values[i];\n"
+        << "  if (total <= 0) return;\n"
+        << "  var legendW = d.showLegend ? Math.min(120*sc, w*0.35) : 0;\n"
+        << "  var pieAreaW = w - legendW;\n"
+        << "  var side = Math.max(10, Math.min(pieAreaW, contentH) - 20*sc);\n"
+        << "  var cx = pieAreaW/2, cy = contentY+contentH/2, radius = side/2;\n"
+        << "  var angle = -Math.PI/2;\n"
+        << "  for (var i2=0; i2<nSlices; i2++) {\n"
+        << "    var frac = s0.values[i2]/total;\n"
+        << "    var endAngle = angle + frac*2*Math.PI;\n"
+        << "    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,radius,angle,endAngle); ctx.closePath();\n"
+        << "    ctx.fillStyle = (s0.valueColors && s0.valueColors[i2]) ? s0.valueColors[i2] : chartColor('', i2);\n"
+        << "    ctx.fill(); ctx.strokeStyle='#fff'; ctx.lineWidth=1.5*sc; ctx.stroke();\n"
+        << "    angle = endAngle;\n"
+        << "  }\n"
+        << "  if (donut) {\n"
+        << "    var holeR = side*0.38/2;\n"
+        << "    ctx.beginPath(); ctx.arc(cx,cy,holeR,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();\n"
+        << "  }\n"
+        << "  if (d.showLegend) {\n"
+        << "    var lx = pieAreaW+4, ly = contentY+4;\n"
+        << "    var itemH = Math.max(14,16*sc), boxSz = itemH*0.7;\n"
+        << "    ctx.font = Math.max(5,9*sc)+'px Arial';\n"
+        << "    var y = ly;\n"
+        << "    for (var i3=0; i3<nSlices && y+itemH<=contentY+contentH; i3++) {\n"
+        << "      ctx.fillStyle = (s0.valueColors && s0.valueColors[i3]) ? s0.valueColors[i3] : chartColor('', i3);\n"
+        << "      ctx.fillRect(lx, y+(itemH-boxSz)/2, boxSz, boxSz);\n"
+        << "      ctx.fillStyle = '#3c3c3c'; ctx.textAlign='left'; ctx.textBaseline='middle';\n"
+        << "      var pct = (s0.values[i3]/total*100).toFixed(1);\n"
+        << "      ctx.fillText((d.labels[i3]||'') + ' ' + pct + '%', lx+boxSz+3, y+itemH/2);\n"
+        << "      y += itemH+2;\n"
+        << "    }\n"
+        << "  }\n"
+        << "}\n"
+        << "function drawScatterChart(ctx, w, h, d, sc) {\n"
+        << "  if (!d.series.length) return;\n"
+        << "  var minX=0,maxX=1,minY=0,maxY=1,first=true;\n"
+        << "  d.series.forEach(function(s) {\n"
+        << "    for (var i=0;i+1<s.values.length;i+=2) {\n"
+        << "      var x=s.values[i], y=s.values[i+1];\n"
+        << "      if (first) { minX=maxX=x; minY=maxY=y; first=false; }\n"
+        << "      if (x<minX) minX=x; if (x>maxX) maxX=x;\n"
+        << "      if (y<minY) minY=y; if (y>maxY) maxY=y;\n"
+        << "    }\n"
+        << "  });\n"
+        << "  if (maxX<=minX) maxX=minX+1;\n"
+        << "  if (maxY<=minY) maxY=minY+1;\n"
+        << "  var titleH = d.title?22*sc:0;\n"
+        << "  var legendW = (d.showLegend && d.series.length>1) ? 90*sc : 0;\n"
+        << "  var axisL=40*sc, axisB=28*sc, pad=8*sc;\n"
+        << "  if (d.title) {\n"
+        << "    ctx.fillStyle='#282828'; ctx.font='bold '+Math.max(5,12*sc)+'px Arial';\n"
+        << "    ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(d.title, w/2, 0);\n"
+        << "  }\n"
+        << "  var plotX=axisL, plotY=titleH+pad;\n"
+        << "  var plotW=w-axisL-legendW-pad, plotH=h-titleH-axisB-pad*2;\n"
+        << "  if (plotW<10||plotH<10) return;\n"
+        << "  if (d.showGrid) {\n"
+        << "    ctx.strokeStyle='rgb(210,210,210)'; ctx.lineWidth=0.8*sc;\n"
+        << "    for (var g=0; g<=5; g++) {\n"
+        << "      var y=plotY+(5-g)*plotH/5;\n"
+        << "      ctx.beginPath(); ctx.moveTo(plotX,y); ctx.lineTo(plotX+plotW,y); ctx.stroke();\n"
+        << "      var x=plotX+g*plotW/5;\n"
+        << "      ctx.beginPath(); ctx.moveTo(x,plotY); ctx.lineTo(x,plotY+plotH); ctx.stroke();\n"
+        << "    }\n"
+        << "  }\n"
+        << "  d.series.forEach(function(s, ser) {\n"
+        << "    ctx.fillStyle = chartColor(s.color, ser);\n"
+        << "    for (var i=0;i+1<s.values.length;i+=2) {\n"
+        << "      var px = plotX + (s.values[i]-minX)/(maxX-minX)*plotW;\n"
+        << "      var py = plotY+plotH - (s.values[i+1]-minY)/(maxY-minY)*plotH;\n"
+        << "      ctx.beginPath(); ctx.arc(px,py,4*sc,0,2*Math.PI); ctx.fill();\n"
+        << "    }\n"
+        << "  });\n"
+        << "  ctx.strokeStyle='#646464'; ctx.lineWidth=1.2*sc;\n"
+        << "  ctx.beginPath(); ctx.moveTo(plotX,plotY+plotH); ctx.lineTo(plotX+plotW,plotY+plotH); ctx.stroke();\n"
+        << "  ctx.beginPath(); ctx.moveTo(plotX,plotY+plotH); ctx.lineTo(plotX,plotY); ctx.stroke();\n"
+        << "  if (d.showLegend && d.series.length>1) drawChartLegend(ctx, w-legendW, titleH+pad, legendW, h-titleH-pad, d, sc);\n"
+        << "}\n"
+        << "function renderChartCanvas(canvas) {\n"
+        << "  var wrap = canvas.parentElement;\n"
+        << "  var cssW = wrap.clientWidth, cssH = wrap.clientHeight;\n"
+        << "  if (cssW < 4 || cssH < 4) return;\n"
+        << "  var dpr = window.devicePixelRatio || 1;\n"
+        << "  canvas.width = Math.round(cssW*dpr); canvas.height = Math.round(cssH*dpr);\n"
+        << "  var ctx = canvas.getContext('2d');\n"
+        << "  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);\n"
+        << "  ctx.clearRect(0, 0, cssW, cssH);\n"
+        << "  if (!wrap._chartRaw) {\n"
+        << "    try { wrap._chartRaw = JSON.parse(b64DecodeUtf8(wrap.dataset.chart)); }\n"
+        << "    catch (e) { return; }\n"
+        << "  }\n"
+        << "  var d = resolveChartData(wrap._chartRaw, currentSlideId());\n"
+        << "  var sc = Math.max(0.4, Math.min(4, Math.min(cssW, cssH) / 350));\n"
+        << "  var t = d.type;\n"
+        << "  if      (t === 'bar')     drawBarChart(ctx, cssW, cssH, d, sc, false);\n"
+        << "  else if (t === 'bar_h')   drawBarChart(ctx, cssW, cssH, d, sc, true);\n"
+        << "  else if (t === 'line')    drawLineChart(ctx, cssW, cssH, d, sc, false);\n"
+        << "  else if (t === 'area')    drawLineChart(ctx, cssW, cssH, d, sc, true);\n"
+        << "  else if (t === 'pie')     drawPieChart(ctx, cssW, cssH, d, sc, false);\n"
+        << "  else if (t === 'donut')   drawPieChart(ctx, cssW, cssH, d, sc, true);\n"
+        << "  else if (t === 'scatter') drawScatterChart(ctx, cssW, cssH, d, sc);\n"
+        << "}\n"
+        << "function renderAllCharts() {\n"
+        << "  document.querySelectorAll('.chart-canvas').forEach(renderChartCanvas);\n"
+        << "}\n"
+        << "window.addEventListener('resize', renderAllCharts);\n"
         << "\n"
         << "// Build per-slide visibility map from data-vis-overrides attributes\n"
         << "var slideVisibility = {};\n"
@@ -200,6 +725,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "// for the active slide's content (e.g. navigation buttons) even when a\n"
         << "// neighboring step's 3D-transformed box visually overlaps it on screen.\n"
         << "steps.forEach(function(step) { step.style.opacity = defaultInactiveOpacity; step.style.pointerEvents = 'none'; });\n"
+        << "renderAll();\n"
         << "\n"
         << "document.addEventListener('impress:stepenter', function(e) {\n"
         << "  var activeId = e.target.id;\n"
@@ -217,6 +743,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  var el = document.getElementById('slide-counter');\n"
         << "  var i = steps.indexOf(e.target) + 1;\n"
         << "  if (el) el.textContent = i + ' / ' + steps.length;\n"
+        << "  renderAll();\n"
         << "});\n"
         << "\n"
         << "// ── iframe \"portal\" workaround ──────────────────────────────────\n"
@@ -295,7 +822,8 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
 
 QString HtmlExporter::slideToHtml(const Slide& s, int index,
                                    const QMap<QString, QString>& uuidToHtmlId,
-                                   const QMap<QString, QString>& uuidToVisString) {
+                                   const QMap<QString, QString>& uuidToVisString,
+                                   const VariableSet& vars) {
     QString html;
     QTextStream out(&html);
 
@@ -330,14 +858,16 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index,
     out << "       style=\""          << stepStyle << "\">\n";
 
     for (const auto& elem : s.elements)
-        out << "    " << elementToHtml(elem, uuidToHtmlId) << "\n";
+        out << "    " << elementToHtml(elem, uuidToHtmlId, vars, s.id) << "\n";
 
     out << "  </div>";
     return html;
 }
 
 QString HtmlExporter::elementToHtml(const SlideElement& e,
-                                    const QMap<QString, QString>& uuidToHtmlId) {
+                                    const QMap<QString, QString>& uuidToHtmlId,
+                                    const VariableSet& vars,
+                                    const QString& currentSlideId) {
     QString base = QString("position:absolute;left:%1px;top:%2px;width:%3px;height:%4px;")
                        .arg(int(e.x)).arg(int(e.y)).arg(int(e.width)).arg(int(e.height));
     if (e.rotation != 0.f)
@@ -386,6 +916,11 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         }
 
         QString text = e.content.toHtmlEscaped().replace("\n", "<br>");
+        // Live {var} substitution at presentation time: only for plain text (no
+        // hyperlink wrapper to rebuild, no list markup) — see VARIABLEN_PLAN.md.
+        QString varAttr = (e.hyperlink.trimmed().isEmpty() && e.content.contains('{'))
+                               ? QString(" data-var-template=\"%1\"").arg(e.content.toHtmlEscaped())
+                               : QString();
         if (!e.hyperlink.trimmed().isEmpty()) {
             QString href = e.hyperlink.trimmed().toHtmlEscaped();
             text = QString("<a href=\"%1\" target=\"_blank\" rel=\"noopener noreferrer\" "
@@ -395,10 +930,10 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         if (!e.entranceAnim.isEmpty()) {
             style += QString("--anim-delay:%1s;--anim-dur:%2s;")
                          .arg(e.animDelay, 0, 'f', 2).arg(e.animDuration, 0, 'f', 2);
-            return QString("<div data-type=\"text\" data-anim=\"%1\" style=\"%2\">%3</div>")
-                       .arg(e.entranceAnim, style, text);
+            return QString("<div data-type=\"text\"%1 data-anim=\"%2\" style=\"%3\">%4</div>")
+                       .arg(varAttr, e.entranceAnim, style, text);
         }
-        return QString("<div data-type=\"text\" style=\"%1\">%2</div>").arg(style, text);
+        return QString("<div data-type=\"text\"%1 style=\"%2\">%3</div>").arg(varAttr, style, text);
 
     } else if (e.type == SlideElement::Shape) {
         QString style = base + "background:" + colorToCss(e.backgroundColor) + ";";
@@ -423,8 +958,11 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                     .arg(e.fontFamily).arg(e.fontSize).arg(colorToCss(e.color));
             if (e.bold)   textStyle += "font-weight:bold;";
             if (e.italic) textStyle += "font-style:italic;";
-            innerText = QString("<span style=\"%1\">%2</span>")
-                            .arg(textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
+            QString varAttr = e.shapeText.contains('{')
+                                   ? QString(" data-var-template=\"%1\"").arg(e.shapeText.toHtmlEscaped())
+                                   : QString();
+            innerText = QString("<span%1 style=\"%2\">%3</span>")
+                            .arg(varAttr, textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
         }
         if (!e.entranceAnim.isEmpty()) {
             style += QString("--anim-delay:%1s;--anim-dur:%2s;")
@@ -508,6 +1046,8 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                 int rs = qMax(1, qMin(cell.rowspan, e.tableRows - r));
                 if (cs > 1) spanAttrs += QString(" colspan=\"%1\"").arg(cs);
                 if (rs > 1) spanAttrs += QString(" rowspan=\"%1\"").arg(rs);
+                if (cell.text.contains('{'))
+                    spanAttrs += QString(" data-var-template=\"%1\"").arg(cell.text.toHtmlEscaped());
 
                 html += QString("<%1%2 style=\"%3\">%4</%1>")
                             .arg(tag, spanAttrs, cellStyle,
@@ -520,24 +1060,37 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         return html;
 
     } else if (e.type == SlideElement::Chart) {
-        // Render preview image
+        // Embed the full chart data as base64-encoded JSON — used both for
+        // lossless reload (HtmlImporter) and, for data-driven chart types,
+        // by the JS canvas renderer so the chart redraws live when a bound
+        // variable changes (see VARIABLEN_PLAN.md).
+        QByteArray jsonBa = QJsonDocument(e.chartData.toJson()).toJson(QJsonDocument::Compact);
+        QString chartDataB64 = jsonBa.toBase64();
+
+        if (e.chartData.isDataChart()) {
+            return QString(
+                "<div data-type=\"chart\" data-chart-type=\"%1\" data-chart=\"%2\" style=\"%3\">"
+                "<canvas class=\"chart-canvas\" style=\"width:100%;height:100%;display:block;\"></canvas>"
+                "</div>")
+                .arg(e.chartData.type, chartDataB64, base);
+        }
+
+        // Structural/special chart types (flowchart, mindmap, orgchart, uml,
+        // timeline, gantt, venn): rendered as a static image baked at export
+        // time — no JS reimplementation of these layouts, so no live updates.
         int iw = qMax(4, int(e.width));
         int ih = qMax(4, int(e.height));
         QImage img(iw, ih, QImage::Format_ARGB32);
         img.fill(Qt::white);
         QPainter painter(&img);
         painter.setRenderHint(QPainter::Antialiasing);
-        ChartRenderer::paint(painter, QRectF(0, 0, iw, ih), e.chartData);
+        ChartRenderer::paint(painter, QRectF(0, 0, iw, ih), e.chartData, &vars, currentSlideId);
         painter.end();
 
         QByteArray imgBa;
         QBuffer buf(&imgBa);
         buf.open(QIODevice::WriteOnly);
         img.save(&buf, "PNG");
-
-        // Embed the full chart data as base64-encoded JSON for lossless reload
-        QByteArray jsonBa = QJsonDocument(e.chartData.toJson()).toJson(QJsonDocument::Compact);
-        QString chartDataB64 = jsonBa.toBase64();
 
         QString b64img = imgBa.toBase64();
         QString title  = e.chartData.title.isEmpty() ? ChartRenderer::typeName(e.chartData.type)
@@ -601,14 +1154,69 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             style += QString("border-radius:%1px;").arg(int(e.cornerRadius));
         if (e.bold) style += "font-weight:bold;";
 
-        QString label = e.content.isEmpty() ? "Next" : e.content.toHtmlEscaped();
+        QString rawLabel = e.content.isEmpty() ? "Next" : e.content;
+        QString label    = rawLabel.toHtmlEscaped();
+        QString varAttr  = rawLabel.contains('{')
+                                ? QString(" data-var-template=\"%1\"").arg(label)
+                                : QString();
+
+        if (e.buttonAction == "changeVariable") {
+            QString attrs = QString(" data-var-id=\"%1\" data-var-op=\"%2\" data-var-number=\"%3\" "
+                                    "data-var-bool=\"%4\" data-var-text=\"%5\"")
+                                 .arg(e.boundVariableId, e.varOp)
+                                 .arg(e.varOpNumber, 0, 'f', 4)
+                                 .arg(e.varOpBool ? "true" : "false", e.varOpText.toHtmlEscaped());
+            return QString("<a data-type=\"button\"%1%2 href=\"javascript:void(0)\" "
+                           "onclick=\"runButtonAction(this);return false;\" style=\"%3\">%4</a>")
+                       .arg(varAttr, attrs, style, label);
+        }
+
         QString targetHtmlId = uuidToHtmlId.value(e.targetSlideId);
         if (targetHtmlId.isEmpty())
-            return QString("<div data-type=\"button\" style=\"%1opacity:.5;\">%2</div>").arg(style, label);
+            return QString("<div data-type=\"button\"%1 style=\"%2opacity:.5;\">%3</div>").arg(varAttr, style, label);
 
-        return QString("<a data-type=\"button\" data-target=\"%1\" href=\"#%1\" "
-                       "onclick=\"api.goto('%1');return false;\" style=\"%2\">%3</a>")
-                   .arg(targetHtmlId, style, label);
+        return QString("<a data-type=\"button\"%1 data-target=\"%2\" href=\"#%2\" "
+                       "onclick=\"api.goto('%2');return false;\" style=\"%3\">%4</a>")
+                   .arg(varAttr, targetHtmlId, style, label);
+
+    } else if (e.type == SlideElement::Checkbox) {
+        QString style = base
+            + QString("display:flex;align-items:center;gap:%1px;cursor:pointer;user-select:none;"
+                       "font-family:'%2';font-size:%3px;color:%4;overflow:hidden;box-sizing:border-box;")
+                  .arg(qMax(4, e.fontSize / 3)).arg(e.fontFamily).arg(e.fontSize)
+                  .arg(colorToCss(e.color.isValid() ? e.color : Qt::black));
+
+        QString rawLabel = e.content;
+        QString varAttr  = rawLabel.contains('{')
+                                ? QString(" data-var-template=\"%1\"").arg(rawLabel.toHtmlEscaped())
+                                : QString();
+
+        return QString(
+            "<label data-type=\"checkbox\" style=\"%1\">"
+            "<input type=\"checkbox\" data-var-id=\"%2\" onchange=\"onCheckboxChange(this)\" "
+            "style=\"width:1.3em;height:1.3em;flex:none;\">"
+            "<span%3>%4</span>"
+            "</label>")
+            .arg(style, e.boundVariableId, varAttr, rawLabel.toHtmlEscaped());
+
+    } else if (e.type == SlideElement::Slider) {
+        QString style = base
+            + QString("display:flex;flex-direction:column;justify-content:center;gap:6px;"
+                       "font-family:'%1';font-size:%2px;color:%3;overflow:hidden;box-sizing:border-box;")
+                  .arg(e.fontFamily).arg(e.fontSize).arg(colorToCss(e.color.isValid() ? e.color : Qt::black));
+
+        QString sliderLabelAttr = e.content.isEmpty()
+                                      ? QString()
+                                      : QString(" data-slider-label=\"%1\"").arg(e.content.toHtmlEscaped());
+
+        return QString(
+            "<div data-type=\"slider\" style=\"%1\">"
+            "<span%2></span>"
+            "<input type=\"range\" data-var-id=\"%3\" min=\"%4\" max=\"%5\" step=\"%6\" "
+            "oninput=\"onSliderInput(this)\" style=\"width:100%;\">"
+            "</div>")
+            .arg(style, sliderLabelAttr, e.boundVariableId)
+            .arg(e.sliderMin, 0, 'f', 4).arg(e.sliderMax, 0, 'f', 4).arg(e.sliderStep, 0, 'f', 4);
     }
     return {};
 }

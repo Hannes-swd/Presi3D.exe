@@ -11,6 +11,12 @@ struct ChartSeries {
     QVector<double> values;
     QString         color;        // hex "#rrggbb", empty → auto from palette
     QStringList     valueColors;  // per-element colors (pie/donut/bar-mixed)
+
+    // Parallel to `values` (same indices, same length once normalized).
+    // Empty entry = use the fixed number in `values[i]`. Non-empty = a
+    // {variable} expression that overrides values[i] when rendered with a
+    // VariableSet (see ChartRenderer::substituteVars, VARIABLEN_PLAN.md).
+    QStringList     valueExprs;
 };
 
 // ─── Node for structural diagrams (flowchart/mindmap/orgchart/uml) ────────────

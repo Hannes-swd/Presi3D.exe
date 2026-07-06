@@ -1,4 +1,5 @@
 #include "ChartRenderer.h"
+#include "models/VariableEngine.h"
 #include <QPainterPath>
 #include <QMap>
 #include <QtMath>
@@ -119,14 +120,51 @@ void ChartRenderer::drawLegend(QPainter& p, const QRectF& lr,
     p.restore();
 }
 
+// ─── Variable substitution (labels only — see VARIABLEN_PLAN.md) ─────────────
+
+ChartData ChartRenderer::substituteVars(const ChartData& d, const VariableSet& vars,
+                                        const QString& currentSlideId) {
+    ChartData out = d;
+    auto sub = [&](const QString& s) { return VariableEngine::substitute(s, vars, currentSlideId); };
+
+    out.title = sub(d.title);
+    for (QString& lbl : out.labels) lbl = sub(lbl);
+    for (auto& s : out.series) {
+        s.name = sub(s.name);
+        // Per-value {expr} override (see ChartData::ChartSeries::valueExprs).
+        // The cell holds the raw "{...}" text (braces included, same syntax as
+        // everywhere else), so resolve it with substitute() like any other
+        // text field, then parse the result back to a number. Falls back to
+        // the stored fixed number when that isn't a valid number — never
+        // crashes, never leaves a gap.
+        for (int i = 0; i < s.valueExprs.size() && i < s.values.size(); ++i) {
+            const QString& expr = s.valueExprs[i];
+            if (expr.trimmed().isEmpty()) continue;
+            bool ok = false;
+            double num = sub(expr).toDouble(&ok);
+            if (ok) s.values[i] = num;
+        }
+    }
+    for (auto& n : out.nodes) n.label = sub(n.label);
+    for (auto& ev : out.events) { ev.label = sub(ev.label); ev.desc = sub(ev.desc); }
+    for (auto& t : out.tasks) t.name = sub(t.name);
+    for (QString& lbl : out.ganttAxisLabels) lbl = sub(lbl);
+    for (auto& v : out.vennCircles) v.label = sub(v.label);
+    return out;
+}
+
 // ─── Main dispatch ────────────────────────────────────────────────────────────
 
-void ChartRenderer::paint(QPainter& p, const QRectF& rect, const ChartData& d) {
+void ChartRenderer::paint(QPainter& p, const QRectF& rect, const ChartData& data,
+                          const VariableSet* vars, const QString& currentSlideId) {
     if (rect.width() < 8 || rect.height() < 8) return;
     float sc = qBound(0.05f, float(qMin(rect.width(), rect.height())) / 350.f, 4.f);
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     p.setClipRect(rect);
+
+    const ChartData substituted = vars ? substituteVars(data, *vars, currentSlideId) : ChartData();
+    const ChartData& d = vars ? substituted : data;
 
     const QString& t = d.type;
     if      (t == "bar")       paintBar(p, rect, d, sc, false);

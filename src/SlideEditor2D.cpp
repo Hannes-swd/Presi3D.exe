@@ -6,6 +6,7 @@
 #include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/InsertIFrameDialog.h"
 #include "dialogs/InsertButtonDialog.h"
+#include "models/VariableEngine.h"
 #include <QPainter>
 #include <QtMath>
 #include <QMouseEvent>
@@ -340,7 +341,7 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
     p.setClipRect(sr);
     for (int i = 0; i < slide->elements.size(); ++i) {
         bool showSel = (i == m_selectedElem) && (i != m_editingElem);
-        drawElement(p, slide->elements[i], showSel);
+        drawElement(p, slide->elements[i], showSel, i == m_editingElem, slide->id);
         if (i == m_editingElem)
             drawTextCursor(p, slide->elements[i]);
     }
@@ -366,7 +367,13 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
                     slide->elements[m_selectedElem].rotation);
 }
 
-void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selected) const {
+QString SlideEditor2D::substituteVars(const QString& raw, const QString& currentSlideId) const {
+    if (!m_pres) return raw;
+    return VariableEngine::substitute(raw, m_pres->variables, currentSlideId);
+}
+
+void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selected, bool isBeingEdited,
+                                 const QString& currentSlideId) const {
     QRectF wr = elemToWidget(e);
     QRectF sr = slideRect();
     float scaleY = sr.height() / SLIDE_H_DEFAULT;
@@ -377,9 +384,9 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
 
         if (wr.width() < 1.0 || wr.height() < 1.0) return;
 
-        QString displayText = e.content;
+        QString displayText = isBeingEdited ? e.content : substituteVars(e.content, currentSlideId);
         if (e.listStyle != SlideElement::NoList) {
-            QStringList lines = e.content.split('\n');
+            QStringList lines = displayText.split('\n');
             QStringList fmt;
             for (int ln = 0; ln < lines.size(); ++ln)
                 fmt << (e.listStyle == SlideElement::Bullets
@@ -440,6 +447,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
 
         // Draw text overlaid inside the shape
         if (!e.shapeText.isEmpty()) {
+            QString shapeDisplayText = isBeingEdited ? e.shapeText : substituteVars(e.shapeText, currentSlideId);
             QFont font(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
             font.setBold(e.bold);
             font.setItalic(e.italic);
@@ -447,7 +455,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.setFont(font);
             p.setPen(e.color.isValid() ? e.color : Qt::white);
             p.setClipRect(wr, Qt::IntersectClip);
-            p.drawText(wr, Qt::AlignCenter | Qt::TextWordWrap, e.shapeText);
+            p.drawText(wr, Qt::AlignCenter | Qt::TextWordWrap, shapeDisplayText);
             p.restore();
         }
 
@@ -461,7 +469,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         return;
 
     } else if (e.type == SlideElement::Table) {
-        drawTableElement(p, e, selected);
+        drawTableElement(p, e, selected, currentSlideId);
         return; // table draws its own selection outline
 
     } else if (e.type == SlideElement::Image) {
@@ -481,7 +489,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
 
     } else if (e.type == SlideElement::Chart) {
         p.fillRect(wr, Qt::white);
-        ChartRenderer::paint(p, wr, e.chartData);
+        ChartRenderer::paint(p, wr, e.chartData, m_pres ? &m_pres->variables : nullptr, currentSlideId);
         p.setPen(QPen(QColor(200, 200, 200), 0.5));
         p.setBrush(Qt::NoBrush);
         p.drawRect(wr);
@@ -560,8 +568,8 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.setFont(font);
         p.setPen(e.color.isValid() ? e.color : Qt::white);
         p.setClipRect(wr, Qt::IntersectClip);
-        p.drawText(wr, Qt::AlignCenter | Qt::TextWordWrap,
-                   e.content.isEmpty() ? "Button" : e.content);
+        QString btnLabel = e.content.isEmpty() ? "Button" : substituteVars(e.content, currentSlideId);
+        p.drawText(wr, Qt::AlignCenter | Qt::TextWordWrap, btnLabel);
         p.restore();
 
         if (selected) {
@@ -569,8 +577,78 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             p.setPen(QColor(37, 99, 235, 220));
             p.setFont(QFont("Arial", qMax(6, int(9 * scaleY))));
             p.drawText(QRectF(wr.x(), wr.bottom() - 16 * scaleY, wr.width(), 16 * scaleY),
-                       Qt::AlignCenter, "Double-click: choose target slide");
+                       Qt::AlignCenter, "Double-click to edit");
             p.restore();
+        }
+
+    } else if (e.type == SlideElement::Checkbox) {
+        const Variable* v = m_pres ? m_pres->variables.findById(e.boundVariableId) : nullptr;
+        bool checked = v && v->type == Variable::Boolean && v->boolValue;
+
+        float box = qMin(wr.height(), 32.f * scaleY);
+        QRectF boxRect(wr.x(), wr.y() + (wr.height() - box) / 2.0, box, box);
+        p.setPen(QPen(e.borderColor.isValid() ? e.borderColor : Qt::darkGray, qMax(1.f, e.borderWidth)));
+        p.setBrush(checked ? (e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent
+                              ? e.backgroundColor : QColor(37, 99, 235))
+                            : QColor(255, 255, 255));
+        p.drawRoundedRect(boxRect, 3, 3);
+        if (checked) {
+            p.setPen(QPen(Qt::white, qMax(2.0, 2.5 * scaleY)));
+            QPointF a(boxRect.x() + box * 0.22, boxRect.y() + box * 0.55);
+            QPointF b(boxRect.x() + box * 0.42, boxRect.y() + box * 0.75);
+            QPointF c(boxRect.x() + box * 0.80, boxRect.y() + box * 0.25);
+            p.drawLine(a, b);
+            p.drawLine(b, c);
+        }
+
+        QRectF labelRect(boxRect.right() + 8 * scaleY, wr.y(), wr.width() - box - 8 * scaleY, wr.height());
+        QFont font(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
+        p.setFont(font);
+        p.setPen(e.color.isValid() ? e.color : Qt::black);
+        p.drawText(labelRect, Qt::AlignVCenter | Qt::TextWordWrap, substituteVars(e.content, currentSlideId));
+
+        if (!v && selected) {
+            p.setPen(QColor(200, 60, 60));
+            p.drawText(QRectF(wr.x(), wr.bottom() - 16 * scaleY, wr.width(), 16 * scaleY),
+                       Qt::AlignCenter, "No variable bound – double-click to fix");
+        }
+
+    } else if (e.type == SlideElement::Slider) {
+        const Variable* v = m_pres ? m_pres->variables.findById(e.boundVariableId) : nullptr;
+        double value = v && v->type == Variable::Number ? v->numberValue : e.sliderMin;
+        double span  = (e.sliderMax - e.sliderMin);
+        double frac  = span != 0.0 ? qBound(0.0, (value - e.sliderMin) / span, 1.0) : 0.0;
+
+        QFont labelFont(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
+        p.setFont(labelFont);
+        p.setPen(e.color.isValid() ? e.color : Qt::black);
+        QRectF labelRect(wr.x(), wr.y(), wr.width(), wr.height() * 0.4);
+        QString label = e.content.isEmpty() ? QString() : substituteVars(e.content, currentSlideId) + "  ";
+        p.drawText(labelRect, Qt::AlignLeft | Qt::AlignVCenter,
+                   label + QString::number(value, 'f', (value == int(value)) ? 0 : 2));
+
+        float trackY = float(wr.y() + wr.height() * 0.72);
+        float trackH = qMax(3.f, 6.f * scaleY);
+        QRectF track(wr.x(), trackY - trackH / 2, wr.width(), trackH);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(220, 224, 230));
+        p.drawRoundedRect(track, trackH / 2, trackH / 2);
+
+        QRectF filled(wr.x(), trackY - trackH / 2, float(wr.width() * frac), trackH);
+        p.setBrush(e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent
+                   ? e.backgroundColor : QColor(37, 99, 235));
+        p.drawRoundedRect(filled, trackH / 2, trackH / 2);
+
+        float thumbR = qMax(6.f, 9.f * scaleY);
+        QPointF thumb(wr.x() + wr.width() * frac, trackY);
+        p.setBrush(Qt::white);
+        p.setPen(QPen(QColor(37, 99, 235), qMax(1.f, 2.f * scaleY)));
+        p.drawEllipse(thumb, thumbR, thumbR);
+
+        if (!v && selected) {
+            p.setPen(QColor(200, 60, 60));
+            p.drawText(QRectF(wr.x(), wr.bottom() - 16 * scaleY, wr.width(), 16 * scaleY),
+                       Qt::AlignCenter, "No variable bound – double-click to fix");
         }
     }
 
@@ -679,7 +757,8 @@ SlideEditor2D::DividerHit SlideEditor2D::hitTableDivider(int elemIdx, QPointF wp
     return {};
 }
 
-void SlideEditor2D::drawTableElement(QPainter& p, const SlideElement& e, bool selected) const {
+void SlideEditor2D::drawTableElement(QPainter& p, const SlideElement& e, bool selected,
+                                     const QString& currentSlideId) const {
     QRectF wr = elemToWidget(e);
     QRectF sr = slideRect();
     float  sy = sr.height() / SLIDE_H_DEFAULT;
@@ -769,7 +848,8 @@ void SlideEditor2D::drawTableElement(QPainter& p, const SlideElement& e, bool se
                     p.drawLine(QPointF(cx2, cy2), QPointF(cx2, cy2 + ch));
                 }
             } else {
-                p.drawText(tr, int(Qt::TextWordWrap | Qt::AlignVCenter | align), cell.text);
+                p.drawText(tr, int(Qt::TextWordWrap | Qt::AlignVCenter | align),
+                           substituteVars(cell.text, currentSlideId));
             }
             p.restore();
 
@@ -1197,6 +1277,14 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
         m_selectedElem = hit;
         openButtonEditor();
         return;
+    } else if (elem.type == SlideElement::Checkbox) {
+        m_selectedElem = hit;
+        openCheckboxEditor();
+        return;
+    } else if (elem.type == SlideElement::Slider) {
+        m_selectedElem = hit;
+        openSliderEditor();
+        return;
     } else if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Shape) {
@@ -1531,21 +1619,19 @@ void SlideEditor2D::openIFrameEditor() {
     }
 }
 
-static QVector<QPair<QString, QString>> slideListForButtonTarget(const Presentation* pres) {
-    QVector<QPair<QString, QString>> slides;
-    if (!pres) return slides;
-    for (const Slide& s : pres->slides)
-        slides.append({s.id, s.name.isEmpty() ? QString("Slide %1").arg(slides.size() + 1) : s.name});
-    return slides;
-}
-
-void SlideEditor2D::addButtonElement(const QString& label, const QString& targetSlideId) {
+void SlideEditor2D::addButtonElement(const ButtonConfig& cfg) {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s) return;
     SlideElement e;
-    e.type            = SlideElement::Button;
-    e.content         = label.isEmpty() ? "Next" : label;
-    e.targetSlideId   = targetSlideId;
+    e.type             = SlideElement::Button;
+    e.content          = cfg.label.isEmpty() ? "Next" : cfg.label;
+    e.targetSlideId    = cfg.targetSlideId;
+    e.buttonAction      = cfg.action;
+    e.boundVariableId   = cfg.boundVariableId;
+    e.varOp             = cfg.varOp;
+    e.varOpNumber        = cfg.varOpNumber;
+    e.varOpText          = cfg.varOpText;
+    e.varOpBool          = cfg.varOpBool;
     e.x = 300.f; e.y = 300.f; e.width = 240.f; e.height = 70.f;
     e.fontSize        = 24;
     e.color           = Qt::white;
@@ -1565,10 +1651,107 @@ void SlideEditor2D::openButtonEditor() {
     SlideElement& e = s->elements[m_selectedElem];
     if (e.type != SlideElement::Button) return;
 
-    InsertButtonDialog dlg(this, slideListForButtonTarget(m_pres), e.content, e.targetSlideId);
+    ButtonConfig initial;
+    initial.label           = e.content;
+    initial.action          = e.buttonAction;
+    initial.targetSlideId   = e.targetSlideId;
+    initial.boundVariableId = e.boundVariableId;
+    initial.varOp           = e.varOp;
+    initial.varOpNumber     = e.varOpNumber;
+    initial.varOpText       = e.varOpText;
+    initial.varOpBool       = e.varOpBool;
+
+    InsertButtonDialog dlg(this, m_pres, s->id, initial);
     if (dlg.exec() == QDialog::Accepted) {
-        e.content       = dlg.label().isEmpty() ? "Next" : dlg.label();
-        e.targetSlideId = dlg.targetSlideId();
+        ButtonConfig cfg = dlg.config();
+        e.content          = cfg.label.isEmpty() ? "Next" : cfg.label;
+        e.targetSlideId    = cfg.targetSlideId;
+        e.buttonAction      = cfg.action;
+        e.boundVariableId   = cfg.boundVariableId;
+        e.varOp             = cfg.varOp;
+        e.varOpNumber        = cfg.varOpNumber;
+        e.varOpText          = cfg.varOpText;
+        e.varOpBool          = cfg.varOpBool;
+        update();
+        emit presentationModified();
+    }
+}
+
+void SlideEditor2D::addCheckboxElement(const CheckboxConfig& cfg) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type             = SlideElement::Checkbox;
+    e.content          = cfg.label;
+    e.boundVariableId  = cfg.boundVariableId;
+    e.x = 300.f; e.y = 300.f; e.width = 320.f; e.height = 44.f;
+    e.fontSize = 24;
+    e.color    = Qt::black;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::openCheckboxEditor() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Checkbox) return;
+
+    CheckboxConfig initial;
+    initial.label           = e.content;
+    initial.boundVariableId = e.boundVariableId;
+
+    InsertCheckboxDialog dlg(this, m_pres, s->id, initial);
+    if (dlg.exec() == QDialog::Accepted) {
+        CheckboxConfig cfg = dlg.config();
+        e.content         = cfg.label;
+        e.boundVariableId = cfg.boundVariableId;
+        update();
+        emit presentationModified();
+    }
+}
+
+void SlideEditor2D::addSliderElement(const SliderConfig& cfg) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type             = SlideElement::Slider;
+    e.boundVariableId  = cfg.boundVariableId;
+    e.sliderMin        = cfg.min;
+    e.sliderMax        = cfg.max;
+    e.sliderStep       = cfg.step;
+    e.x = 300.f; e.y = 300.f; e.width = 400.f; e.height = 70.f;
+    e.fontSize = 20;
+    e.color    = Qt::black;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::openSliderEditor() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+    if (e.type != SlideElement::Slider) return;
+
+    SliderConfig initial;
+    initial.boundVariableId = e.boundVariableId;
+    initial.min  = e.sliderMin;
+    initial.max  = e.sliderMax;
+    initial.step = e.sliderStep;
+
+    InsertSliderDialog dlg(this, m_pres, s->id, initial);
+    if (dlg.exec() == QDialog::Accepted) {
+        SliderConfig cfg = dlg.config();
+        e.boundVariableId = cfg.boundVariableId;
+        e.sliderMin  = cfg.min;
+        e.sliderMax  = cfg.max;
+        e.sliderStep = cfg.step;
         update();
         emit presentationModified();
     }

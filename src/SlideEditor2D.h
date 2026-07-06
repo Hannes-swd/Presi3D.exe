@@ -3,6 +3,9 @@
 #include <QHash>
 #include <QPixmap>
 #include "models/DataModel.h"
+#include "dialogs/InsertButtonDialog.h"
+#include "dialogs/InsertCheckboxDialog.h"
+#include "dialogs/InsertSliderDialog.h"
 
 class QTimer;
 class QContextMenuEvent;
@@ -33,8 +36,12 @@ public slots:
     void openFormulaEditor(); // open editor for selected formula element
     void addIFrameElement(const QString& url);
     void openIFrameEditor(); // open editor for selected iframe element
-    void addButtonElement(const QString& label, const QString& targetSlideId);
+    void addButtonElement(const ButtonConfig& cfg);
     void openButtonEditor(); // open editor for selected button element
+    void addCheckboxElement(const CheckboxConfig& cfg);
+    void openCheckboxEditor(); // open editor for selected checkbox element
+    void addSliderElement(const SliderConfig& cfg);
+    void openSliderEditor(); // open editor for selected slider element
     void deleteSelectedElement();
     void copySelectedElement();
     void pasteElement();
@@ -72,7 +79,8 @@ private:
     CellPos    hitTableCell(int elemIdx, QPointF wpos) const;
     DividerHit hitTableDivider(int elemIdx, QPointF wpos) const;
     QRectF     cellRect(const SlideElement& e, int row, int col) const;
-    void       drawTableElement(QPainter& p, const SlideElement& e, bool selected) const;
+    void       drawTableElement(QPainter& p, const SlideElement& e, bool selected,
+                                const QString& currentSlideId) const;
     void       handleTableKey(QKeyEvent*);
     void       pasteExcelIntoTable(SlideElement& e);
     void       exitTableEditMode();
@@ -88,7 +96,9 @@ private:
     void addImageFromPath(const QString& path, QPointF widgetPos = {-1,-1});
 
     // Drawing
-    void drawElement(QPainter&, const SlideElement&, bool selected) const;
+    void drawElement(QPainter&, const SlideElement&, bool selected, bool isBeingEdited,
+                      const QString& currentSlideId) const;
+    QString substituteVars(const QString& raw, const QString& currentSlideId) const;
     void drawHandles(QPainter&, const QRectF&, float rotation = 0.f) const;
     void drawTextCursor(QPainter&, const SlideElement&) const;
 

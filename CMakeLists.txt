@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Presi3D VERSION 1.6 LANGUAGES CXX)
+project(Presi3D VERSION 1.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,8 @@ set(SOURCES
     src/PropertiesPanel.cpp
     src/models/Presentation.cpp
     src/models/ChartData.cpp
+    src/models/VariableModel.cpp
+    src/models/VariableEngine.cpp
     src/rendering/ChartRenderer.cpp
     src/rendering/LatexRenderer.cpp
     src/export/HtmlExporter.cpp
@@ -32,8 +34,11 @@ set(SOURCES
     src/dialogs/InsertFormulaDialog.cpp
     src/dialogs/InsertIFrameDialog.cpp
     src/dialogs/InsertButtonDialog.cpp
+    src/dialogs/InsertCheckboxDialog.cpp
+    src/dialogs/InsertSliderDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
+    src/dialogs/VariableManagerDialog.cpp
     src/FormatBar.cpp
 )
 

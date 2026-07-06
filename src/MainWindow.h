@@ -32,6 +32,8 @@ private slots:
     void exportPresentation();
     void openInBrowser();
 
+    void openVariableManager();
+
     void onSlideSelected(int index);
     void onSlideAdded();
     void onSlideRemoved(int index);

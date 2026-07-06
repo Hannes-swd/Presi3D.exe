@@ -204,6 +204,7 @@ QJsonObject ChartData::toJson() const {
         so["values"]      = dblVecToArr(s.values);
         so["color"]       = s.color;
         so["valueColors"] = strListToArr(s.valueColors);
+        so["valueExprs"]  = strListToArr(s.valueExprs);
         serArr.append(so);
     }
     o["series"] = serArr;
@@ -266,6 +267,7 @@ ChartData ChartData::fromJson(const QJsonObject& o) {
         s.values      = arrToDblVec(so["values"].toArray());
         s.color       = so["color"].toString();
         s.valueColors = arrToStrList(so["valueColors"].toArray());
+        s.valueExprs  = arrToStrList(so["valueExprs"].toArray());
         d.series << s;
     }
     for (const auto& nv : o["nodes"].toArray()) {

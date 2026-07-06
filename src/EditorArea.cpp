@@ -6,11 +6,15 @@
 #include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/InsertIFrameDialog.h"
 #include "dialogs/InsertButtonDialog.h"
+#include "dialogs/InsertCheckboxDialog.h"
+#include "dialogs/InsertSliderDialog.h"
 #include "dialogs/ShapePickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
 #include <QPushButton>
+#include <QToolButton>
+#include <QMenu>
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QFrame>
@@ -72,7 +76,21 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnChart   = mkBtn("bar_chart",    "Chart",  "Insert chart");
     m_btnFormula = mkBtn("functions",    "Formula", "Insert formula (LaTeX)");
     m_btnIFrame  = mkBtn("language",     "iFrame", "Embed website/link");
-    m_btnButton  = mkBtn("smart_button", "Button", "Insert navigation button (jumps to a slide)");
+
+    m_btnInteractive = new QToolButton(m_elemToolbar);
+    m_btnInteractive->setIcon(QIcon(":/icons/tune.svg"));
+    m_btnInteractive->setText("Interactive");
+    m_btnInteractive->setIconSize(QSize(16, 16));
+    m_btnInteractive->setToolTip("Insert an interactive element: Button, Checkbox or Slider");
+    m_btnInteractive->setMinimumWidth(100);
+    m_btnInteractive->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_btnInteractive->setPopupMode(QToolButton::InstantPopup);
+    auto* interactiveMenu = new QMenu(m_btnInteractive);
+    QAction* actInsertButton   = interactiveMenu->addAction(QIcon(":/icons/smart_button.svg"), "Button");
+    QAction* actInsertCheckbox = interactiveMenu->addAction(QIcon(":/icons/check_circle.svg"), "Checkbox");
+    QAction* actInsertSlider   = interactiveMenu->addAction(QIcon(":/icons/tune.svg"), "Slider");
+    m_btnInteractive->setMenu(interactiveMenu);
+    tbRow->addWidget(m_btnInteractive);
 
     // Separator
     auto* sep = new QFrame(m_elemToolbar);
@@ -195,15 +213,24 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         if (dlg.exec() == QDialog::Accepted && !dlg.url().isEmpty())
             m_editor2D->addIFrameElement(dlg.url());
     });
-    connect(m_btnButton,   &QPushButton::clicked, this, [this]() {
-        QVector<QPair<QString, QString>> slides;
-        if (m_pres) {
-            for (const Slide& s : m_pres->slides)
-                slides.append({s.id, s.name.isEmpty() ? QString("Slide %1").arg(slides.size() + 1) : s.name});
-        }
-        InsertButtonDialog dlg(this, slides);
+    auto currentSlideId = [this]() -> QString {
+        const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        return s ? s->id : QString();
+    };
+    connect(actInsertButton, &QAction::triggered, this, [this, currentSlideId]() {
+        InsertButtonDialog dlg(this, m_pres, currentSlideId());
         if (dlg.exec() == QDialog::Accepted)
-            m_editor2D->addButtonElement(dlg.label(), dlg.targetSlideId());
+            m_editor2D->addButtonElement(dlg.config());
+    });
+    connect(actInsertCheckbox, &QAction::triggered, this, [this, currentSlideId]() {
+        InsertCheckboxDialog dlg(this, m_pres, currentSlideId());
+        if (dlg.exec() == QDialog::Accepted)
+            m_editor2D->addCheckboxElement(dlg.config());
+    });
+    connect(actInsertSlider, &QAction::triggered, this, [this, currentSlideId]() {
+        InsertSliderDialog dlg(this, m_pres, currentSlideId());
+        if (dlg.exec() == QDialog::Accepted)
+            m_editor2D->addSliderElement(dlg.config());
     });
     connect(m_btnDelete,   &QPushButton::clicked, m_editor2D, &SlideEditor2D::deleteSelectedElement);
     connect(m_btnFront,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringToFront);

@@ -5,6 +5,7 @@
 #include "FormatBar.h"
 #include "dialogs/ExportDialog.h"
 #include "dialogs/StartDialog.h"
+#include "dialogs/VariableManagerDialog.h"
 #include "import/HtmlImporter.h"
 #include "export/HtmlExporter.h"
 #include "LocalHttpServer.h"
@@ -127,6 +128,9 @@ void MainWindow::setupToolBar() {
     m_browserAction = tb->addAction(QIcon(":/icons/open_in_browser.svg"), "Open in Browser", this, &MainWindow::openInBrowser);
     m_browserAction->setToolTip("Open exported presentation in browser\n(F = Fullscreen)");
     m_browserAction->setEnabled(false);
+    tb->addSeparator();
+    QAction* varsAction = tb->addAction("Variables", this, &MainWindow::openVariableManager);
+    varsAction->setToolTip("Create variables and use them as {name} in any text");
 
     // ── Format toolbar (second row) ──
     addToolBarBreak();
@@ -247,6 +251,14 @@ void MainWindow::connectSignals() {
             m_propPanel,  &PropertiesPanel::setSelectedTableCell);
     connect(m_editorArea, &EditorArea::tableCellSelected,
             m_formatBar,  &FormatBar::setTableCell);
+}
+
+void MainWindow::openVariableManager() {
+    QString currentSlideId = (m_selectedSlide >= 0 && m_presentation->slideAt(m_selectedSlide))
+                              ? m_presentation->slideAt(m_selectedSlide)->id : QString();
+    VariableManagerDialog dlg(this, m_presentation, currentSlideId);
+    if (dlg.exec() == QDialog::Accepted)
+        onPresentationModified();
 }
 
 void MainWindow::onSlideSelected(int index) {

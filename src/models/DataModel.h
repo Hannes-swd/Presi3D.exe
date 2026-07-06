@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QUuid>
 #include "models/ChartData.h"
+#include "models/VariableModel.h"
 
 struct TableCell {
     QString text;
@@ -19,7 +20,7 @@ struct TableCell {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button };
+    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button, Checkbox, Slider };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
@@ -30,8 +31,21 @@ struct SlideElement {
     // ── Hyperlink (Text elements) ────────────────────────────────────────────
     QString hyperlink; // URL the whole text element links to; empty = no link
 
-    // ── Navigation button (only when type == Button) ─────────────────────────
-    QString targetSlideId; // id of the Slide this button jumps to when clicked
+    // ── Button (only when type == Button) ─────────────────────────────────────
+    QString targetSlideId;      // id of the Slide this button jumps to (buttonAction == "navigate")
+    QString buttonAction = "navigate"; // "navigate" | "changeVariable"
+
+    // ── Variable binding (Button changeVariable action, Checkbox, Slider) ─────
+    QString boundVariableId;    // Variable::id
+    QString varOp        = "inc"; // Button changeVariable only: "inc" | "dec" | "set" | "toggle"
+    double  varOpNumber  = 1.0;   // amount for inc/dec, or the value for "set" on a Number variable
+    QString varOpText;            // value for "set" on a Text variable
+    bool    varOpBool    = true;  // value for "set" on a Boolean variable
+
+    // ── Slider (only when type == Slider) ──────────────────────────────────────
+    double  sliderMin  = 0.0;
+    double  sliderMax  = 100.0;
+    double  sliderStep = 1.0;
 
     // Position and size in slide coordinates (0-1920 x 0-1080)
     float x      = 100.f;
@@ -141,6 +155,8 @@ public:
     float  slideWidth             = 1920.f;
     float  slideHeight            = 1080.f;
     float  defaultInactiveOpacity = 0.3f; // opacity applied to slides with no per-slide override
+
+    VariableSet variables; // user-defined {name} placeholders, see VARIABLEN_PLAN.md
 
     void addSlide(const QString& name = {});
     void removeSlide(int index);

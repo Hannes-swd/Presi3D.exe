@@ -4,6 +4,7 @@
 
 class QStackedWidget;
 class QPushButton;
+class QToolButton;
 class QDoubleSpinBox;
 class SlideEditor2D;
 class SlideEditor3D;
@@ -45,7 +46,7 @@ private:
     QPushButton*     m_btnChart    = nullptr;
     QPushButton*     m_btnFormula  = nullptr;
     QPushButton*     m_btnIFrame   = nullptr;
-    QPushButton*     m_btnButton   = nullptr;
+    QToolButton*     m_btnInteractive = nullptr; // dropdown: Button / Checkbox / Slider
     QPushButton*     m_btnDelete   = nullptr;
     // Layer buttons
     QPushButton*     m_btnFront    = nullptr;
