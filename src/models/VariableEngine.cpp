@@ -1,5 +1,6 @@
 #include "VariableEngine.h"
 #include <QDateTime>
+#include <QLocale>
 #include <QVector>
 #include <cmath>
 
@@ -217,10 +218,33 @@ private:
     }
 
     Value resolveIdent(const QString& name) {
-        if (name.compare("heute", Qt::CaseInsensitive) == 0)
+        // Built-in pseudo-variables: always available, always current, no
+        // need to be created in the Variables dialog. See README.md,
+        // section "Built-in Variables".
+        if (name.compare("today", Qt::CaseInsensitive) == 0)
             return Value::fromText(QDate::currentDate().toString("dd.MM.yyyy"));
-        if (name.compare("jetzt", Qt::CaseInsensitive) == 0)
+        if (name.compare("now", Qt::CaseInsensitive) == 0)
             return Value::fromText(QDateTime::currentDateTime().toString("dd.MM.yyyy HH:mm"));
+        if (name.compare("year", Qt::CaseInsensitive) == 0)
+            return Value::fromNumber(QDate::currentDate().year());
+        if (name.compare("month", Qt::CaseInsensitive) == 0)
+            return Value::fromNumber(QDate::currentDate().month());
+        if (name.compare("monthName", Qt::CaseInsensitive) == 0)
+            return Value::fromText(QLocale(QLocale::English)
+                                        .monthName(QDate::currentDate().month(), QLocale::LongFormat));
+        if (name.compare("day", Qt::CaseInsensitive) == 0)
+            return Value::fromNumber(QDate::currentDate().day());
+        if (name.compare("weekday", Qt::CaseInsensitive) == 0)
+            return Value::fromText(QLocale(QLocale::English)
+                                        .dayName(QDate::currentDate().dayOfWeek(), QLocale::LongFormat));
+        if (name.compare("week", Qt::CaseInsensitive) == 0)
+            return Value::fromNumber(QDate::currentDate().weekNumber());
+        if (name.compare("time", Qt::CaseInsensitive) == 0)
+            return Value::fromText(QTime::currentTime().toString("HH:mm"));
+        if (name.compare("hour", Qt::CaseInsensitive) == 0)
+            return Value::fromNumber(QTime::currentTime().hour());
+        if (name.compare("minute", Qt::CaseInsensitive) == 0)
+            return Value::fromNumber(QTime::currentTime().minute());
 
         const Variable* v = m_vars.find(name, m_slideId);
         if (!v) throw EvalError{QStringLiteral("unbekannte Variable \"%1\"").arg(name)};

@@ -7,8 +7,10 @@
 //
 // Deliberately minimal: variable names / number literals / "text literals",
 // + - * / on numbers (or + for text concatenation), comparisons
-// (== != < > <= >=), parentheses, and the built-in pseudo-variables
-// "heute" (today's date) and "jetzt" (current date+time). No functions,
+// (== != < > <= >=), parentheses, and a set of built-in pseudo-variables
+// that need no setup ("today", "now", "year", "month", "monthName",
+// "day", "weekday", "week", "time", "hour", "minute" — see README.md
+// "Built-in Variables" for the full list). No functions,
 // no loops. See VARIABLEN_PLAN.md for the rationale.
 namespace VariableEngine {
 

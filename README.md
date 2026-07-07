@@ -72,6 +72,13 @@ WEB EMBEDS DONE RIGHT
 - Built-in LocalHttpServer so previews and exports run over
   http://127.0.0.1 instead of file://, avoiding embed/CORS failures
 
+VARIABLES & LIVE TEXT
+- Define named variables (text/number/boolean), reference them anywhere
+  in slide text with `{name}`, use them in simple formulas
+  (`{preis + 10}`, `{menge > 0}`), scope them globally or per-slide
+- A set of built-in variables (current date, time, year, weekday, ...)
+  work out of the box with no setup - see "Built-in Variables" below
+
 EXPORT / IMPORT
 - One-click HTML export to a real Impress.js site (index.html,
   styles.css, assets/)
@@ -172,6 +179,35 @@ Quick Start
 7. Open the exported index.html via the built-in local preview server
    to test iframe/YouTube embeds correctly (file:// will block them).
 ```
+
+Built-in Variables
+------------------
+Type `{name}` anywhere in slide text and it's replaced with a live
+value - either your own variable (created via the Variables dialog) or
+one of the built-ins below, which need no setup at all and are always
+up to date. Built-ins are resolved before your own variables, so avoid
+naming a custom variable the same as one of these.
+
+They're evaluated identically in the editor's live preview and in the
+exported HTML/JS, so a slide showing `{now}` shows the real current
+time both while editing and after export/on every page load.
+
+| Placeholder     | Example value       | Meaning                     |
+|-------------------|----------------------|------------------------------|
+| `{today}`        | `07.07.2026`         | Today's date (dd.mm.yyyy)    |
+| `{now}`          | `07.07.2026 14:32`   | Current date + time          |
+| `{year}`         | `2026`                | Current year                 |
+| `{month}`        | `7`                    | Current month (1-12)         |
+| `{monthName}`    | `July`                | Current month name           |
+| `{day}`          | `7`                    | Current day of month         |
+| `{weekday}`      | `Tuesday`             | Current weekday name         |
+| `{week}`         | `28`                   | ISO calendar week number     |
+| `{time}`         | `14:32`               | Current time (HH:mm)         |
+| `{hour}`         | `14`                   | Current hour (0-23)          |
+| `{minute}`       | `32`                   | Current minute (0-59)        |
+
+These can also be combined with the formula syntax, e.g.
+`{"Stand: " + monthName + " " + year}` -> `Stand: July 2026`.
 
 Advanced Usage
 ---------------
