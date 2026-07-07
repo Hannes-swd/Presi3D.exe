@@ -123,9 +123,9 @@ void ChartRenderer::drawLegend(QPainter& p, const QRectF& lr,
 // ─── Variable substitution (labels only — see VARIABLEN_PLAN.md) ─────────────
 
 ChartData ChartRenderer::substituteVars(const ChartData& d, const VariableSet& vars,
-                                        const QString& currentSlideId) {
+                                        const QString& currentSlideId, int slideNumber, int slideCount) {
     ChartData out = d;
-    auto sub = [&](const QString& s) { return VariableEngine::substitute(s, vars, currentSlideId); };
+    auto sub = [&](const QString& s) { return VariableEngine::substitute(s, vars, currentSlideId, slideNumber, slideCount); };
 
     out.title = sub(d.title);
     for (QString& lbl : out.labels) lbl = sub(lbl);
@@ -156,14 +156,15 @@ ChartData ChartRenderer::substituteVars(const ChartData& d, const VariableSet& v
 // ─── Main dispatch ────────────────────────────────────────────────────────────
 
 void ChartRenderer::paint(QPainter& p, const QRectF& rect, const ChartData& data,
-                          const VariableSet* vars, const QString& currentSlideId) {
+                          const VariableSet* vars, const QString& currentSlideId,
+                          int slideNumber, int slideCount) {
     if (rect.width() < 8 || rect.height() < 8) return;
     float sc = qBound(0.05f, float(qMin(rect.width(), rect.height())) / 350.f, 4.f);
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     p.setClipRect(rect);
 
-    const ChartData substituted = vars ? substituteVars(data, *vars, currentSlideId) : ChartData();
+    const ChartData substituted = vars ? substituteVars(data, *vars, currentSlideId, slideNumber, slideCount) : ChartData();
     const ChartData& d = vars ? substituted : data;
 
     const QString& t = d.type;

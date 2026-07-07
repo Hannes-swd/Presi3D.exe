@@ -17,7 +17,7 @@ public:
 private:
     static QString generateHtml(const Presentation& pres);
     static QString generateCss(const Presentation& pres);
-    static QString slideToHtml(const Slide& slide, int index,
+    static QString slideToHtml(const Slide& slide, int index, int slideCount,
                                const QMap<QString, QString>& uuidToHtmlId,
                                const QMap<QString, QString>& uuidToVisString,
                                const VariableSet& vars);
@@ -26,7 +26,8 @@ private:
     static QString elementToHtml(const SlideElement& elem,
                                  const QMap<QString, QString>& uuidToHtmlId,
                                  const VariableSet& vars,
-                                 const QString& currentSlideId);
+                                 const QString& currentSlideId,
+                                 int slideNumber, int slideCount);
     static QString colorToCss(const QColor& c);
     static bool    copyImages(const Presentation& pres,
                               const QString& assetsDir,

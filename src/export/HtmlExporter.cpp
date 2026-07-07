@@ -1,6 +1,7 @@
 #include "HtmlExporter.h"
 #include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
+#include "models/VariableEngine.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -176,7 +177,10 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "<html lang=\"en\">\n"
         << "<head>\n"
         << "  <meta charset=\"UTF-8\">\n"
-        << "  <title>" << (pres.title.isEmpty() ? QString("Presentation") : pres.title).toHtmlEscaped() << "</title>\n"
+        << "  <title>"
+        << VariableEngine::substitute(pres.title.isEmpty() ? QString("Presentation") : pres.title,
+                                       pres.variables, QString(), 0, pres.slides.size()).toHtmlEscaped()
+        << "</title>\n"
         << "  <link rel=\"stylesheet\" href=\"styles.css\">\n";
     if (hasFormulaElement(pres))
         out << "  <script id=\"MathJax-script\" async "
@@ -193,7 +197,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << QString::number(defOpa, 'f', 2) << "\">\n\n";
 
     for (int i = 0; i < pres.slides.size(); ++i)
-        out << slideToHtml(pres.slides[i], i + 1, uuidToHtmlId, uuidToVisString, pres.variables) << "\n\n";
+        out << slideToHtml(pres.slides[i], i + 1, pres.slides.size(), uuidToHtmlId, uuidToVisString, pres.variables) << "\n\n";
 
     out << "</div>\n\n"
         << "<script src=\"impress.js\"></script>\n"
@@ -301,6 +305,12 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "    if (lname === 'time') { var d2 = new Date(); return {kind:'text', value: pad2(d2.getHours()) + ':' + pad2(d2.getMinutes())}; }\n"
         << "    if (lname === 'hour') return {kind:'num', value: new Date().getHours()};\n"
         << "    if (lname === 'minute') return {kind:'num', value: new Date().getMinutes()};\n"
+        << "    if (lname === 'slidenumber') {\n"
+        << "      var sn = currentSlideNumber();\n"
+        << "      if (!sn) throw new Error('\"slideNumber\" ist hier nicht verfügbar');\n"
+        << "      return {kind:'num', value: sn};\n"
+        << "    }\n"
+        << "    if (lname === 'totalslides') return {kind:'num', value: totalSlideCount()};\n"
         << "    var v = findVarByName(name, slideId);\n"
         << "    if (!v) throw new Error('unbekannte Variable \"' + name + '\"');\n"
         << "    if (v.type === 1) return {kind:'num', value: v.numberValue};\n"
@@ -392,6 +402,12 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  var active = document.querySelector('.step.active');\n"
         << "  return active ? active.id : (steps.length ? steps[0].id : '');\n"
         << "}\n"
+        << "function currentSlideNumber() {\n"
+        << "  var id = currentSlideId();\n"
+        << "  for (var i = 0; i < steps.length; i++) if (steps[i].id === id) return i + 1;\n"
+        << "  return 0;\n"
+        << "}\n"
+        << "function totalSlideCount() { return steps.length; }\n"
         << "function renderAll() {\n"
         << "  var slideId = currentSlideId();\n"
         << "  document.querySelectorAll('[data-var-template]').forEach(function(el) {\n"
@@ -838,7 +854,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
     return html;
 }
 
-QString HtmlExporter::slideToHtml(const Slide& s, int index,
+QString HtmlExporter::slideToHtml(const Slide& s, int index, int slideCount,
                                    const QMap<QString, QString>& uuidToHtmlId,
                                    const QMap<QString, QString>& uuidToVisString,
                                    const VariableSet& vars) {
@@ -876,7 +892,7 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index,
     out << "       style=\""          << stepStyle << "\">\n";
 
     for (const auto& elem : s.elements)
-        out << "    " << elementToHtml(elem, uuidToHtmlId, vars, s.id) << "\n";
+        out << "    " << elementToHtml(elem, uuidToHtmlId, vars, s.id, index, slideCount) << "\n";
 
     out << "  </div>";
     return html;
@@ -885,7 +901,8 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index,
 QString HtmlExporter::elementToHtml(const SlideElement& e,
                                     const QMap<QString, QString>& uuidToHtmlId,
                                     const VariableSet& vars,
-                                    const QString& currentSlideId) {
+                                    const QString& currentSlideId,
+                                    int slideNumber, int slideCount) {
     QString base = QString("position:absolute;left:%1px;top:%2px;width:%3px;height:%4px;")
                        .arg(int(e.x)).arg(int(e.y)).arg(int(e.width)).arg(int(e.height));
     if (e.rotation != 0.f)
@@ -1102,7 +1119,8 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         img.fill(Qt::white);
         QPainter painter(&img);
         painter.setRenderHint(QPainter::Antialiasing);
-        ChartRenderer::paint(painter, QRectF(0, 0, iw, ih), e.chartData, &vars, currentSlideId);
+        ChartRenderer::paint(painter, QRectF(0, 0, iw, ih), e.chartData, &vars, currentSlideId,
+                             slideNumber, slideCount);
         painter.end();
 
         QByteArray imgBa;

@@ -99,6 +99,8 @@ private:
     void drawElement(QPainter&, const SlideElement&, bool selected, bool isBeingEdited,
                       const QString& currentSlideId) const;
     QString substituteVars(const QString& raw, const QString& currentSlideId) const;
+    // 1-based position of currentSlideId within m_pres->slides, or 0 if not found/no presentation.
+    int slideNumberFor(const QString& currentSlideId) const;
     void drawHandles(QPainter&, const QRectF&, float rotation = 0.f) const;
     void drawTextCursor(QPainter&, const SlideElement&) const;
 

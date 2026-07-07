@@ -14,8 +14,11 @@ public:
     // in the title/labels/series names/node labels/etc. are resolved before drawing
     // (see VARIABLEN_PLAN.md). Pass nullptr for contexts with no presentation/slide
     // context (e.g. the chart-type picker's sample preview).
+    // slideNumber/slideCount feed the "slideNumber"/"totalSlides" built-ins; leave
+    // at 0 when there's no meaningful current slide (see VariableEngine.h).
     static void paint(QPainter& p, const QRectF& rect, const ChartData& data,
-                      const VariableSet* vars = nullptr, const QString& currentSlideId = {});
+                      const VariableSet* vars = nullptr, const QString& currentSlideId = {},
+                      int slideNumber = 0, int slideCount = 0);
 
     // Human-readable chart type name (German)
     static QString typeName(const QString& type);
@@ -42,7 +45,7 @@ private:
     // Returns a copy of d with {name} placeholders resolved in every text field
     // that gets drawn (title, labels, series/node/event/task/venn names).
     static ChartData substituteVars(const ChartData& d, const VariableSet& vars,
-                                    const QString& currentSlideId);
+                                    const QString& currentSlideId, int slideNumber = 0, int slideCount = 0);
     static QColor resolveColor(const QString& hex, int idx);
     static void   drawLegend(QPainter&, const QRectF&, const ChartData&, float sc);
     static void   drawArrow(QPainter&, QPointF from, QPointF to, float headLen);

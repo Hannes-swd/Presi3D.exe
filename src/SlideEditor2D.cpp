@@ -367,9 +367,17 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
                     slide->elements[m_selectedElem].rotation);
 }
 
+int SlideEditor2D::slideNumberFor(const QString& currentSlideId) const {
+    if (!m_pres) return 0;
+    for (int i = 0; i < m_pres->slides.size(); ++i)
+        if (m_pres->slides[i].id == currentSlideId) return i + 1;
+    return 0;
+}
+
 QString SlideEditor2D::substituteVars(const QString& raw, const QString& currentSlideId) const {
     if (!m_pres) return raw;
-    return VariableEngine::substitute(raw, m_pres->variables, currentSlideId);
+    return VariableEngine::substitute(raw, m_pres->variables, currentSlideId,
+                                       slideNumberFor(currentSlideId), m_pres->slides.size());
 }
 
 void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selected, bool isBeingEdited,
@@ -489,7 +497,8 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
 
     } else if (e.type == SlideElement::Chart) {
         p.fillRect(wr, Qt::white);
-        ChartRenderer::paint(p, wr, e.chartData, m_pres ? &m_pres->variables : nullptr, currentSlideId);
+        ChartRenderer::paint(p, wr, e.chartData, m_pres ? &m_pres->variables : nullptr, currentSlideId,
+                             slideNumberFor(currentSlideId), m_pres ? m_pres->slides.size() : 0);
         p.setPen(QPen(QColor(200, 200, 200), 0.5));
         p.setBrush(Qt::NoBrush);
         p.drawRect(wr);

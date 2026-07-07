@@ -126,7 +126,8 @@ void PropertiesPanel::buildProjectGroup() {
     auto* form1 = makeForm(sec1.content);
 
     m_titleEdit = new QLineEdit(sec1.content);
-    m_titleEdit->setToolTip("Title shown in the browser tab of the exported presentation");
+    m_titleEdit->setToolTip("Title shown in the browser tab of the exported presentation.\n"
+                             "Supports {name} variables (e.g. {year}, {today}, or your own global variables).");
     form1->addRow("Title:", m_titleEdit);
 
     m_sceneBgBtn = new QPushButton(sec1.content);

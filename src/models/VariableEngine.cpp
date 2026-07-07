@@ -88,8 +88,10 @@ QVector<Token> tokenize(const QString& src) {
 // ── Parser / evaluator ────────────────────────────────────────────────────
 class Parser {
 public:
-    Parser(const QVector<Token>& tokens, const VariableSet& vars, const QString& slideId)
-        : m_tokens(tokens), m_vars(vars), m_slideId(slideId) {}
+    Parser(const QVector<Token>& tokens, const VariableSet& vars, const QString& slideId,
+           int slideNumber, int slideCount)
+        : m_tokens(tokens), m_vars(vars), m_slideId(slideId),
+          m_slideNumber(slideNumber), m_slideCount(slideCount) {}
 
     Value parseExpr() {
         Value v = parseComparison();
@@ -102,6 +104,8 @@ private:
     const QVector<Token>& m_tokens;
     const VariableSet&    m_vars;
     QString                m_slideId;
+    int                    m_slideNumber = 0;
+    int                    m_slideCount  = 0;
     int                    m_pos = 0;
 
     const Token& cur() const { return m_tokens[m_pos]; }
@@ -245,6 +249,14 @@ private:
             return Value::fromNumber(QTime::currentTime().hour());
         if (name.compare("minute", Qt::CaseInsensitive) == 0)
             return Value::fromNumber(QTime::currentTime().minute());
+        if (name.compare("slideNumber", Qt::CaseInsensitive) == 0) {
+            if (m_slideNumber <= 0) throw EvalError{QStringLiteral("\"slideNumber\" ist hier nicht verfügbar")};
+            return Value::fromNumber(m_slideNumber);
+        }
+        if (name.compare("totalSlides", Qt::CaseInsensitive) == 0) {
+            if (m_slideCount <= 0) throw EvalError{QStringLiteral("\"totalSlides\" ist hier nicht verfügbar")};
+            return Value::fromNumber(m_slideCount);
+        }
 
         const Variable* v = m_vars.find(name, m_slideId);
         if (!v) throw EvalError{QStringLiteral("unbekannte Variable \"%1\"").arg(name)};
@@ -261,10 +273,10 @@ private:
 } // namespace
 
 bool evaluate(const QString& expr, const VariableSet& vars, const QString& currentSlideId,
-              Value& result, QString& errorOut) {
+              Value& result, QString& errorOut, int slideNumber, int slideCount) {
     try {
         QVector<Token> tokens = tokenize(expr.trimmed());
-        Parser parser(tokens, vars, currentSlideId);
+        Parser parser(tokens, vars, currentSlideId, slideNumber, slideCount);
         result = parser.parseExpr();
         return true;
     } catch (const EvalError& e) {
@@ -273,7 +285,8 @@ bool evaluate(const QString& expr, const VariableSet& vars, const QString& curre
     }
 }
 
-QString substitute(const QString& raw, const VariableSet& vars, const QString& currentSlideId) {
+QString substitute(const QString& raw, const VariableSet& vars, const QString& currentSlideId,
+                    int slideNumber, int slideCount) {
     if (!raw.contains('{')) return raw;
 
     QString out;
@@ -288,7 +301,7 @@ QString substitute(const QString& raw, const VariableSet& vars, const QString& c
             QString expr = raw.mid(i + 1, close - i - 1);
             Value result;
             QString error;
-            if (evaluate(expr, vars, currentSlideId, result, error))
+            if (evaluate(expr, vars, currentSlideId, result, error, slideNumber, slideCount))
                 out += result.toDisplayString();
             else
                 out += QStringLiteral("⟨?%1?⟩").arg(expr.trimmed());

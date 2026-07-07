@@ -9,9 +9,9 @@
 // + - * / on numbers (or + for text concatenation), comparisons
 // (== != < > <= >=), parentheses, and a set of built-in pseudo-variables
 // that need no setup ("today", "now", "year", "month", "monthName",
-// "day", "weekday", "week", "time", "hour", "minute" — see README.md
-// "Built-in Variables" for the full list). No functions,
-// no loops. See VARIABLEN_PLAN.md for the rationale.
+// "day", "weekday", "week", "time", "hour", "minute", "slideNumber",
+// "totalSlides" — see README.md "Built-in Variables" for the full list).
+// No functions, no loops. See VARIABLEN_PLAN.md for the rationale.
 namespace VariableEngine {
 
 struct Value {
@@ -29,15 +29,21 @@ struct Value {
     QString toDisplayString() const;
 };
 
+// slideNumber/slideCount give the built-ins "slideNumber" (1-based) and
+// "totalSlides" something to resolve to. Pass 0/0 (the default) in contexts
+// with no single current slide (e.g. the page <title>) - referencing them
+// there is reported as an error, same as any other unavailable variable.
+
 // Evaluates a single expression (the part between "{" and "}", without the
 // braces). Returns false and fills errorOut on parse/evaluation errors
 // (unknown variable, division by zero, type mismatch, ...).
 bool evaluate(const QString& expr, const VariableSet& vars, const QString& currentSlideId,
-              Value& result, QString& errorOut);
+              Value& result, QString& errorOut, int slideNumber = 0, int slideCount = 0);
 
 // Scans `raw` for "{...}" placeholders, evaluates each one and replaces it
 // with its display value. Unrecognized/erroring placeholders are left
 // visibly marked (not silently dropped, not a crash) so the author notices.
-QString substitute(const QString& raw, const VariableSet& vars, const QString& currentSlideId);
+QString substitute(const QString& raw, const VariableSet& vars, const QString& currentSlideId,
+                    int slideNumber = 0, int slideCount = 0);
 
 } // namespace VariableEngine

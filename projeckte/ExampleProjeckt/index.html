@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Example presi</title>
+  <title>test15</title>
   <link rel="stylesheet" href="styles.css">
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
@@ -218,7 +218,7 @@
        data-view-offset-x="0"
        data-view-offset-y="0"
        style="background:transparent;">
-    <div data-type="iframe-wrap" data-portal-id="02923f45-9e14-4e49-81ca-dc3f726a9c2c" style="position:absolute;left:0px;top:0px;width:1924px;height:1085px;overflow:hidden;"><iframe data-type="iframe" src="https://www.youtube.com/embed/rdwz7QiG0lk" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe><a href="https://www.youtube.com/embed/rdwz7QiG0lk" target="_blank" rel="noopener" style="position:absolute;top:4px;right:4px;z-index:2;background:rgba(17,17,17,.75);color:#fff;font:11px sans-serif;padding:3px 7px;border-radius:4px;text-decoration:none;" title="If the page blocks embedding: open here in a new tab">↗ Open</a></div>
+    <div data-type="iframe-wrap" data-portal-id="882b23a1-3983-44d1-9d8d-003fd2862f41" style="position:absolute;left:0px;top:0px;width:1924px;height:1085px;overflow:hidden;"><iframe data-type="iframe" src="https://www.youtube.com/embed/rdwz7QiG0lk" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe><a href="https://www.youtube.com/embed/rdwz7QiG0lk" target="_blank" rel="noopener" style="position:absolute;top:4px;right:4px;z-index:2;background:rgba(17,17,17,.75);color:#fff;font:11px sans-serif;padding:3px 7px;border-radius:4px;text-decoration:none;" title="If the page blocks embedding: open here in a new tab">↗ Open</a></div>
   </div>
 
   <div class="step"
@@ -276,7 +276,7 @@
        data-scale="5"
        data-view-offset-x="0"
        data-view-offset-y="0"
-       data-vis-overrides="slide-3:1.00,slide-10:1.00,slide-6:1.00,slide-4:1.00,slide-5:1.00,slide-8:1.00,slide-13:1.00,slide-14:1.00,slide-12:1.00,slide-7:1.00,slide-11:1.00,slide-2:1.00,slide-1:1.00,slide-9:1.00"
+       data-vis-overrides="slide-4:1.00,slide-12:1.00,slide-14:1.00,slide-5:1.00,slide-9:1.00,slide-6:1.00,slide-1:1.00,slide-3:1.00,slide-7:1.00,slide-8:1.00,slide-2:1.00,slide-11:1.00,slide-10:1.00,slide-13:1.00"
        style="background:transparent;">
   </div>
 
@@ -387,6 +387,12 @@ function evalExpr(expr, slideId) {
     if (lname === 'time') { var d2 = new Date(); return {kind:'text', value: pad2(d2.getHours()) + ':' + pad2(d2.getMinutes())}; }
     if (lname === 'hour') return {kind:'num', value: new Date().getHours()};
     if (lname === 'minute') return {kind:'num', value: new Date().getMinutes()};
+    if (lname === 'slidenumber') {
+      var sn = currentSlideNumber();
+      if (!sn) throw new Error('"slideNumber" ist hier nicht verfügbar');
+      return {kind:'num', value: sn};
+    }
+    if (lname === 'totalslides') return {kind:'num', value: totalSlideCount()};
     var v = findVarByName(name, slideId);
     if (!v) throw new Error('unbekannte Variable "' + name + '"');
     if (v.type === 1) return {kind:'num', value: v.numberValue};
@@ -478,6 +484,12 @@ function currentSlideId() {
   var active = document.querySelector('.step.active');
   return active ? active.id : (steps.length ? steps[0].id : '');
 }
+function currentSlideNumber() {
+  var id = currentSlideId();
+  for (var i = 0; i < steps.length; i++) if (steps[i].id === id) return i + 1;
+  return 0;
+}
+function totalSlideCount() { return steps.length; }
 function renderAll() {
   var slideId = currentSlideId();
   document.querySelectorAll('[data-var-template]').forEach(function(el) {

@@ -76,8 +76,10 @@ VARIABLES & LIVE TEXT
 - Define named variables (text/number/boolean), reference them anywhere
   in slide text with `{name}`, use them in simple formulas
   (`{preis + 10}`, `{menge > 0}`), scope them globally or per-slide
-- A set of built-in variables (current date, time, year, weekday, ...)
-  work out of the box with no setup - see "Built-in Variables" below
+- A set of built-in variables (current date, time, year, weekday,
+  slide number, ...) work out of the box with no setup - see
+  "Built-in Variables" below
+- The exported website's `<title>` also accepts `{name}` placeholders
 
 EXPORT / IMPORT
 - One-click HTML export to a real Impress.js site (index.html,
@@ -205,9 +207,24 @@ time both while editing and after export/on every page load.
 | `{time}`         | `14:32`               | Current time (HH:mm)         |
 | `{hour}`         | `14`                   | Current hour (0-23)          |
 | `{minute}`       | `32`                   | Current minute (0-59)        |
+| `{slideNumber}`  | `3`                    | Position of the current slide (1-based) |
+| `{totalSlides}`  | `12`                   | Total number of slides       |
 
 These can also be combined with the formula syntax, e.g.
-`{"Stand: " + monthName + " " + year}` -> `Stand: July 2026`.
+`{"Stand: " + monthName + " " + year}` -> `Stand: July 2026`, or
+`{"Folie " + slideNumber + " von " + totalSlides}` for a page-number
+footer. In the exported presentation, `{slideNumber}` tracks whichever
+slide is currently active as you navigate.
+
+`{slideNumber}`/`{totalSlides}` need a specific "current slide" to make
+sense, so they only work in slide content (text, shapes, charts) - not
+in the website title below, where they report an error instead.
+
+**Website title**: the page `<title>` (Properties Panel -> Title, shown
+in the browser tab of the exported site) also supports `{name}`
+placeholders - built-ins and your own global variables both work, e.g.
+`My Deck {year}` -> `My Deck 2026`. It's resolved once at export time,
+so `{today}`/`{now}` are baked in as of the export, not live-updating.
 
 Advanced Usage
 ---------------
