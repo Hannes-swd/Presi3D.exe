@@ -47,6 +47,8 @@ private slots:
     void undo();
     void redo();
 
+    void autosave();
+
     void checkForUpdatesManually();
     void onUpdateAvailable(const QString& version, const QString& downloadUrl);
     void onUpdateCheckFailed(const QString& error);
@@ -61,6 +63,7 @@ private:
     void setupToolBar();
     void connectSignals();
     void updateTitle();
+    void updateAutosaveAction();
     bool maybeSave();
     void refreshAll();
     void setupUpdateButton();
@@ -103,4 +106,11 @@ private:
     QAction*                  m_redoAction   = nullptr;
     static constexpr int      kMaxUndoSteps  = 50;
     static constexpr int      kUndoDebounceMs = 500;
+
+    // ── Autosave: once a project folder (exportPath) is known, edits are
+    //    written to disk automatically after a short idle debounce ────────
+    QTimer*                   m_autosaveTimer   = nullptr;
+    QAction*                  m_autosaveAction  = nullptr;
+    bool                      m_autosaveEnabled = true;
+    static constexpr int      kAutosaveDebounceMs = 2000;
 };

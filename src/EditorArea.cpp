@@ -16,6 +16,7 @@
 #include <QToolButton>
 #include <QMenu>
 #include <QDoubleSpinBox>
+#include <QSpinBox>
 #include <QLabel>
 #include <QFrame>
 #include <QIcon>
@@ -119,6 +120,36 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnForward  = mkLayerBtn("arrow_upward",   "Move one layer up");
     m_btnBackward = mkLayerBtn("arrow_downward", "Move one layer down");
     m_btnBack     = mkLayerBtn("flip_to_back",   "Send to Back (Bottommost)");
+
+    // Separator
+    auto* sepZoom = new QFrame(m_elemToolbar);
+    sepZoom->setFrameShape(QFrame::VLine);
+    tbRow->addWidget(sepZoom);
+
+    // Zoom controls — for zooming into complex slide layouts
+    auto mkZoomBtn = [&](const QString& text, const QString& tip) {
+        auto* b = new QPushButton(text, m_elemToolbar);
+        b->setToolTip(tip);
+        b->setFixedWidth(24);
+        b->setStyleSheet(LAYER_BTN_SS);
+        tbRow->addWidget(b);
+        return b;
+    };
+    m_btnZoomOut = mkZoomBtn(QString::fromUtf8("\xE2\x88\x92"), "Zoom out (Ctrl+Scroll / Ctrl+-)");
+    m_zoomSpin = new QSpinBox(m_elemToolbar);
+    m_zoomSpin->setRange(25, 600);
+    m_zoomSpin->setSingleStep(10);
+    m_zoomSpin->setValue(100);
+    m_zoomSpin->setSuffix("%");
+    m_zoomSpin->setFixedWidth(64);
+    m_zoomSpin->setToolTip("Zoom level");
+    tbRow->addWidget(m_zoomSpin);
+    m_btnZoomIn = mkZoomBtn("+", "Zoom in (Ctrl+Scroll / Ctrl++)");
+    m_btnZoomReset = new QPushButton("Fit", m_elemToolbar);
+    m_btnZoomReset->setToolTip("Reset zoom to fit the slide (Ctrl+0)");
+    m_btnZoomReset->setFixedWidth(36);
+    m_btnZoomReset->setStyleSheet(LAYER_BTN_SS);
+    tbRow->addWidget(m_btnZoomReset);
 
     tbRow->addStretch();
     m_btnDelete = mkBtn("delete", "Delete", "Delete selected element");
@@ -237,6 +268,17 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_btnForward,  &QPushButton::clicked, m_editor2D, &SlideEditor2D::bringForward);
     connect(m_btnBackward, &QPushButton::clicked, m_editor2D, &SlideEditor2D::sendBackward);
     connect(m_btnBack,     &QPushButton::clicked, m_editor2D, &SlideEditor2D::sendToBack);
+
+    // Zoom controls
+    connect(m_btnZoomOut,   &QPushButton::clicked, m_editor2D, &SlideEditor2D::zoomOut);
+    connect(m_btnZoomIn,    &QPushButton::clicked, m_editor2D, &SlideEditor2D::zoomIn);
+    connect(m_btnZoomReset, &QPushButton::clicked, m_editor2D, &SlideEditor2D::zoomReset);
+    connect(m_zoomSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+            m_editor2D, &SlideEditor2D::setZoomPercent);
+    connect(m_editor2D, &SlideEditor2D::zoomChanged, this, [this](float z) {
+        QSignalBlocker blk(m_zoomSpin);
+        m_zoomSpin->setValue(qRound(z * 100.f));
+    });
 
     // Gizmo mode buttons
     connect(m_btnGizmoMove, &QPushButton::clicked, this, [this]() {

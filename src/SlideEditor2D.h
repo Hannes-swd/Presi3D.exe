@@ -12,6 +12,7 @@ class QContextMenuEvent;
 class QDragEnterEvent;
 class QDropEvent;
 class QPainter;
+class QWheelEvent;
 
 class SlideEditor2D : public QWidget {
     Q_OBJECT
@@ -24,6 +25,7 @@ signals:
     void presentationModified();
     void elementSelected(int elemIndex); // -1 = none
     void tableCellSelected(int row, int col); // -1/-1 = none
+    void zoomChanged(float zoom); // 1.0 = 100%
 
 public slots:
     void addTextElement();
@@ -53,12 +55,20 @@ public slots:
     void sendBackward();
     void sendToBack();
 
+    // Zoom (2D canvas)
+    float zoom() const { return m_zoom; }
+    void  zoomIn();
+    void  zoomOut();
+    void  zoomReset();       // back to 100% / fit, pan reset
+    void  setZoomPercent(int percent); // e.g. 150 = 150%
+
 protected:
     void paintEvent(QPaintEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
     void mouseDoubleClickEvent(QMouseEvent*) override;
+    void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
     void resizeEvent(QResizeEvent*) override;
     void contextMenuEvent(QContextMenuEvent*) override;
@@ -72,6 +82,10 @@ private:
     QRectF  elemToWidget(const SlideElement&) const;
     QPointF widgetToSlide(const QPointF&) const;
     int     hitTest(const QPointF& widgetPos) const;
+
+    // Zoom helper: change zoom while keeping the slide point under
+    // anchorWidgetPos fixed on screen.
+    void setZoom(float newZoom, const QPointF& anchorWidgetPos);
 
     // Table helpers
     struct CellPos { int row = -1; int col = -1; bool valid() const { return row >= 0 && col >= 0; } };
@@ -122,6 +136,13 @@ private:
     Presentation* m_pres         = nullptr;
     int           m_slideIndex   = -1;
     int           m_selectedElem = -1;
+
+    // Zoom / pan (2D canvas)
+    float   m_zoom          = 1.0f;   // 1.0 = fit-to-widget (100%)
+    QPointF m_panOffset     = {0, 0}; // widget-space offset added to the fitted slide rect
+    bool    m_panning       = false;  // middle-mouse-button drag in progress
+    QPointF m_panStartMouse;
+    QPointF m_panStartOffset;
 
     // Move drag
     bool    m_dragging   = false;

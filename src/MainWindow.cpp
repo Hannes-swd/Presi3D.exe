@@ -47,6 +47,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_undoDebounce = new QTimer(this);
     m_undoDebounce->setSingleShot(true);
     connect(m_undoDebounce, &QTimer::timeout, this, &MainWindow::commitPendingUndo);
+
+    m_autosaveTimer = new QTimer(this);
+    m_autosaveTimer->setSingleShot(true);
+    connect(m_autosaveTimer, &QTimer::timeout, this, &MainWindow::autosave);
+
     resetUndoHistory();
 
     updateTitle();
@@ -124,6 +129,14 @@ void MainWindow::setupToolBar() {
     tb->addAction("New",          this, &MainWindow::newPresentation);
     tb->addAction("Open",         this, &MainWindow::openPresentation);
     tb->addAction("Save",         this, &MainWindow::savePresentation);
+    tb->addSeparator();
+    m_autosaveAction = tb->addAction(m_autosaveEnabled ? "Autosave: On" : "Autosave: Off");
+    m_autosaveAction->setCheckable(true);
+    m_autosaveAction->setChecked(m_autosaveEnabled);
+    connect(m_autosaveAction, &QAction::toggled, this, [this](bool checked) {
+        m_autosaveEnabled = checked;
+        m_autosaveAction->setText(checked ? "Autosave: On" : "Autosave: Off");
+    });
     tb->addSeparator();
     m_browserAction = tb->addAction(QIcon(":/icons/open_in_browser.svg"), "Open in Browser", this, &MainWindow::openInBrowser);
     m_browserAction->setToolTip("Open exported presentation in browser\n(F = Fullscreen)");
@@ -362,6 +375,7 @@ void MainWindow::commitPendingUndo() {
 
 void MainWindow::resetUndoHistory() {
     m_undoDebounce->stop();
+    m_autosaveTimer->stop();
     m_undoDirty = false;
     m_undoStack.clear();
     m_redoStack.clear();
@@ -447,11 +461,26 @@ void MainWindow::updateTitle() {
         title = "* " + title;
     setWindowTitle(title);
 
+    updateAutosaveAction();
+
+    // A project folder is known (exportPath set) → keep it saved automatically.
+    if (m_autosaveEnabled && m_presentation->modified && !m_presentation->exportPath.isEmpty())
+        m_autosaveTimer->start(kAutosaveDebounceMs);
+
     if (m_browserAction) {
         bool hasExport = !m_presentation->exportPath.isEmpty()
                          && QFile::exists(m_presentation->exportPath + "/index.html");
         m_browserAction->setEnabled(hasExport);
     }
+}
+
+void MainWindow::updateAutosaveAction() {
+    if (!m_autosaveAction) return;
+    bool hasFolder = !m_presentation->exportPath.isEmpty();
+    m_autosaveAction->setEnabled(hasFolder);
+    m_autosaveAction->setToolTip(hasFolder
+        ? "Automatically save changes to the project folder"
+        : "Select a project folder first (File → Open... or Save As...) to enable autosave");
 }
 
 bool MainWindow::maybeSave() {
@@ -529,6 +558,21 @@ void MainWindow::savePresentation() {
         statusBar()->showMessage("Saved: " + m_presentation->exportPath, 4000);
     } else {
         QMessageBox::warning(this, "Save Error", result.errorMessage);
+    }
+}
+
+void MainWindow::autosave() {
+    if (!m_autosaveEnabled || !m_presentation->modified || m_presentation->exportPath.isEmpty()) return;
+
+    auto result = HtmlExporter::exportTo(*m_presentation, m_presentation->exportPath);
+    if (result.ok) {
+        m_presentation->modified = false;
+        updateTitle();
+        statusBar()->showMessage("Autosaved: " + m_presentation->exportPath, 3000);
+    } else {
+        // Stay quiet (no popup) so autosave never interrupts typing; the
+        // status bar still surfaces it, and the next manual save will retry.
+        statusBar()->showMessage("Autosave failed: " + result.errorMessage, 4000);
     }
 }
 

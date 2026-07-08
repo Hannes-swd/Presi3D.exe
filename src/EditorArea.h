@@ -6,6 +6,7 @@ class QStackedWidget;
 class QPushButton;
 class QToolButton;
 class QDoubleSpinBox;
+class QSpinBox;
 class SlideEditor2D;
 class SlideEditor3D;
 
@@ -53,6 +54,11 @@ private:
     QPushButton*     m_btnForward  = nullptr;
     QPushButton*     m_btnBackward = nullptr;
     QPushButton*     m_btnBack     = nullptr;
+    // Zoom controls (2D canvas)
+    QPushButton*     m_btnZoomOut   = nullptr;
+    QPushButton*     m_btnZoomIn    = nullptr;
+    QPushButton*     m_btnZoomReset = nullptr;
+    QSpinBox*        m_zoomSpin     = nullptr;
     QWidget*         m_elemToolbar  = nullptr;
 
     // 3D gizmo toolbar

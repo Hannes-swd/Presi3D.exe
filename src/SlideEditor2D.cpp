@@ -10,6 +10,7 @@
 #include <QPainter>
 #include <QtMath>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QKeyEvent>
 #include <QContextMenuEvent>
 #include <QDragEnterEvent>
@@ -41,6 +42,9 @@ static constexpr float HANDLE_R  = 9.f;   // half-size of hit area for handles
 static constexpr float HANDLE_V  = 7.f;   // visual half-size of handle squares
 static constexpr float MIN_SIZE  = 20.f;  // minimum element size
 static constexpr float SNAP_PX   = 10.f;  // snap threshold in screen pixels
+static constexpr float MIN_ZOOM  = 0.25f; // 25%
+static constexpr float MAX_ZOOM  = 6.0f;  // 600%
+static constexpr float ZOOM_STEP = 1.15f; // per wheel notch / toolbar click
 
 // ── Handle index layout ───────────────────────────────────────────────────────
 // 0=TL  4=TC  1=TR
@@ -112,11 +116,49 @@ QRectF SlideEditor2D::slideRect() const {
     const float margin = 20.f;
     const float aw = width()  - 2 * margin;
     const float ah = height() - 2 * margin;
-    const float scale = qMin(aw / SLIDE_W_DEFAULT, ah / SLIDE_H_DEFAULT);
+    const float scale = qMin(aw / SLIDE_W_DEFAULT, ah / SLIDE_H_DEFAULT) * m_zoom;
     const float sw = SLIDE_W_DEFAULT * scale;
     const float sh = SLIDE_H_DEFAULT * scale;
-    return QRectF((width()  - sw) / 2.f,
-                  (height() - sh) / 2.f, sw, sh);
+    return QRectF((width()  - sw) / 2.f + m_panOffset.x(),
+                  (height() - sh) / 2.f + m_panOffset.y(), sw, sh);
+}
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+
+void SlideEditor2D::setZoom(float newZoom, const QPointF& anchorWidgetPos) {
+    newZoom = qBound(MIN_ZOOM, newZoom, MAX_ZOOM);
+    if (qFuzzyCompare(newZoom, m_zoom)) return;
+
+    // Keep the slide point currently under anchorWidgetPos fixed on screen.
+    QPointF slidePt = widgetToSlide(anchorWidgetPos);
+    m_zoom = newZoom;
+    QRectF sr = slideRect();
+    float sx = sr.width()  / SLIDE_W_DEFAULT;
+    float sy = sr.height() / SLIDE_H_DEFAULT;
+    QPointF newWidgetPos(sr.x() + slidePt.x() * sx, sr.y() + slidePt.y() * sy);
+    m_panOffset += anchorWidgetPos - newWidgetPos;
+
+    emit zoomChanged(m_zoom);
+    update();
+}
+
+void SlideEditor2D::zoomIn() {
+    setZoom(m_zoom * ZOOM_STEP, QPointF(width() / 2.0, height() / 2.0));
+}
+
+void SlideEditor2D::zoomOut() {
+    setZoom(m_zoom / ZOOM_STEP, QPointF(width() / 2.0, height() / 2.0));
+}
+
+void SlideEditor2D::zoomReset() {
+    m_zoom      = 1.0f;
+    m_panOffset = {0, 0};
+    emit zoomChanged(m_zoom);
+    update();
+}
+
+void SlideEditor2D::setZoomPercent(int percent) {
+    setZoom(float(percent) / 100.f, QPointF(width() / 2.0, height() / 2.0));
 }
 
 QRectF SlideEditor2D::elemToWidget(const SlideElement& e) const {
@@ -366,6 +408,21 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
     if (m_selectedElem >= 0 && m_selectedElem < slide->elements.size())
         drawHandles(p, elemToWidget(slide->elements[m_selectedElem]),
                     slide->elements[m_selectedElem].rotation);
+
+    // Zoom indicator (only shown once the user has actually zoomed)
+    if (!qFuzzyCompare(m_zoom, 1.0f)) {
+        QString label = QString("%1%").arg(qRound(m_zoom * 100.f));
+        QFont f = p.font();
+        f.setPointSize(9);
+        p.setFont(f);
+        QFontMetrics fm(f);
+        QRectF badge(width() - fm.horizontalAdvance(label) - 18, height() - 28, fm.horizontalAdvance(label) + 10, 20);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 140));
+        p.drawRoundedRect(badge, 4, 4);
+        p.setPen(Qt::white);
+        p.drawText(badge, Qt::AlignCenter, label);
+    }
 }
 
 int SlideEditor2D::slideNumberFor(const QString& currentSlideId) const {
@@ -972,6 +1029,13 @@ void SlideEditor2D::activateFormatPainter(const SlideElement& source) {
 // ── Mouse events ──────────────────────────────────────────────────────────────
 
 void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
+    if (e->button() == Qt::MiddleButton) {
+        m_panning        = true;
+        m_panStartMouse  = e->position();
+        m_panStartOffset = m_panOffset;
+        setCursor(Qt::ClosedHandCursor);
+        return;
+    }
     if (e->button() != Qt::LeftButton) return;
 
     // Format painter mode
@@ -1123,6 +1187,13 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
 }
 
 void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
+    // Canvas panning (middle-mouse-button drag)
+    if (m_panning) {
+        m_panOffset = m_panStartOffset + (e->position() - m_panStartMouse);
+        update();
+        return;
+    }
+
     // Table divider drag-resize
     if (m_dragDivider.valid) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
@@ -1251,6 +1322,11 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
+    if (e->button() == Qt::MiddleButton) {
+        m_panning = false;
+        setCursor(Qt::ArrowCursor);
+        return;
+    }
     if (e->button() == Qt::LeftButton) {
         m_textSelecting     = false;
         m_dragging          = false;
@@ -1261,6 +1337,27 @@ void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
         m_snapGuides.clear();
         update();
     }
+}
+
+void SlideEditor2D::wheelEvent(QWheelEvent* e) {
+    // Ctrl + wheel: zoom in/out, keeping the point under the cursor fixed.
+    if (e->modifiers() & Qt::ControlModifier) {
+        float factor = (e->angleDelta().y() > 0) ? ZOOM_STEP : (1.f / ZOOM_STEP);
+        setZoom(m_zoom * factor, e->position());
+        e->accept();
+        return;
+    }
+    // Plain wheel: pan vertically; Shift+wheel: pan horizontally (useful once zoomed in).
+    QPointF delta = (e->modifiers() & Qt::ShiftModifier)
+                   ? QPointF(e->angleDelta().y() / 8.0, 0)
+                   : QPointF(e->angleDelta().x() / 8.0, e->angleDelta().y() / 8.0);
+    if (!delta.isNull()) {
+        m_panOffset += delta;
+        update();
+        e->accept();
+        return;
+    }
+    QWidget::wheelEvent(e);
 }
 
 void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
@@ -1364,6 +1461,12 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
         m_selectedElem = -1;
         emit elementSelected(-1);
         update();
+    } else if (ctrl && (e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal)) {
+        zoomIn();
+    } else if (ctrl && e->key() == Qt::Key_Minus) {
+        zoomOut();
+    } else if (ctrl && e->key() == Qt::Key_0) {
+        zoomReset();
     } else {
         QWidget::keyPressEvent(e);
     }
