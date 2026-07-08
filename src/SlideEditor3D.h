@@ -11,10 +11,26 @@
 #include <QSet>
 #include "models/DataModel.h"
 
+class WorldObjectMesh;
+
+// A small pointer-based view over "something with a position + per-axis
+// rotation" — either a Slide or a WorldObject. Lets the Move/Rotate gizmo and
+// its hit-testing be shared between both entity kinds without templating or
+// a shared base class (which would ripple into every other file using Slide).
+struct GizmoTarget {
+    float *px = nullptr, *py = nullptr, *pz = nullptr;
+    float *rx = nullptr, *ry = nullptr, *rz = nullptr;
+    bool valid() const { return px != nullptr; }
+    QVector3D pos() const { return {*px, *py, *pz}; }
+};
+inline GizmoTarget targetOf(Slide& s) { return {&s.posX,&s.posY,&s.posZ,&s.rotX,&s.rotY,&s.rotZ}; }
+inline GizmoTarget targetOf(WorldObject& w) { return {&w.posX,&w.posY,&w.posZ,&w.rotX,&w.rotY,&w.rotZ}; }
+
 class SlideEditor3D : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
 public:
     enum class GizmoMode { Move, Rotate };
+    enum class SelectionKind { None, Slide, WorldObject };
 
     explicit SlideEditor3D(QWidget* parent = nullptr);
     ~SlideEditor3D() override;
@@ -26,9 +42,15 @@ public:
     void  setDistance(float d) { m_distance = qMax(200.f, d); emit distanceChanged(m_distance); update(); }
     float distance() const { return m_distance; }
 
+    // Loads path via tinygltf, appends a new WorldObject at the current
+    // camera target, and selects it. Shows a warning dialog (never crashes)
+    // if the file can't be loaded.
+    void addWorldObject(const QString& path);
+
 signals:
     void presentationModified();
     void slideSelected(int index);
+    void worldObjectSelected(int index);
     void distanceChanged(float d);
 
 public slots:
@@ -51,16 +73,27 @@ protected:
 private:
     // ── GL setup ─────────────────────────────────────────────────────────
     bool initShaders();
+    bool initMeshShader();
     void initGeometry();
 
     // ── Rendering ────────────────────────────────────────────────────────
     void renderSlide(const Slide&, bool selected);
+    void renderWorldObject(const WorldObject&, bool selected);
     void renderAxes();
     QOpenGLTexture* buildSlideTexture(const Slide&);
-    void renderMoveGizmo(const Slide&);
-    void renderRotateGizmo(const Slide&);
+    void renderMoveGizmo(const GizmoTarget&);
+    void renderRotateGizmo(const GizmoTarget&);
     void drawLines(const QVector<QVector3D>& pts, const QVector4D& color,
                    float lineWidth = 1.f);
+
+    // Builds a GizmoTarget for whichever entity is currently selected
+    // (m_selKind), or an invalid (all-null) GizmoTarget if nothing is selected.
+    GizmoTarget currentTarget() const;
+
+    // ── World object mesh cache ─────────────────────────────────────────
+    // Returns the cached mesh for modelPath, lazily loading it (and logging
+    // any load error) on first access. May return nullptr if loading failed.
+    WorldObjectMesh* meshFor(const QString& modelPath);
 
     // ── Gizmo geometry helpers ────────────────────────────────────────────
     float     gizmoSize() const { return m_distance * 0.12f; }
@@ -68,9 +101,10 @@ private:
     float     distSeg2D(const QPointF& p, const QPointF& a, const QPointF& b) const;
 
     // ── Hit testing ───────────────────────────────────────────────────────
-    int  hitMoveAxis(const QPoint& pt) const;
-    int  hitRotateAxis(const QPoint& pt) const;
-    int  pickSlide(const QPoint& pt) const;
+    int  hitMoveAxis(const QPoint& pt, const GizmoTarget&) const;
+    int  hitRotateAxis(const QPoint& pt, const GizmoTarget&) const;
+    int  pickSlide(const QPoint& pt, float* outDist = nullptr) const;
+    int  pickWorldObject(const QPoint& pt, float* outDist = nullptr) const;
 
     // ── Ray helpers ───────────────────────────────────────────────────────
     void getRay(const QPoint& pt, QVector3D& ro, QVector3D& rd) const;
@@ -82,12 +116,15 @@ private:
     QMatrix4x4 viewMatrix() const;
     QMatrix4x4 projMatrix() const;
     QMatrix4x4 slideModel(const Slide&) const;
+    QMatrix4x4 worldObjectModel(const WorldObject&, float meshNormScale) const;
     QVector3D  camPos() const;
 
     // ── State ─────────────────────────────────────────────────────────────
-    Presentation* m_pres          = nullptr;
-    int           m_selectedSlide = -1;
-    bool          m_initialized   = false;
+    Presentation* m_pres            = nullptr;
+    SelectionKind m_selKind         = SelectionKind::None;
+    int           m_selectedSlide   = -1; // valid iff m_selKind == Slide
+    int           m_selectedWorldObj = -1; // valid iff m_selKind == WorldObject
+    bool          m_initialized     = false;
 
     GizmoMode m_gizmoMode = GizmoMode::Move;
     int       m_gizmoAxis = -1; // 0=X, 1=Y, 2=Z, -1=none
@@ -101,6 +138,7 @@ private:
 
     // OpenGL
     QOpenGLShaderProgram*    m_prog = nullptr;
+    QOpenGLShaderProgram*    m_meshProg = nullptr; // lit shader for WorldObject meshes
     QOpenGLVertexArrayObject m_quadVAO;
     QOpenGLBuffer            m_quadVBO{QOpenGLBuffer::VertexBuffer};
     QOpenGLBuffer            m_quadEBO{QOpenGLBuffer::IndexBuffer};
@@ -108,6 +146,10 @@ private:
     // Slide textures
     QMap<QString, QOpenGLTexture*> m_textures;
     QSet<QString>                  m_dirty;
+
+    // World object meshes, keyed by WorldObject::modelPath
+    QMap<QString, WorldObjectMesh*> m_meshCache;
+    QSet<QString>                   m_meshLoadFailed; // paths we already warned about, don't retry every frame
 
     // Camera (spherical)
     float     m_azimuth   = 30.f;

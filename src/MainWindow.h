@@ -42,6 +42,7 @@ private slots:
     void onSlideMoved(int from, int to);
     void onPresentationModified();
     void onElementSelected(int elemIndex);
+    void onWorldObjectSelected(int index);
     void onFormatPainterRequested();
 
     void undo();
@@ -95,7 +96,8 @@ private:
     PropertiesPanel* m_propPanel     = nullptr;
     FormatBar*       m_formatBar     = nullptr;
 
-    int              m_selectedElem  = -1;
+    int              m_selectedElem      = -1;
+    int              m_selectedWorldObj  = -1;
 
     std::deque<Presentation> m_undoStack;
     std::deque<Presentation> m_redoStack;

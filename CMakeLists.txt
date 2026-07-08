@@ -33,6 +33,7 @@ set(SOURCES
     src/dialogs/InsertChartDialog.cpp
     src/dialogs/InsertFormulaDialog.cpp
     src/dialogs/InsertIFrameDialog.cpp
+    src/dialogs/InsertWorldObjectDialog.cpp
     src/dialogs/InsertButtonDialog.cpp
     src/dialogs/InsertCheckboxDialog.cpp
     src/dialogs/InsertSliderDialog.cpp
@@ -40,11 +41,13 @@ set(SOURCES
     src/dialogs/ShapePickerDialog.cpp
     src/dialogs/VariableManagerDialog.cpp
     src/FormatBar.cpp
+    src/models/WorldObjectMesh.cpp
+    src/third_party/tinygltf_impl.cpp
 )
 
 add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+target_include_directories(${PROJECT_NAME} PRIVATE src src/third_party/tinygltf)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE APP_VERSION="${PROJECT_VERSION}")
 

@@ -23,6 +23,7 @@ signals:
     void presentationModified();
     void elementSelected(int elemIndex);
     void tableCellSelected(int row, int col);
+    void worldObjectSelected(int index);
 
 private slots:
     void switchTo2D();
@@ -62,8 +63,9 @@ private:
     QWidget*         m_elemToolbar  = nullptr;
 
     // 3D gizmo toolbar
-    QPushButton*     m_btnGizmoMove   = nullptr;
-    QPushButton*     m_btnGizmoRotate = nullptr;
-    QDoubleSpinBox*  m_distanceSpin   = nullptr;
-    QWidget*         m_gizmoToolbar   = nullptr;
+    QPushButton*     m_btnGizmoMove      = nullptr;
+    QPushButton*     m_btnGizmoRotate    = nullptr;
+    QPushButton*     m_btnInsertWorldObj = nullptr;
+    QDoubleSpinBox*  m_distanceSpin      = nullptr;
+    QWidget*         m_gizmoToolbar      = nullptr;
 };

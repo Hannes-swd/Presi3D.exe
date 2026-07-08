@@ -1,5 +1,6 @@
 #include "SlideEditor3D.h"
 #include "ShapeUtils.h"
+#include "models/WorldObjectMesh.h"
 #include "rendering/ChartRenderer.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -14,6 +15,8 @@
 #include <QTextCursor>
 #include <QTextFormat>
 #include <QIcon>
+#include <QMessageBox>
+#include <utility>
 
 // ── GLSL shaders ──────────────────────────────────────────────────────────────
 
@@ -41,6 +44,48 @@ void main() {
         FragColor = texture(uTex, vUV);
     else
         FragColor = uColor;
+}
+)glsl";
+
+// Lit shader for WorldObject meshes: simple directional + ambient lighting.
+// Separate from VERT_SRC/FRAG_SRC above so the existing flat-quad slide path
+// stays completely untouched.
+static const char* MESH_VERT_SRC = R"glsl(
+#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUV;
+uniform mat4 uMVP;
+uniform mat4 uModel;
+out vec3 vNormal;
+out vec2 vUV;
+void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    vNormal = mat3(uModel) * aNormal;
+    vUV = aUV;
+}
+)glsl";
+
+static const char* MESH_FRAG_SRC = R"glsl(
+#version 330 core
+in vec3 vNormal;
+in vec2 vUV;
+out vec4 FragColor;
+uniform vec4      uColor;
+uniform bool      uUseTexture;
+uniform sampler2D uTex;
+uniform vec3      uLightDir;
+uniform float     uAmbient;
+uniform float     uOpacity;
+void main() {
+    vec4 base = uUseTexture ? texture(uTex, vUV) : uColor;
+    vec3 n = normalize(vNormal);
+    float diff = max(dot(n, normalize(uLightDir)), 0.0);
+    float lightAmt = uAmbient + (1.0 - uAmbient) * diff;
+    // glTF materials default to alphaMode=OPAQUE, meaning the alpha channel
+    // of baseColor/texture must be ignored — only the WorldObject-level
+    // uOpacity fade should affect transparency.
+    FragColor = vec4(base.rgb * lightAmt, uOpacity);
 }
 )glsl";
 
@@ -86,11 +131,11 @@ static QVector3D ringPt(const QVector3D& c, int axis, float r, float a) {
     }
 }
 
-static float getSlideRot(const Slide& s, int ax) {
-    return ax == 0 ? s.rotX : ax == 1 ? s.rotY : s.rotZ;
+static float getRot(const GizmoTarget& t, int ax) {
+    return ax == 0 ? *t.rx : ax == 1 ? *t.ry : *t.rz;
 }
-static void setSlideRot(Slide& s, int ax, float v) {
-    if (ax == 0) s.rotX = v; else if (ax == 1) s.rotY = v; else s.rotZ = v;
+static void setRot(const GizmoTarget& t, int ax, float v) {
+    if (ax == 0) *t.rx = v; else if (ax == 1) *t.ry = v; else *t.rz = v;
 }
 
 // ── Ctor / Dtor ───────────────────────────────────────────────────────────────
@@ -109,17 +154,62 @@ SlideEditor3D::~SlideEditor3D() {
     m_quadEBO.destroy();
     qDeleteAll(m_textures);
     m_textures.clear();
+    qDeleteAll(m_meshCache);
+    m_meshCache.clear();
     delete m_prog;
+    delete m_meshProg;
     doneCurrent();
 }
 
 void SlideEditor3D::setPresentation(Presentation* pres, int sel) {
     m_pres = pres;
     m_selectedSlide = sel;
+    m_selKind = (sel >= 0) ? SelectionKind::Slide : SelectionKind::None;
+    m_selectedWorldObj = -1;
     // Mark all slides dirty so textures rebuild on next paint
     if (pres)
         for (const auto& s : pres->slides) m_dirty.insert(s.id);
     update();
+}
+
+void SlideEditor3D::addWorldObject(const QString& path) {
+    if (!m_pres) return;
+
+    QString err;
+    makeCurrent();
+    WorldObjectMesh* mesh = WorldObjectMesh::load(path, err);
+    doneCurrent();
+    if (!mesh) {
+        QMessageBox::warning(this, tr("Could Not Load Model"),
+            tr("This file could not be loaded as a glTF/GLB model:\n%1").arg(err));
+        return;
+    }
+    m_meshCache[path] = mesh;
+    m_meshLoadFailed.remove(path);
+
+    WorldObject w;
+    w.modelPath = path;
+    w.posX = m_target.x(); w.posY = m_target.y(); w.posZ = m_target.z();
+    m_pres->worldObjects.append(w);
+
+    m_selKind          = SelectionKind::WorldObject;
+    m_selectedWorldObj = m_pres->worldObjects.size() - 1;
+    m_selectedSlide    = -1;
+
+    emit worldObjectSelected(m_selectedWorldObj);
+    emit presentationModified();
+    update();
+}
+
+GizmoTarget SlideEditor3D::currentTarget() const {
+    if (!m_pres) return {};
+    if (m_selKind == SelectionKind::Slide &&
+        m_selectedSlide >= 0 && m_selectedSlide < m_pres->slides.size())
+        return targetOf(m_pres->slides[m_selectedSlide]);
+    if (m_selKind == SelectionKind::WorldObject &&
+        m_selectedWorldObj >= 0 && m_selectedWorldObj < m_pres->worldObjects.size())
+        return targetOf(m_pres->worldObjects[m_selectedWorldObj]);
+    return {};
 }
 
 // ── GL init ───────────────────────────────────────────────────────────────────
@@ -131,6 +221,7 @@ void SlideEditor3D::initializeGL() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     if (!initShaders()) { qWarning("SlideEditor3D: shader error"); return; }
+    if (!initMeshShader()) { qWarning("SlideEditor3D: mesh shader error"); }
     initGeometry();
     m_initialized = true;
 }
@@ -142,6 +233,15 @@ bool SlideEditor3D::initShaders() {
     if (!m_prog->addShaderFromSourceCode(QOpenGLShader::Fragment, FRAG_SRC)) {
         qWarning() << "FS:" << m_prog->log(); return false; }
     return m_prog->link();
+}
+
+bool SlideEditor3D::initMeshShader() {
+    m_meshProg = new QOpenGLShaderProgram(this);
+    if (!m_meshProg->addShaderFromSourceCode(QOpenGLShader::Vertex,   MESH_VERT_SRC)) {
+        qWarning() << "Mesh VS:" << m_meshProg->log(); return false; }
+    if (!m_meshProg->addShaderFromSourceCode(QOpenGLShader::Fragment, MESH_FRAG_SRC)) {
+        qWarning() << "Mesh FS:" << m_meshProg->log(); return false; }
+    return m_meshProg->link();
 }
 
 void SlideEditor3D::initGeometry() {
@@ -209,6 +309,18 @@ QMatrix4x4 SlideEditor3D::slideModel(const Slide& s) const {
     return m;
 }
 
+QMatrix4x4 SlideEditor3D::worldObjectModel(const WorldObject& w, float meshNormScale) const {
+    QMatrix4x4 m;
+    m.translate(w.posX, w.posY, w.posZ);
+    m.rotate(w.rotZ, 0, 0, 1);
+    m.rotate(w.rotY, 0, 1, 0);
+    m.rotate(w.rotX, 1, 0, 0);
+    // Unlike slideModel(), scale IS applied to the geometry here — a
+    // WorldObject has no separate "viewport" concept, only a real mesh.
+    m.scale(w.scale * meshNormScale);
+    return m;
+}
+
 // ── Ray helpers ───────────────────────────────────────────────────────────────
 
 void SlideEditor3D::getRay(const QPoint& pt, QVector3D& ro, QVector3D& rd) const {
@@ -259,11 +371,10 @@ float SlideEditor3D::distSeg2D(const QPointF& p,
 
 // ── Hit testing ───────────────────────────────────────────────────────────────
 
-int SlideEditor3D::hitMoveAxis(const QPoint& pt) const {
-    if (!m_pres || m_selectedSlide < 0) return -1;
-    const Slide& sl = m_pres->slides[m_selectedSlide];
+int SlideEditor3D::hitMoveAxis(const QPoint& pt, const GizmoTarget& t) const {
+    if (!t.valid()) return -1;
     float sz = gizmoSize();
-    QVector3D center(sl.posX, sl.posY, sl.posZ);
+    QVector3D center = t.pos();
     QPointF mp(pt), sc = project(center);
     for (int ax = 0; ax < 3; ++ax) {
         QPointF tip = project(center + AXIS_VEC[ax] * sz);
@@ -272,11 +383,10 @@ int SlideEditor3D::hitMoveAxis(const QPoint& pt) const {
     return -1;
 }
 
-int SlideEditor3D::hitRotateAxis(const QPoint& pt) const {
-    if (!m_pres || m_selectedSlide < 0) return -1;
-    const Slide& sl = m_pres->slides[m_selectedSlide];
+int SlideEditor3D::hitRotateAxis(const QPoint& pt, const GizmoTarget& t) const {
+    if (!t.valid()) return -1;
     float sz = gizmoSize();
-    QVector3D center(sl.posX, sl.posY, sl.posZ);
+    QVector3D center = t.pos();
     QPointF mp(pt);
     const int N = 48;
     for (int ax = 0; ax < 3; ++ax) {
@@ -290,7 +400,7 @@ int SlideEditor3D::hitRotateAxis(const QPoint& pt) const {
     return -1;
 }
 
-int SlideEditor3D::pickSlide(const QPoint& pt) const {
+int SlideEditor3D::pickSlide(const QPoint& pt, float* outDist) const {
     if (!m_pres) return -1;
     QVector3D ro, rd;
     getRay(pt, ro, rd);
@@ -311,10 +421,78 @@ int SlideEditor3D::pickSlide(const QPoint& pt) const {
             if (dist < bestDist) { bestDist = dist; best = i; }
         }
     }
+    if (outDist) *outDist = bestDist;
+    return best;
+}
+
+// Standard slab-based ray/AABB intersection. Returns false if the ray misses
+// the box entirely; tmin/tmax are the (possibly negative) entry/exit
+// distances along the ray otherwise.
+static bool rayAabb(const QVector3D& ro, const QVector3D& rd,
+                     const QVector3D& bmin, const QVector3D& bmax,
+                     float& tmin, float& tmax) {
+    tmin = -1e18f; tmax = 1e18f;
+    for (int a = 0; a < 3; ++a) {
+        float o = (a==0)?ro.x():(a==1)?ro.y():ro.z();
+        float d = (a==0)?rd.x():(a==1)?rd.y():rd.z();
+        float lo = (a==0)?bmin.x():(a==1)?bmin.y():bmin.z();
+        float hi = (a==0)?bmax.x():(a==1)?bmax.y():bmax.z();
+        if (qAbs(d) < 1e-9f) {
+            if (o < lo || o > hi) return false;
+            continue;
+        }
+        float t0 = (lo - o) / d, t1 = (hi - o) / d;
+        if (t0 > t1) std::swap(t0, t1);
+        tmin = qMax(tmin, t0);
+        tmax = qMin(tmax, t1);
+        if (tmin > tmax) return false;
+    }
+    return true;
+}
+
+int SlideEditor3D::pickWorldObject(const QPoint& pt, float* outDist) const {
+    if (!m_pres) return -1;
+    QVector3D ro, rd;
+    getRay(pt, ro, rd);
+    int best = -1; float bestDist = 1e18f;
+    for (int i = 0; i < m_pres->worldObjects.size(); ++i) {
+        const WorldObject& w = m_pres->worldObjects[i];
+        WorldObjectMesh* mesh = m_meshCache.value(w.modelPath, nullptr);
+        if (!mesh) continue;
+        QMatrix4x4 model = worldObjectModel(w, mesh->normalizationScale);
+        bool ok;
+        QMatrix4x4 mInv = model.inverted(&ok);
+        if (!ok) continue;
+        QVector3D lo = mInv.map(ro), ld = mInv.mapVector(rd).normalized();
+        float tmin, tmax;
+        if (rayAabb(lo, ld, mesh->bboxMin, mesh->bboxMax, tmin, tmax) && tmax >= 0.f) {
+            float tHit = qMax(tmin, 0.f);
+            float dist = (model.map(lo + tHit * ld) - camPos()).length();
+            if (dist < bestDist) { bestDist = dist; best = i; }
+        }
+    }
+    if (outDist) *outDist = bestDist;
     return best;
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
+
+WorldObjectMesh* SlideEditor3D::meshFor(const QString& modelPath) {
+    if (modelPath.isEmpty()) return nullptr;
+    auto it = m_meshCache.find(modelPath);
+    if (it != m_meshCache.end()) return it.value();
+    if (m_meshLoadFailed.contains(modelPath)) return nullptr;
+
+    QString err;
+    WorldObjectMesh* mesh = WorldObjectMesh::load(modelPath, err);
+    if (!mesh) {
+        qWarning() << "SlideEditor3D: failed to load world object model" << modelPath << ":" << err;
+        m_meshLoadFailed.insert(modelPath);
+        return nullptr;
+    }
+    m_meshCache[modelPath] = mesh;
+    return mesh;
+}
 
 // ── Texture building ──────────────────────────────────────────────────────────
 
@@ -568,6 +746,47 @@ void SlideEditor3D::renderSlide(const Slide& sl, bool selected) {
     m_prog->release();
 }
 
+void SlideEditor3D::renderWorldObject(const WorldObject& w, bool selected) {
+    if (!m_meshProg) return;
+    WorldObjectMesh* mesh = meshFor(w.modelPath);
+    if (!mesh) return;
+
+    QMatrix4x4 model = worldObjectModel(w, mesh->normalizationScale);
+    QMatrix4x4 mvp = projMatrix() * viewMatrix() * model;
+
+    m_meshProg->bind();
+    m_meshProg->setUniformValue("uMVP", mvp);
+    m_meshProg->setUniformValue("uModel", model);
+    m_meshProg->setUniformValue("uLightDir", QVector3D(0.4f, 0.8f, 0.3f).normalized());
+    m_meshProg->setUniformValue("uAmbient", 0.35f);
+    m_meshProg->setUniformValue("uOpacity", w.opacity);
+    m_meshProg->setUniformValue("uTex", 0);
+
+    mesh->draw(m_meshProg);
+
+    m_meshProg->release();
+
+    if (selected) {
+        // Selection outline: wireframe box around the mesh's bounding box.
+        QVector3D bmin = mesh->bboxMin, bmax = mesh->bboxMax;
+        QVector3D c[8] = {
+            {bmin.x(),bmin.y(),bmin.z()}, {bmax.x(),bmin.y(),bmin.z()},
+            {bmax.x(),bmax.y(),bmin.z()}, {bmin.x(),bmax.y(),bmin.z()},
+            {bmin.x(),bmin.y(),bmax.z()}, {bmax.x(),bmin.y(),bmax.z()},
+            {bmax.x(),bmax.y(),bmax.z()}, {bmin.x(),bmax.y(),bmax.z()},
+        };
+        for (auto& p : c) p = model.map(p);
+        static const int edges[12][2] = {
+            {0,1},{1,2},{2,3},{3,0}, {4,5},{5,6},{6,7},{7,4}, {0,4},{1,5},{2,6},{3,7}
+        };
+        QVector<QVector3D> pts;
+        for (auto& e : edges) { pts.append(c[e[0]]); pts.append(c[e[1]]); }
+        glDisable(GL_DEPTH_TEST);
+        drawLines(pts, QVector4D(0.f, 0.6f, 1.f, 0.8f), 2.f);
+        glEnable(GL_DEPTH_TEST);
+    }
+}
+
 void SlideEditor3D::renderAxes() {
     if (!m_prog) return;
     float axLen = 500.f;
@@ -579,9 +798,10 @@ void SlideEditor3D::renderAxes() {
     drawLines(z, {0.3f,0.5f,1,0.7f}, 2.f);
 }
 
-void SlideEditor3D::renderMoveGizmo(const Slide& sl) {
+void SlideEditor3D::renderMoveGizmo(const GizmoTarget& t) {
+    if (!t.valid()) return;
     float sz = gizmoSize();
-    QVector3D center(sl.posX, sl.posY, sl.posZ);
+    QVector3D center = t.pos();
     glDisable(GL_DEPTH_TEST);
 
     for (int ax = 0; ax < 3; ++ax) {
@@ -601,9 +821,10 @@ void SlideEditor3D::renderMoveGizmo(const Slide& sl) {
     glEnable(GL_DEPTH_TEST);
 }
 
-void SlideEditor3D::renderRotateGizmo(const Slide& sl) {
+void SlideEditor3D::renderRotateGizmo(const GizmoTarget& t) {
+    if (!t.valid()) return;
     float sz = gizmoSize();
-    QVector3D center(sl.posX, sl.posY, sl.posZ);
+    QVector3D center = t.pos();
     glDisable(GL_DEPTH_TEST);
 
     const int N = 64;
@@ -647,13 +868,19 @@ void SlideEditor3D::paintGL() {
     if (!m_initialized || !m_prog) return;
 
     if (m_pres) {
+        bool slideSel = (m_selKind == SelectionKind::Slide);
+        bool woSel    = (m_selKind == SelectionKind::WorldObject);
         for (int i = 0; i < m_pres->slides.size(); ++i)
-            renderSlide(m_pres->slides[i], i == m_selectedSlide);
-        if (m_selectedSlide >= 0 && m_selectedSlide < m_pres->slides.size()) {
+            renderSlide(m_pres->slides[i], slideSel && i == m_selectedSlide);
+        for (int i = 0; i < m_pres->worldObjects.size(); ++i)
+            renderWorldObject(m_pres->worldObjects[i], woSel && i == m_selectedWorldObj);
+
+        GizmoTarget gt = currentTarget();
+        if (gt.valid()) {
             if (m_gizmoMode == GizmoMode::Move)
-                renderMoveGizmo(m_pres->slides[m_selectedSlide]);
+                renderMoveGizmo(gt);
             else
-                renderRotateGizmo(m_pres->slides[m_selectedSlide]);
+                renderRotateGizmo(gt);
         }
     }
     renderAxes();
@@ -742,10 +969,9 @@ void SlideEditor3D::paintGL() {
     }
 
     // Axis labels for gizmo
-    if (m_pres && m_selectedSlide >= 0 && m_selectedSlide < m_pres->slides.size()) {
-        const Slide& sl = m_pres->slides[m_selectedSlide];
+    if (m_pres && currentTarget().valid()) {
         float sz = gizmoSize();
-        QVector3D center(sl.posX, sl.posY, sl.posZ);
+        QVector3D center = currentTarget().pos();
         const char* labels[] = {"X","Y","Z"};
         painter.setFont(QFont("Arial", 10, QFont::Bold));
         for (int ax = 0; ax < 3; ++ax) {
@@ -767,18 +993,16 @@ void SlideEditor3D::mousePressEvent(QMouseEvent* e) {
     m_lastMouse = e->pos();
 
     if (e->button() == Qt::LeftButton) {
-        // 1. Check gizmo hits first (only when a slide is selected)
-        if (m_selectedSlide >= 0 && m_pres &&
-            m_selectedSlide < m_pres->slides.size()) {
-            Slide& sl = m_pres->slides[m_selectedSlide];
-
+        // 1. Check gizmo hits first (only when something is selected)
+        GizmoTarget gt = currentTarget();
+        if (gt.valid()) {
             int gizmoAx = (m_gizmoMode == GizmoMode::Move)
-                ? hitMoveAxis(e->pos()) : hitRotateAxis(e->pos());
+                ? hitMoveAxis(e->pos(), gt) : hitRotateAxis(e->pos(), gt);
 
             if (gizmoAx >= 0) {
                 m_gizmoAxis      = gizmoAx;
-                m_gizmoDragPos0  = {sl.posX, sl.posY, sl.posZ};
-                m_gizmoDragRot0  = getSlideRot(sl, gizmoAx);
+                m_gizmoDragPos0  = gt.pos();
+                m_gizmoDragRot0  = getRot(gt, gizmoAx);
                 m_gizmoDragPt0   = e->pos();
 
                 if (m_gizmoMode == GizmoMode::Move) {
@@ -798,14 +1022,25 @@ void SlideEditor3D::mousePressEvent(QMouseEvent* e) {
             }
         }
 
-        // 2. Slide pick
-        int hit = pickSlide(e->pos());
-        if (hit >= 0) {
-            m_selectedSlide = hit;
-            emit slideSelected(hit);
+        // 2. Pick: try both a slide and a world object, nearer-to-camera wins
+        float slideDist = 1e18f, woDist = 1e18f;
+        int slideHit = pickSlide(e->pos(), &slideDist);
+        int woHit    = pickWorldObject(e->pos(), &woDist);
+
+        if (slideHit < 0 && woHit < 0) {
+            m_orbiting = true;
+        } else if (woHit >= 0 && (slideHit < 0 || woDist < slideDist)) {
+            m_selKind          = SelectionKind::WorldObject;
+            m_selectedWorldObj = woHit;
+            m_selectedSlide    = -1;
+            emit worldObjectSelected(woHit);
             update();
         } else {
-            m_orbiting = true;
+            m_selKind          = SelectionKind::Slide;
+            m_selectedSlide    = slideHit;
+            m_selectedWorldObj = -1;
+            emit slideSelected(slideHit);
+            update();
         }
     } else if (e->button() == Qt::RightButton) {
         m_panning = true;
@@ -817,45 +1052,47 @@ void SlideEditor3D::mouseMoveEvent(QMouseEvent* e) {
     m_lastMouse  = e->pos();
 
     // Gizmo drag
-    if (m_gizmoAxis >= 0 && m_selectedSlide >= 0 && m_pres &&
-        m_selectedSlide < m_pres->slides.size()) {
-        Slide& sl = m_pres->slides[m_selectedSlide];
+    if (m_gizmoAxis >= 0) {
+        GizmoTarget gt = currentTarget();
+        if (gt.valid()) {
+            bool snap = (e->modifiers() & Qt::ControlModifier);
 
-        bool snap = (e->modifiers() & Qt::ControlModifier);
-
-        if (m_gizmoMode == GizmoMode::Move) {
-            QVector3D ro, rd;
-            getRay(e->pos(), ro, rd);
-            QVector3D hit;
-            if (rayPlane(ro, rd, m_gizmoDragPlaneN, m_gizmoDragPos0, hit)) {
-                QVector3D diff = hit - m_gizmoDragHit0;
-                float mv = QVector3D::dotProduct(diff, AXIS_VEC[m_gizmoAxis]);
-                QVector3D np = m_gizmoDragPos0 + AXIS_VEC[m_gizmoAxis] * mv;
-                if (snap) {
-                    const float GRID = 100.f;
-                    np.setX(std::roundf(np.x() / GRID) * GRID);
-                    np.setY(std::roundf(np.y() / GRID) * GRID);
-                    np.setZ(std::roundf(np.z() / GRID) * GRID);
+            if (m_gizmoMode == GizmoMode::Move) {
+                QVector3D ro, rd;
+                getRay(e->pos(), ro, rd);
+                QVector3D hit;
+                if (rayPlane(ro, rd, m_gizmoDragPlaneN, m_gizmoDragPos0, hit)) {
+                    QVector3D diff = hit - m_gizmoDragHit0;
+                    float mv = QVector3D::dotProduct(diff, AXIS_VEC[m_gizmoAxis]);
+                    QVector3D np = m_gizmoDragPos0 + AXIS_VEC[m_gizmoAxis] * mv;
+                    if (snap) {
+                        const float GRID = 100.f;
+                        np.setX(std::roundf(np.x() / GRID) * GRID);
+                        np.setY(std::roundf(np.y() / GRID) * GRID);
+                        np.setZ(std::roundf(np.z() / GRID) * GRID);
+                    }
+                    *gt.px = np.x(); *gt.py = np.y(); *gt.pz = np.z();
+                    if (m_selKind == SelectionKind::Slide)
+                        m_dirty.insert(m_pres->slides[m_selectedSlide].id);
+                    emit presentationModified();
+                    update();
                 }
-                sl.posX = np.x(); sl.posY = np.y(); sl.posZ = np.z();
-                m_dirty.insert(sl.id);
+            } else {
+                // Rotation: horizontal drag for Y/Z, vertical drag for X
+                int dx = e->pos().x() - m_gizmoDragPt0.x();
+                int dy = e->pos().y() - m_gizmoDragPt0.y();
+                float pixDelta = (m_gizmoAxis == 0) ? float(dy) : float(dx);
+                float newRot = m_gizmoDragRot0 + pixDelta * 0.5f;
+                if (snap) {
+                    const float SNAP_DEG = 45.f;
+                    newRot = std::roundf(newRot / SNAP_DEG) * SNAP_DEG;
+                }
+                setRot(gt, m_gizmoAxis, newRot);
+                if (m_selKind == SelectionKind::Slide)
+                    m_dirty.insert(m_pres->slides[m_selectedSlide].id);
                 emit presentationModified();
                 update();
             }
-        } else {
-            // Rotation: horizontal drag for Y/Z, vertical drag for X
-            int dx = e->pos().x() - m_gizmoDragPt0.x();
-            int dy = e->pos().y() - m_gizmoDragPt0.y();
-            float pixDelta = (m_gizmoAxis == 0) ? float(dy) : float(dx);
-            float newRot = m_gizmoDragRot0 + pixDelta * 0.5f;
-            if (snap) {
-                const float SNAP_DEG = 45.f;
-                newRot = std::roundf(newRot / SNAP_DEG) * SNAP_DEG;
-            }
-            setSlideRot(sl, m_gizmoAxis, newRot);
-            m_dirty.insert(sl.id);
-            emit presentationModified();
-            update();
         }
         return;
     }

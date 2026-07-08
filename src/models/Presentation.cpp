@@ -37,3 +37,10 @@ void Presentation::moveSlide(int from, int to) {
         modified = true;
     }
 }
+
+void Presentation::removeWorldObjectAt(int index) {
+    if (index >= 0 && index < worldObjects.size()) {
+        worldObjects.removeAt(index);
+        modified = true;
+    }
+}

@@ -252,10 +252,22 @@ void MainWindow::connectSignals() {
 
     connect(m_editorArea, &EditorArea::presentationModified, this, &MainWindow::onPresentationModified);
     connect(m_editorArea, &EditorArea::elementSelected,      this, &MainWindow::onElementSelected);
+    connect(m_editorArea, &EditorArea::worldObjectSelected,  this, &MainWindow::onWorldObjectSelected);
 
     connect(m_propPanel,  &PropertiesPanel::slideModified,               this, &MainWindow::onPresentationModified);
     connect(m_propPanel,  &PropertiesPanel::elementModified,             this, &MainWindow::onPresentationModified);
     connect(m_propPanel,  &PropertiesPanel::presentationSettingsModified, this, &MainWindow::onPresentationModified);
+    connect(m_propPanel,  &PropertiesPanel::worldObjectModified,          this, &MainWindow::onPresentationModified);
+    connect(m_propPanel,  &PropertiesPanel::worldObjectDeleteRequested, this, [this]() {
+        // Mirrors SlideEditor2D::deleteSelectedElement()'s convention: the
+        // mutation already happened (in PropertiesPanel), so this just rides
+        // the normal debounced undo path rather than an explicit pushUndoStep.
+        m_selectedWorldObj = -1;
+        onPresentationModified();
+        // Resyncs SlideEditor3D's own selection state, which may otherwise
+        // keep pointing at a stale/shifted index after the removal.
+        onSlideSelected(m_selectedSlide);
+    });
 
     connect(m_formatBar,  &FormatBar::modified,              this, &MainWindow::onPresentationModified);
     connect(m_formatBar,  &FormatBar::formatPainterRequested, this, &MainWindow::onFormatPainterRequested);
@@ -275,13 +287,15 @@ void MainWindow::openVariableManager() {
 }
 
 void MainWindow::onSlideSelected(int index) {
-    m_selectedSlide = index;
-    m_selectedElem  = -1;
+    m_selectedSlide     = index;
+    m_selectedElem      = -1;
+    m_selectedWorldObj  = -1;
     // m_propPanel must be updated before m_editorArea: SlideEditor2D::setSlide()
     // synchronously emits elementSelected(-1), which MainWindow::onElementSelected
     // forwards straight into PropertiesPanel::setSelectedElement(). If m_propPanel
     // still pointed at the old Presentation at that moment, it would dereference it.
     m_propPanel->setSlide(m_presentation, index);
+    m_propPanel->setSelectedWorldObject(-1);
     m_editorArea->setPresentation(m_presentation, index);
     m_slidePanel->setSelectedSlide(index);
     m_formatBar->setContext(m_presentation, index, -1);
@@ -342,9 +356,11 @@ void MainWindow::onPresentationModified() {
     updateTitle();
     m_slidePanel->setPresentation(m_presentation);
     m_editorArea->refresh();
-    // Refresh PropertiesPanel if an element is selected
+    // Refresh PropertiesPanel if an element or world object is selected
     if (m_selectedElem >= 0)
         m_propPanel->setSelectedElement(m_selectedElem);
+    if (m_selectedWorldObj >= 0)
+        m_propPanel->setSelectedWorldObject(m_selectedWorldObj);
 
     // Snapshot for undo: batched/debounced so continuous edits (dragging an
     // element, holding a spinbox arrow, ...) collapse into a single undo step.
@@ -439,8 +455,21 @@ void MainWindow::redo() {
 
 void MainWindow::onElementSelected(int elemIndex) {
     m_selectedElem = elemIndex;
+    if (elemIndex >= 0) {
+        m_selectedWorldObj = -1;
+        m_propPanel->setSelectedWorldObject(-1);
+    }
     m_propPanel->setSelectedElement(elemIndex);
     m_formatBar->setContext(m_presentation, m_selectedSlide, elemIndex);
+}
+
+void MainWindow::onWorldObjectSelected(int index) {
+    m_selectedWorldObj = index;
+    if (index >= 0) {
+        m_selectedElem = -1;
+        m_propPanel->setSelectedElement(-1);
+    }
+    m_propPanel->setSelectedWorldObject(index);
 }
 
 void MainWindow::refreshAll() {

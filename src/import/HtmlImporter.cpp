@@ -150,6 +150,48 @@ static QStringList extractStepBlocks(const QString& html) {
     return out;
 }
 
+// Same bracket-depth <div>/</div> matching as extractStepBlocks(), generalized
+// to any class name — used for "world-object" divs, which sit as siblings of
+// .step divs rather than nested inside them.
+static QStringList extractDivBlocksByClass(const QString& html, const QString& className) {
+    QStringList out;
+    QString marker = "<div class=\"" + className + "\"";
+    int pos = 0;
+    while (true) {
+        int start = html.indexOf(marker, pos);
+        if (start < 0) break;
+
+        int openingTagEnd = html.indexOf('>', start);
+        if (openingTagEnd < 0) { pos = start + 1; continue; }
+
+        int depth = 0, i = start;
+        bool foundClosing = false;
+        while (i < html.size()) {
+            if (i + 4 <= html.size() && html.mid(i, 4) == "<div") {
+                if (i + 4 < html.size()) {
+                    QChar next = html[i + 4];
+                    if (next == ' ' || next == '>' || next == '\n' || next == '\t') {
+                        ++depth; i += 4; continue;
+                    }
+                }
+            }
+            if (i + 6 <= html.size() && html.mid(i, 6) == "</div>") {
+                --depth;
+                if (depth <= 0) {
+                    out.append(html.mid(start, i + 6 - start));
+                    pos = i + 6;
+                    foundClosing = true;
+                    break;
+                }
+                i += 6; continue;
+            }
+            ++i;
+        }
+        if (!foundClosing) break;
+    }
+    return out;
+}
+
 // Read a CSS block for a given selector, e.g. "body" or ".step"
 static QString cssBlock(const QString& css, const QString& selector) {
     QRegularExpression re(QRegularExpression::escape(selector) +
@@ -960,6 +1002,50 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
         errorMsg = "No slides loaded.";
         delete pres;
         return nullptr;
+    }
+
+    // ── Parse world-object blocks ─────────────────────────────────────────────
+    static const QString kAssetsModelsPrefix = QStringLiteral("assets/models/");
+    for (const QString& block : extractDivBlocksByClass(html, "world-object")) {
+        int tagEnd = block.indexOf('>');
+        if (tagEnd < 0) continue;
+        QString tag = block.left(tagEnd + 1);
+
+        WorldObject w;
+        QString wid = attrVal(tag, "data-wid");
+        if (!wid.isEmpty()) w.id = wid;
+
+        QString style = attrVal(tag, "style");
+
+        QRegularExpression reT(R"(translate3d\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px\s*\))");
+        auto mT = reT.match(style);
+        if (mT.hasMatch()) {
+            w.posX =  mT.captured(1).toFloat();
+            w.posY = -mT.captured(2).toFloat(); // undo worldObjectToHtml()'s Y negation
+            w.posZ =  mT.captured(3).toFloat();
+        }
+        QRegularExpression reRX(R"(rotateX\(\s*(-?[\d.]+)deg\s*\))");
+        QRegularExpression reRY(R"(rotateY\(\s*(-?[\d.]+)deg\s*\))");
+        QRegularExpression reRZ(R"(rotateZ\(\s*(-?[\d.]+)deg\s*\))");
+        if (auto m = reRX.match(style); m.hasMatch()) w.rotX = m.captured(1).toFloat();
+        if (auto m = reRY.match(style); m.hasMatch()) w.rotY = m.captured(1).toFloat();
+        if (auto m = reRZ.match(style); m.hasMatch()) w.rotZ = m.captured(1).toFloat();
+
+        QRegularExpression reS(R"(\bscale\(\s*(-?[\d.]+)\s*\))");
+        if (auto m = reS.match(style); m.hasMatch()) w.scale = m.captured(1).toFloat();
+
+        QString opaStr = cssProp(style, "opacity");
+        if (!opaStr.isEmpty()) w.opacity = opaStr.toFloat();
+
+        QRegularExpression reSrc(R"RX(<model-viewer\s+src="([^"]*)")RX",
+                                  QRegularExpression::DotMatchesEverythingOption);
+        auto mSrc = reSrc.match(block);
+        QString src = mSrc.hasMatch() ? mSrc.captured(1) : QString();
+        w.modelPath = src.startsWith(kAssetsModelsPrefix)
+            ? QDir(assetsDir).filePath("models/" + src.mid(kAssetsModelsPrefix.size()))
+            : src;
+
+        pres->worldObjects.append(w);
     }
 
     return pres;

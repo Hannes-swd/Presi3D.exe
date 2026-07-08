@@ -16,6 +16,8 @@
 #include <QColorDialog>
 #include <QToolButton>
 #include <QInputDialog>
+#include <QFileDialog>
+#include <QFileInfo>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -104,11 +106,13 @@ PropertiesPanel::PropertiesPanel(QWidget* parent) : QWidget(parent) {
     buildElementGroup();
     buildTableGroup();
     buildChartGroup();
+    buildWorldObjGroup();
     vbox->addWidget(m_projectGroup);
     vbox->addWidget(m_slideGroup);
     vbox->addWidget(m_elemGroup);
     vbox->addWidget(m_tableGroup);
     vbox->addWidget(m_chartGroup);
+    vbox->addWidget(m_worldObjGroup);
     vbox->addStretch();
 
     scroll->setWidget(inner);
@@ -586,6 +590,22 @@ void PropertiesPanel::setSelectedTableCell(int row, int col) {
     bool valid = row >= 0 && col >= 0;
     m_cellSection->setVisible(valid);
     if (valid) refreshTableCell();
+}
+
+void PropertiesPanel::setSelectedWorldObject(int index) {
+    m_worldObjIdx = index;
+    if (index >= 0) {
+        m_slideGroup->setVisible(false);
+        m_elemGroup->setVisible(false);
+        m_tableGroup->setVisible(false);
+        m_chartGroup->setVisible(false);
+        m_worldObjGroup->setVisible(true);
+        m_worldObjGroup->setEnabled(true);
+        refreshWorldObj();
+    } else {
+        m_worldObjGroup->setVisible(false);
+        m_worldObjGroup->setEnabled(false);
+    }
 }
 
 // ── Visibility section ────────────────────────────────────────────────────────
@@ -1214,4 +1234,164 @@ void PropertiesPanel::refreshChart() {
     m_chartTypeLabel->setText(ChartRenderer::typeName(e->chartData.type));
     m_chartTitleLabel->setText(e->chartData.title.isEmpty()
                                ? "(no title)" : e->chartData.title);
+}
+
+// ── World object group ──────────────────────────────────────────────────────
+
+void PropertiesPanel::buildWorldObjGroup() {
+    m_worldObjGroup = new QGroupBox("World Object", this);
+    auto* gvbox = new QVBoxLayout(m_worldObjGroup);
+    gvbox->setContentsMargins(4, 8, 4, 4);
+    gvbox->setSpacing(2);
+
+    // ── Model (open) ────────────────────────────────────────────────────────
+    auto secModel = makeSection("Model", true, m_worldObjGroup);
+    auto* formModel = makeForm(secModel.content);
+
+    m_woModelLabel = new QLabel(secModel.content);
+    m_woModelLabel->setWordWrap(true);
+    m_woModelLabel->setStyleSheet("color:#374151;");
+    formModel->addRow("File:", m_woModelLabel);
+
+    m_woChangeModelBtn = new QPushButton("Change Model...", secModel.content);
+    formModel->addRow("", m_woChangeModelBtn);
+
+    gvbox->addWidget(secModel.outer);
+
+    // ── Transform (open) ───────────────────────────────────────────────────
+    auto secXform = makeSection("Transform", true, m_worldObjGroup);
+    auto* formXform = makeForm(secXform.content);
+
+    m_woPosX = makeSpin(-99999, 99999, 100);
+    m_woPosY = makeSpin(-99999, 99999, 100);
+    m_woPosZ = makeSpin(-99999, 99999, 100);
+    formXform->addRow("X:", m_woPosX);
+    formXform->addRow("Y:", m_woPosY);
+    formXform->addRow("Z:", m_woPosZ);
+
+    m_woRotX = makeSpin(-360, 360, 5);
+    m_woRotY = makeSpin(-360, 360, 5);
+    m_woRotZ = makeSpin(-360, 360, 5);
+    formXform->addRow("Rot X:", m_woRotX);
+    formXform->addRow("Rot Y:", m_woRotY);
+    formXform->addRow("Rot Z:", m_woRotZ);
+
+    m_woScale = makeSpin(0.01, 1000, 0.1);
+    m_woScale->setDecimals(2);
+    formXform->addRow("Scale:", m_woScale);
+
+    gvbox->addWidget(secXform.outer);
+
+    // ── Appearance (open) ──────────────────────────────────────────────────
+    auto secApp = makeSection("Appearance", true, m_worldObjGroup);
+    auto* formApp = makeForm(secApp.content);
+
+    m_woOpacity = makeSpin(0.0, 1.0, 0.05);
+    m_woOpacity->setDecimals(2);
+    formApp->addRow("Opacity:", m_woOpacity);
+
+    gvbox->addWidget(secApp.outer);
+
+    m_woDeleteBtn = new QPushButton("Delete World Object", m_worldObjGroup);
+    m_woDeleteBtn->setStyleSheet(
+        "QPushButton { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; "
+        "              border-radius:4px; padding:4px 8px; }"
+        "QPushButton:hover { background:#fee2e2; }");
+    gvbox->addWidget(m_woDeleteBtn);
+
+    m_worldObjGroup->setEnabled(false);
+    m_worldObjGroup->setVisible(false);
+
+    connect(m_woChangeModelBtn, &QPushButton::clicked, this, &PropertiesPanel::onWoChangeModelClicked);
+    connect(m_woDeleteBtn,      &QPushButton::clicked, this, &PropertiesPanel::onWoDeleteClicked);
+    connect(m_woPosX, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoPosChanged(); });
+    connect(m_woPosY, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoPosChanged(); });
+    connect(m_woPosZ, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoPosChanged(); });
+    connect(m_woRotX, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoRotChanged(); });
+    connect(m_woRotY, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoRotChanged(); });
+    connect(m_woRotZ, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoRotChanged(); });
+    connect(m_woScale, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoScaleChanged(); });
+    connect(m_woOpacity, &QDoubleSpinBox::valueChanged, this, [this](double) { onWoOpacityChanged(); });
+}
+
+void PropertiesPanel::refreshWorldObj() {
+    WorldObject* w = (m_pres && m_worldObjIdx >= 0 && m_worldObjIdx < m_pres->worldObjects.size())
+                     ? &m_pres->worldObjects[m_worldObjIdx] : nullptr;
+    if (!w) { m_worldObjGroup->setEnabled(false); return; }
+    m_worldObjGroup->setEnabled(true);
+    m_updating = true;
+    m_woModelLabel->setText(QFileInfo(w->modelPath).fileName());
+    m_woModelLabel->setToolTip(w->modelPath);
+    m_woPosX->setValue(w->posX);
+    m_woPosY->setValue(w->posY);
+    m_woPosZ->setValue(w->posZ);
+    m_woRotX->setValue(w->rotX);
+    m_woRotY->setValue(w->rotY);
+    m_woRotZ->setValue(w->rotZ);
+    m_woScale->setValue(w->scale);
+    m_woOpacity->setValue(w->opacity);
+    m_updating = false;
+}
+
+void PropertiesPanel::onWoPosChanged() {
+    if (m_updating) return;
+    WorldObject* w = (m_pres && m_worldObjIdx >= 0 && m_worldObjIdx < m_pres->worldObjects.size())
+                     ? &m_pres->worldObjects[m_worldObjIdx] : nullptr;
+    if (!w) return;
+    w->posX = float(m_woPosX->value());
+    w->posY = float(m_woPosY->value());
+    w->posZ = float(m_woPosZ->value());
+    emit worldObjectModified();
+}
+
+void PropertiesPanel::onWoRotChanged() {
+    if (m_updating) return;
+    WorldObject* w = (m_pres && m_worldObjIdx >= 0 && m_worldObjIdx < m_pres->worldObjects.size())
+                     ? &m_pres->worldObjects[m_worldObjIdx] : nullptr;
+    if (!w) return;
+    w->rotX = float(m_woRotX->value());
+    w->rotY = float(m_woRotY->value());
+    w->rotZ = float(m_woRotZ->value());
+    emit worldObjectModified();
+}
+
+void PropertiesPanel::onWoScaleChanged() {
+    if (m_updating) return;
+    WorldObject* w = (m_pres && m_worldObjIdx >= 0 && m_worldObjIdx < m_pres->worldObjects.size())
+                     ? &m_pres->worldObjects[m_worldObjIdx] : nullptr;
+    if (!w) return;
+    w->scale = float(m_woScale->value());
+    emit worldObjectModified();
+}
+
+void PropertiesPanel::onWoOpacityChanged() {
+    if (m_updating) return;
+    WorldObject* w = (m_pres && m_worldObjIdx >= 0 && m_worldObjIdx < m_pres->worldObjects.size())
+                     ? &m_pres->worldObjects[m_worldObjIdx] : nullptr;
+    if (!w) return;
+    w->opacity = float(m_woOpacity->value());
+    emit worldObjectModified();
+}
+
+void PropertiesPanel::onWoChangeModelClicked() {
+    WorldObject* w = (m_pres && m_worldObjIdx >= 0 && m_worldObjIdx < m_pres->worldObjects.size())
+                     ? &m_pres->worldObjects[m_worldObjIdx] : nullptr;
+    if (!w) return;
+    QString path = QFileDialog::getOpenFileName(
+        this, "Select 3D Model", QFileInfo(w->modelPath).absolutePath(),
+        "glTF Models (*.gltf *.glb)");
+    if (path.isEmpty()) return;
+    w->modelPath = path;
+    m_woModelLabel->setText(QFileInfo(path).fileName());
+    m_woModelLabel->setToolTip(path);
+    emit worldObjectModified();
+}
+
+void PropertiesPanel::onWoDeleteClicked() {
+    if (!m_pres || m_worldObjIdx < 0 || m_worldObjIdx >= m_pres->worldObjects.size()) return;
+    m_pres->removeWorldObjectAt(m_worldObjIdx);
+    m_worldObjIdx = -1;
+    m_worldObjGroup->setVisible(false);
+    m_worldObjGroup->setEnabled(false);
+    emit worldObjectDeleteRequested();
 }

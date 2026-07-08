@@ -22,11 +22,14 @@ public:
     void setSlide(Presentation* pres, int slideIndex);
     void setSelectedElement(int elemIndex);
     void setSelectedTableCell(int row, int col);
+    void setSelectedWorldObject(int index);
 
 signals:
     void slideModified();
     void elementModified();
     void presentationSettingsModified();
+    void worldObjectModified();
+    void worldObjectDeleteRequested();
 
 private slots:
     void onTableBorderColorClicked();
@@ -70,12 +73,20 @@ private slots:
     void onElemAnimDelayChanged(double);
     void onElemAnimDurationChanged(double);
 
+    void onWoPosChanged();
+    void onWoRotChanged();
+    void onWoScaleChanged();
+    void onWoOpacityChanged();
+    void onWoChangeModelClicked();
+    void onWoDeleteClicked();
+
 private:
     void buildProjectGroup();
     void buildSlideGroup();
     void buildElementGroup();
     void buildTableGroup();
     void buildChartGroup();
+    void buildWorldObjGroup();
     void rebuildVisibilitySection();
     void refreshProject();
     void refreshSlide();
@@ -83,6 +94,7 @@ private:
     void refreshTable();
     void refreshTableCell();
     void refreshChart();
+    void refreshWorldObj();
     void updateColorButton(QPushButton*, const QColor&);
 
     Presentation* m_pres       = nullptr;
@@ -90,6 +102,7 @@ private:
     int           m_elemIdx    = -1;
     int           m_cellRow    = -1;
     int           m_cellCol    = -1;
+    int           m_worldObjIdx = -1;
     bool          m_updating   = false;
 
     // Project settings
@@ -177,4 +190,18 @@ private:
     QCheckBox*      m_cellBoldChk       = nullptr;
     QCheckBox*      m_cellItalicChk     = nullptr;
     QComboBox*      m_cellAlignCombo    = nullptr;
+
+    // World object properties
+    QGroupBox*      m_worldObjGroup     = nullptr;
+    QLabel*         m_woModelLabel      = nullptr;
+    QPushButton*    m_woChangeModelBtn  = nullptr;
+    QDoubleSpinBox* m_woPosX            = nullptr;
+    QDoubleSpinBox* m_woPosY            = nullptr;
+    QDoubleSpinBox* m_woPosZ            = nullptr;
+    QDoubleSpinBox* m_woRotX            = nullptr;
+    QDoubleSpinBox* m_woRotY            = nullptr;
+    QDoubleSpinBox* m_woRotZ            = nullptr;
+    QDoubleSpinBox* m_woScale           = nullptr;
+    QDoubleSpinBox* m_woOpacity         = nullptr;
+    QPushButton*    m_woDeleteBtn       = nullptr;
 };

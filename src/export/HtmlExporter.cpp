@@ -12,6 +12,9 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QUrl>
+#define TINYGLTF_NO_STB_IMAGE_WRITE
+#include "tiny_gltf.h"
 
 // Bundled impress.js — embedded via Qt resource system (resources/icons.qrc)
 static const char* IMPRESS_JS_SRC = ":/impress.js";
@@ -35,6 +38,7 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
 
     QStringList imgErrors;
     copyImages(pres, assetsPath, imgErrors);
+    copyModels(pres, assetsPath, imgErrors);
 
     // styles.css
     {
@@ -185,6 +189,9 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
     if (hasFormulaElement(pres))
         out << "  <script id=\"MathJax-script\" async "
                "src=\"https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js\"></script>\n";
+    if (!pres.worldObjects.isEmpty())
+        out << "  <script type=\"module\" "
+               "src=\"https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js\"></script>\n";
     out << "</head>\n"
         << "<body>\n\n"
         << "<div id=\"impress\"\n"
@@ -198,6 +205,9 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
 
     for (int i = 0; i < pres.slides.size(); ++i)
         out << slideToHtml(pres.slides[i], i + 1, pres.slides.size(), uuidToHtmlId, uuidToVisString, pres.variables) << "\n\n";
+
+    for (const WorldObject& w : pres.worldObjects)
+        out << worldObjectToHtml(w) << "\n\n";
 
     out << "</div>\n\n"
         << "<script src=\"impress.js\"></script>\n"
@@ -1286,4 +1296,88 @@ bool HtmlExporter::copyImages(const Presentation& pres,
         }
     }
     return ok;
+}
+
+// Copies each WorldObject's model file into its own assets/models/<id>/
+// subfolder (a per-object subfolder avoids filename collisions between
+// different glTF files that happen to share a sidecar name like "scene.bin").
+// For .gltf files, any buffer/image URIs referenced by the file are copied
+// alongside it too (data: URIs are embedded and skipped); .glb files are a
+// single self-contained blob and need only the one copy.
+bool HtmlExporter::copyModels(const Presentation& pres,
+                               const QString& assetsDir, QStringList& errors) {
+    bool ok = true;
+    for (const auto& w : pres.worldObjects) {
+        if (w.modelPath.isEmpty()) continue;
+        QFileInfo fi(w.modelPath);
+        if (!fi.exists()) {
+            errors << "Not found: " + w.modelPath; ok = false; continue;
+        }
+        QString destDir = QDir(assetsDir).filePath("models/" + w.id);
+        QDir().mkpath(destDir);
+        QString destFile = QDir(destDir).filePath(fi.fileName());
+        if (!QFile::exists(destFile) && !QFile::copy(w.modelPath, destFile)) {
+            errors << "Copy failed: " + w.modelPath; ok = false; continue;
+        }
+
+        if (fi.suffix().compare("gltf", Qt::CaseInsensitive) != 0) continue;
+
+        tinygltf::TinyGLTF loader;
+        tinygltf::Model model;
+        std::string gltfErr, gltfWarn;
+        if (!loader.LoadASCIIFromFile(&model, &gltfErr, &gltfWarn, w.modelPath.toStdString()))
+            continue; // already reported as a load error elsewhere; nothing more to copy
+
+        auto copyUri = [&](const std::string& uriStd) {
+            if (uriStd.empty()) return;
+            QString uri = QString::fromStdString(uriStd);
+            if (uri.startsWith("data:")) return; // embedded, nothing to copy
+            QString decoded = QUrl::fromPercentEncoding(uri.toUtf8());
+            QString srcPath = QDir(fi.absolutePath()).filePath(decoded);
+            QFileInfo srcFi(srcPath);
+            if (!srcFi.exists()) {
+                errors << "Not found: " + srcPath; ok = false; return;
+            }
+            QString dstPath = QDir(destDir).filePath(decoded);
+            QDir().mkpath(QFileInfo(dstPath).absolutePath());
+            if (!QFile::exists(dstPath) && !QFile::copy(srcPath, dstPath)) {
+                errors << "Copy failed: " + srcPath; ok = false;
+            }
+        };
+        for (const auto& buf : model.buffers) copyUri(buf.uri);
+        for (const auto& img : model.images)  copyUri(img.uri);
+    }
+    return ok;
+}
+
+// WorldObjects are emitted as plain (non-.step) sibling divs inside #impress
+// — impress.js's init() moves ALL of #impress's direct children into the
+// shared navigation canvas, so this div rides the same camera transform as
+// the slides without impress.js needing to know about it. Since it's outside
+// impress.js's own per-step transform machinery, the transform is written
+// out literally here; the Y-axis negation mirrors slideToHtml()'s data-y
+// convention so the object sits in the same coordinate space as the slides.
+QString HtmlExporter::worldObjectToHtml(const WorldObject& w) {
+    QString html;
+    QTextStream out(&html);
+
+    QFileInfo fi(w.modelPath);
+    QString src = "assets/models/" + w.id + "/" + fi.fileName();
+
+    QString xform = QString(
+        "translate(-50%,-50%) translate3d(%1px,%2px,%3px) "
+        "rotateX(%4deg) rotateY(%5deg) rotateZ(%6deg) scale(%7)")
+        .arg(w.posX).arg(-w.posY).arg(w.posZ)
+        .arg(w.rotX).arg(w.rotY).arg(w.rotZ)
+        .arg(w.scale);
+
+    out << "  <div class=\"world-object\" data-wid=\"" << w.id << "\"\n"
+        << "       style=\"transform:" << xform << ";opacity:" << w.opacity
+        << ";width:600px;height:600px;transform-style:preserve-3d;\">\n"
+        << "    <model-viewer src=\"" << src.toHtmlEscaped() << "\"\n"
+        << "                  camera-controls=\"false\" auto-rotate=\"false\" disable-zoom\n"
+        << "                  interaction-prompt=\"none\" style=\"width:100%;height:100%;\">\n"
+        << "    </model-viewer>\n"
+        << "  </div>";
+    return html;
 }

@@ -8,6 +8,7 @@
 #include "dialogs/InsertButtonDialog.h"
 #include "dialogs/InsertCheckboxDialog.h"
 #include "dialogs/InsertSliderDialog.h"
+#include "dialogs/InsertWorldObjectDialog.h"
 #include "dialogs/ShapePickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -181,6 +182,13 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnGizmoRotate = mkGizmoBtn("3d_rotation", "Rotate [E]", "Rotate slide in 3D (drag X/Y/Z rings)");
     m_btnGizmoMove->setChecked(true);
 
+    gRow->addSpacing(12);
+    m_btnInsertWorldObj = new QPushButton(QIcon(":/icons/hub.svg"), "Insert Object", m_gizmoToolbar);
+    m_btnInsertWorldObj->setIconSize(QSize(16, 16));
+    m_btnInsertWorldObj->setToolTip("Insert a free-floating 3D model (.gltf/.glb)");
+    m_btnInsertWorldObj->setFixedWidth(130);
+    gRow->addWidget(m_btnInsertWorldObj);
+
     gRow->addStretch();
 
     // Camera distance control
@@ -291,6 +299,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         m_btnGizmoRotate->setChecked(true);
         m_editor3D->setGizmoMode(SlideEditor3D::GizmoMode::Rotate);
     });
+    connect(m_btnInsertWorldObj, &QPushButton::clicked, this, [this]() {
+        InsertWorldObjectDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted && !dlg.modelPath().isEmpty())
+            m_editor3D->addWorldObject(dlg.modelPath());
+    });
 
     connect(m_editor2D, &SlideEditor2D::presentationModified,
             this, &EditorArea::presentationModified);
@@ -306,6 +319,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_editor3D, &SlideEditor3D::slideSelected, this, [this](int /*idx*/) {
         // Properties panel refresh is handled via presentationModified
     });
+    connect(m_editor3D, &SlideEditor3D::worldObjectSelected,
+            this, &EditorArea::worldObjectSelected);
     connect(m_editor3D, &SlideEditor3D::distanceChanged, this, [this](float d) {
         QSignalBlocker blk(m_distanceSpin);
         m_distanceSpin->setValue(d);

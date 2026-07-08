@@ -32,4 +32,8 @@ private:
     static bool    copyImages(const Presentation& pres,
                               const QString& assetsDir,
                               QStringList& errors);
+    static bool    copyModels(const Presentation& pres,
+                              const QString& assetsDir,
+                              QStringList& errors);
+    static QString worldObjectToHtml(const WorldObject& w);
 };

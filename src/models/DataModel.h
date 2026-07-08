@@ -142,9 +142,30 @@ struct Slide {
     Slide() : id(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 };
 
+// A free-floating 3D model in world space, not bound to any slide.
+// Only visible/editable in the 3D editor view; never a camera/navigation target.
+struct WorldObject {
+    QString id;
+    QString modelPath; // absolute path to a .gltf/.glb file
+
+    // World transform, same coordinate convention as Slide::posX/Y/Z, rotX/Y/Z
+    float posX = 0.f;
+    float posY = 0.f;
+    float posZ = 0.f;
+    float rotX = 0.f; // degrees
+    float rotY = 0.f;
+    float rotZ = 0.f;
+    float scale = 1.f; // multiplies the mesh's auto-normalization factor
+
+    float opacity = 1.f;
+
+    WorldObject() : id(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
+};
+
 class Presentation {
 public:
     QVector<Slide> slides;
+    QVector<WorldObject> worldObjects;
     QString        filePath;
     QString        exportPath; // last exported/imported folder
     bool           modified = false;
@@ -162,6 +183,7 @@ public:
     void removeSlide(int index);
     void duplicateSlide(int index);
     void moveSlide(int from, int to);
+    void removeWorldObjectAt(int index);
 
     Slide* slideAt(int index) {
         return (index >= 0 && index < slides.size()) ? &slides[index] : nullptr;
