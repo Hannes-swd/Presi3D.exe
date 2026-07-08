@@ -22,6 +22,7 @@
 #include <QDir>
 #include <QMenu>
 #include <QTextLayout>
+#include <QTransform>
 #include <QTextDocument>
 #include <QTextCursor>
 #include <QTextFormat>
@@ -993,10 +994,9 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     if (m_editingElem >= 0) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
         if (s && hitTest(e->position()) == m_editingElem) {
-            if (!m_editingShapeText)
-                m_cursorPos = textPositionAt(s->elements[m_editingElem], e->position());
+            m_cursorPos     = textPositionAt(s->elements[m_editingElem], e->position());
             m_selAnchor     = -1;
-            m_textSelecting = !m_editingShapeText;
+            m_textSelecting = true;
             m_cursorVisible = true;
             m_cursorBlink->start();
             update();
@@ -1351,6 +1351,12 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
                 return;
             }
         }
+        // No image, not a table: plain text on the clipboard becomes a new text box
+        QString txt = QApplication::clipboard()->text();
+        if (!txt.isEmpty()) {
+            pasteTextAsNewElement(txt);
+            return;
+        }
         pasteElement();
     } else if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) {
         deleteSelectedElement();
@@ -1477,6 +1483,19 @@ void SlideEditor2D::addTextElement() {
     if (!s) return;
     SlideElement e;
     e.type = SlideElement::Text; e.content = "Enter text";
+    e.x = 200; e.y = 200; e.width = 700; e.height = 90; e.fontSize = 36;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::pasteTextAsNewElement(const QString& text) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type = SlideElement::Text; e.content = text;
     e.x = 200; e.y = 200; e.width = 700; e.height = 90; e.fontSize = 36;
     s->elements.append(e);
     m_selectedElem = s->elements.size() - 1;
@@ -1860,7 +1879,7 @@ void SlideEditor2D::startTextEdit(int idx, QPointF clickPos) {
     m_editingShapeText = (elem.type == SlideElement::Shape);
 
     const QString& text = m_editingShapeText ? elem.shapeText : elem.content;
-    if (clickPos.x() >= 0 && !m_editingShapeText)
+    if (clickPos.x() >= 0)
         m_cursorPos = textPositionAt(elem, clickPos);
     else
         m_cursorPos = text.length();
@@ -2025,6 +2044,34 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
     // ── Ctrl+A ───────────────────────────────────────────────────────────
     if (ctrlOnly && ke->key() == Qt::Key_A) {
         m_selAnchor = 0; m_cursorPos = text.length(); update(); return;
+    }
+
+    // ── Ctrl+C / Ctrl+X: copy (or cut) the selected text to the clipboard ──
+    if (ctrlOnly && (ke->key() == Qt::Key_C || ke->key() == Qt::Key_X)) {
+        if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) {
+            int lo = qMin(m_cursorPos, m_selAnchor);
+            int hi = qMax(m_cursorPos, m_selAnchor);
+            QApplication::clipboard()->setText(text.mid(lo, hi - lo));
+            if (ke->key() == Qt::Key_X) {
+                deleteSelection();
+                emit presentationModified();
+            }
+            update();
+        }
+        return;
+    }
+
+    // ── Ctrl+V: paste clipboard text into this field at the cursor ─────────
+    if (ctrlOnly && ke->key() == Qt::Key_V) {
+        QString clip = QApplication::clipboard()->text();
+        if (!clip.isEmpty()) {
+            if (m_selAnchor >= 0) deleteSelection();
+            text.insert(m_cursorPos, clip);
+            m_cursorPos += clip.length();
+            emit presentationModified();
+            update();
+        }
+        return;
     }
 
     // ── Navigation (Left / Right) ─────────────────────────────────────────
@@ -2384,15 +2431,31 @@ void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
 
 int SlideEditor2D::textPositionAt(const SlideElement& e, QPointF widgetPos) const {
     QRectF wr = elemToWidget(e);
+
+    // Undo rotation applied when drawing shape text (see drawTextCursor)
+    QPointF pos = widgetPos;
+    if (m_editingShapeText && e.rotation != 0.f) {
+        QPointF center = wr.center();
+        QTransform t;
+        t.translate(center.x(), center.y());
+        t.rotate(-double(e.rotation));
+        t.translate(-center.x(), -center.y());
+        pos = t.map(widgetPos);
+    }
+
     float sy = slideRect().height() / SLIDE_H_DEFAULT;
     QFont font = elemFont(e, sy);
-    QTextLayout layout(e.content, font);
-    buildLayout(layout, e, font, float(wr.width()));
+    const QString& text     = getEditText(e);
+    const QString& vAlignStr = m_editingShapeText ? QString("middle") : e.verticalAlignment;
+    const QString& alignStr  = m_editingShapeText ? QString("center") : QString();
 
-    float vOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
+    QTextLayout layout(text, font);
+    buildLayout(layout, e, font, float(wr.width()), alignStr);
+
+    float vOff = textVOff(layout, float(wr.height()), vAlignStr);
 
     // Adjust click position by vertical alignment offset
-    QPointF local = widgetPos - wr.topLeft();
+    QPointF local = pos - wr.topLeft();
     local.setY(local.y() - vOff);
 
     int bestLine = layout.lineCount() > 0 ? 0 : -1;

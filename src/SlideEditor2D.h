@@ -94,6 +94,7 @@ private:
                      const QPointF& curSlide, float origX, float origY,
                      float origW, float origH, bool constrain) const;
     void addImageFromPath(const QString& path, QPointF widgetPos = {-1,-1});
+    void pasteTextAsNewElement(const QString& text);
 
     // Drawing
     void drawElement(QPainter&, const SlideElement&, bool selected, bool isBeingEdited,
