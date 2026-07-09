@@ -123,6 +123,20 @@ static void addCone(QVector<QVector3D>& pts,
     }
 }
 
+static void addBox(QVector<QVector3D>& pts, const QVector3D& center, float halfSize) {
+    QVector3D c[8];
+    int i = 0;
+    for (float sx : {-1.f, 1.f})
+        for (float sy : {-1.f, 1.f})
+            for (float sz : {-1.f, 1.f})
+                c[i++] = center + QVector3D(sx, sy, sz) * halfSize;
+    static const int edges[12][2] = {
+        {0,1},{0,2},{0,4},{3,1},{3,2},{3,7},
+        {5,1},{5,4},{5,7},{6,2},{6,4},{6,7}
+    };
+    for (auto& e : edges) { pts.append(c[e[0]]); pts.append(c[e[1]]); }
+}
+
 static QVector3D ringPt(const QVector3D& c, int axis, float r, float a) {
     switch (axis) {
         case 0: return c + QVector3D(0,        r*cosf(a), r*sinf(a));
@@ -821,6 +835,26 @@ void SlideEditor3D::renderMoveGizmo(const GizmoTarget& t) {
     glEnable(GL_DEPTH_TEST);
 }
 
+void SlideEditor3D::renderScaleGizmo(const GizmoTarget& t) {
+    if (!t.valid() || !t.pscale) return;
+    float sz = gizmoSize();
+    QVector3D center = t.pos();
+    glDisable(GL_DEPTH_TEST);
+
+    for (int ax = 0; ax < 3; ++ax) {
+        QVector3D tip = center + AXIS_VEC[ax] * sz;
+
+        QVector<QVector3D> pts;
+        pts.append(center); pts.append(tip);
+        addBox(pts, tip, sz * 0.06f);
+
+        bool active = (m_gizmoAxis == ax);
+        drawLines(pts, active ? COLOR_HIGHLIGHT : AXIS_COLOR[ax], active ? 3.f : 2.f);
+    }
+
+    glEnable(GL_DEPTH_TEST);
+}
+
 void SlideEditor3D::renderRotateGizmo(const GizmoTarget& t) {
     if (!t.valid()) return;
     float sz = gizmoSize();
@@ -879,8 +913,10 @@ void SlideEditor3D::paintGL() {
         if (gt.valid()) {
             if (m_gizmoMode == GizmoMode::Move)
                 renderMoveGizmo(gt);
-            else
+            else if (m_gizmoMode == GizmoMode::Rotate)
                 renderRotateGizmo(gt);
+            else
+                renderScaleGizmo(gt);
         }
     }
     renderAxes();
@@ -892,12 +928,21 @@ void SlideEditor3D::paintGL() {
     // Mode indicator
     static const QPixmap moveIcon   = tintedIcon("open_with",   QColor(80,200,255), 14);
     static const QPixmap rotateIcon = tintedIcon("3d_rotation", QColor(255,200,80), 14);
-    const bool isMove = m_gizmoMode == GizmoMode::Move;
+    static const QPixmap scaleIcon  = tintedIcon("tune",        QColor(120,255,120), 14);
+    QColor modeColor  = m_gizmoMode == GizmoMode::Move   ? QColor(80,200,255)
+                       : m_gizmoMode == GizmoMode::Rotate ? QColor(255,200,80)
+                                                           : QColor(120,255,120);
+    const QPixmap& modeIcon = m_gizmoMode == GizmoMode::Move   ? moveIcon
+                             : m_gizmoMode == GizmoMode::Rotate ? rotateIcon
+                                                                 : scaleIcon;
+    QString modeLabel = m_gizmoMode == GizmoMode::Move   ? "Move [W]"
+                       : m_gizmoMode == GizmoMode::Rotate ? "Rotate [E]"
+                                                           : "Scale [R]";
     painter.fillRect(6, 6, 160, 20, QColor(0,0,0,100));
-    painter.drawPixmap(9, 9, isMove ? moveIcon : rotateIcon);
-    painter.setPen(isMove ? QColor(80,200,255) : QColor(255,200,80));
+    painter.drawPixmap(9, 9, modeIcon);
+    painter.setPen(modeColor);
     painter.setFont(QFont("Arial", 9));
-    painter.drawText(28, 20, isMove ? "Move [W]" : "Rotate [E]");
+    painter.drawText(28, 20, modeLabel);
 
     // Controls hint
     painter.setPen(QColor(200,200,200,160));
@@ -969,7 +1014,8 @@ void SlideEditor3D::paintGL() {
     }
 
     // Axis labels for gizmo
-    if (m_pres && currentTarget().valid()) {
+    if (m_pres && currentTarget().valid() &&
+        (m_gizmoMode != GizmoMode::Scale || currentTarget().pscale)) {
         float sz = gizmoSize();
         QVector3D center = currentTarget().pos();
         const char* labels[] = {"X","Y","Z"};
@@ -995,15 +1041,17 @@ void SlideEditor3D::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
         // 1. Check gizmo hits first (only when something is selected)
         GizmoTarget gt = currentTarget();
-        if (gt.valid()) {
-            int gizmoAx = (m_gizmoMode == GizmoMode::Move)
-                ? hitMoveAxis(e->pos(), gt) : hitRotateAxis(e->pos(), gt);
+        bool scaleAvailable = (m_gizmoMode != GizmoMode::Scale) || gt.pscale;
+        if (gt.valid() && scaleAvailable) {
+            int gizmoAx = (m_gizmoMode == GizmoMode::Rotate) ? hitRotateAxis(e->pos(), gt)
+                                                               : hitMoveAxis(e->pos(), gt);
 
             if (gizmoAx >= 0) {
-                m_gizmoAxis      = gizmoAx;
-                m_gizmoDragPos0  = gt.pos();
-                m_gizmoDragRot0  = getRot(gt, gizmoAx);
-                m_gizmoDragPt0   = e->pos();
+                m_gizmoAxis       = gizmoAx;
+                m_gizmoDragPos0   = gt.pos();
+                m_gizmoDragRot0   = getRot(gt, gizmoAx);
+                m_gizmoDragScale0 = gt.pscale ? *gt.pscale : 1.f;
+                m_gizmoDragPt0    = e->pos();
 
                 if (m_gizmoMode == GizmoMode::Move) {
                     // Choose drag plane: contains chosen axis, faces camera as much as possible
@@ -1077,7 +1125,7 @@ void SlideEditor3D::mouseMoveEvent(QMouseEvent* e) {
                     emit presentationModified();
                     update();
                 }
-            } else {
+            } else if (m_gizmoMode == GizmoMode::Rotate) {
                 // Rotation: horizontal drag for Y/Z, vertical drag for X
                 int dx = e->pos().x() - m_gizmoDragPt0.x();
                 int dy = e->pos().y() - m_gizmoDragPt0.y();
@@ -1090,6 +1138,19 @@ void SlideEditor3D::mouseMoveEvent(QMouseEvent* e) {
                 setRot(gt, m_gizmoAxis, newRot);
                 if (m_selKind == SelectionKind::Slide)
                     m_dirty.insert(m_pres->slides[m_selectedSlide].id);
+                emit presentationModified();
+                update();
+            } else if (gt.pscale) {
+                // Scale: dragging away from the gizmo center (right/up) grows it,
+                // toward the center (left/down) shrinks it. Exponential response
+                // so it feels proportional at both tiny and huge scales.
+                int dx = e->pos().x() - m_gizmoDragPt0.x();
+                int dy = e->pos().y() - m_gizmoDragPt0.y();
+                float pixDelta = float(dx - dy);
+                float newScale = m_gizmoDragScale0 * std::pow(1.01f, pixDelta);
+                if (snap) newScale = std::roundf(newScale * 10.f) / 10.f;
+                newScale = qBound(0.01f, newScale, 1000.f);
+                *gt.pscale = newScale;
                 emit presentationModified();
                 update();
             }
@@ -1133,6 +1194,7 @@ void SlideEditor3D::keyPressEvent(QKeyEvent* e) {
     switch (e->key()) {
         case Qt::Key_W: m_gizmoMode = GizmoMode::Move;   update(); break;
         case Qt::Key_E: m_gizmoMode = GizmoMode::Rotate; update(); break;
+        case Qt::Key_R: m_gizmoMode = GizmoMode::Scale;  update(); break;
         default: QOpenGLWidget::keyPressEvent(e);
     }
 }

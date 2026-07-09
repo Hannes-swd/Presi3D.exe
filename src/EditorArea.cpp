@@ -180,6 +180,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     };
     m_btnGizmoMove   = mkGizmoBtn("open_with",   "Move [W]",   "Move slide in 3D (drag X/Y/Z arrows)");
     m_btnGizmoRotate = mkGizmoBtn("3d_rotation", "Rotate [E]", "Rotate slide in 3D (drag X/Y/Z rings)");
+    m_btnGizmoScale  = mkGizmoBtn("tune",        "Scale [R]",  "Scale a 3D object (drag X/Y/Z handles)");
     m_btnGizmoMove->setChecked(true);
 
     gRow->addSpacing(12);
@@ -292,12 +293,20 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_btnGizmoMove, &QPushButton::clicked, this, [this]() {
         m_btnGizmoMove->setChecked(true);
         m_btnGizmoRotate->setChecked(false);
+        m_btnGizmoScale->setChecked(false);
         m_editor3D->setGizmoMode(SlideEditor3D::GizmoMode::Move);
     });
     connect(m_btnGizmoRotate, &QPushButton::clicked, this, [this]() {
         m_btnGizmoMove->setChecked(false);
         m_btnGizmoRotate->setChecked(true);
+        m_btnGizmoScale->setChecked(false);
         m_editor3D->setGizmoMode(SlideEditor3D::GizmoMode::Rotate);
+    });
+    connect(m_btnGizmoScale, &QPushButton::clicked, this, [this]() {
+        m_btnGizmoMove->setChecked(false);
+        m_btnGizmoRotate->setChecked(false);
+        m_btnGizmoScale->setChecked(true);
+        m_editor3D->setGizmoMode(SlideEditor3D::GizmoMode::Scale);
     });
     connect(m_btnInsertWorldObj, &QPushButton::clicked, this, [this]() {
         InsertWorldObjectDialog dlg(this);

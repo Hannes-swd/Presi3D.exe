@@ -65,6 +65,7 @@ private:
     // 3D gizmo toolbar
     QPushButton*     m_btnGizmoMove      = nullptr;
     QPushButton*     m_btnGizmoRotate    = nullptr;
+    QPushButton*     m_btnGizmoScale     = nullptr;
     QPushButton*     m_btnInsertWorldObj = nullptr;
     QDoubleSpinBox*  m_distanceSpin      = nullptr;
     QWidget*         m_gizmoToolbar      = nullptr;

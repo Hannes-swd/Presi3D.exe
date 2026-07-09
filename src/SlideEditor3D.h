@@ -20,16 +20,20 @@ class WorldObjectMesh;
 struct GizmoTarget {
     float *px = nullptr, *py = nullptr, *pz = nullptr;
     float *rx = nullptr, *ry = nullptr, *rz = nullptr;
+    float *pscale = nullptr;
     bool valid() const { return px != nullptr; }
     QVector3D pos() const { return {*px, *py, *pz}; }
 };
-inline GizmoTarget targetOf(Slide& s) { return {&s.posX,&s.posY,&s.posZ,&s.rotX,&s.rotY,&s.rotZ}; }
-inline GizmoTarget targetOf(WorldObject& w) { return {&w.posX,&w.posY,&w.posZ,&w.rotX,&w.rotY,&w.rotZ}; }
+// Slide::scale is viewport zoom (inverted: bigger number = zoomed OUT), not a
+// geometric size — deliberately left out of the gizmo so drag-to-scale can't
+// give it the opposite-of-expected "bigger drag = smaller slide" feel.
+inline GizmoTarget targetOf(Slide& s) { return {&s.posX,&s.posY,&s.posZ,&s.rotX,&s.rotY,&s.rotZ,nullptr}; }
+inline GizmoTarget targetOf(WorldObject& w) { return {&w.posX,&w.posY,&w.posZ,&w.rotX,&w.rotY,&w.rotZ,&w.scale}; }
 
 class SlideEditor3D : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
 public:
-    enum class GizmoMode { Move, Rotate };
+    enum class GizmoMode { Move, Rotate, Scale };
     enum class SelectionKind { None, Slide, WorldObject };
 
     explicit SlideEditor3D(QWidget* parent = nullptr);
@@ -83,6 +87,7 @@ private:
     QOpenGLTexture* buildSlideTexture(const Slide&);
     void renderMoveGizmo(const GizmoTarget&);
     void renderRotateGizmo(const GizmoTarget&);
+    void renderScaleGizmo(const GizmoTarget&);
     void drawLines(const QVector<QVector3D>& pts, const QVector4D& color,
                    float lineWidth = 1.f);
 
@@ -133,7 +138,8 @@ private:
     QVector3D m_gizmoDragPlaneN;
     QVector3D m_gizmoDragHit0;
     QVector3D m_gizmoDragPos0;
-    float     m_gizmoDragRot0 = 0.f;
+    float     m_gizmoDragRot0   = 0.f;
+    float     m_gizmoDragScale0 = 1.f;
     QPoint    m_gizmoDragPt0;
 
     // OpenGL

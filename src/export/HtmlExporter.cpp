@@ -1357,6 +1357,11 @@ bool HtmlExporter::copyModels(const Presentation& pres,
 // impress.js's own per-step transform machinery, the transform is written
 // out literally here; the Y-axis negation mirrors slideToHtml()'s data-y
 // convention so the object sits in the same coordinate space as the slides.
+// position:absolute is required here: every .step sibling gets it (via
+// initStep()'s JS), and mixing this one static box into a canvas of
+// otherwise-absolute siblings shifts its in-flow layout position, which
+// showed up as the object rendering lower in the browser than in the
+// editor's OpenGL preview.
 QString HtmlExporter::worldObjectToHtml(const WorldObject& w) {
     QString html;
     QTextStream out(&html);
@@ -1372,7 +1377,7 @@ QString HtmlExporter::worldObjectToHtml(const WorldObject& w) {
         .arg(w.scale);
 
     out << "  <div class=\"world-object\" data-wid=\"" << w.id << "\"\n"
-        << "       style=\"transform:" << xform << ";opacity:" << w.opacity
+        << "       style=\"position:absolute;transform:" << xform << ";opacity:" << w.opacity
         << ";width:600px;height:600px;transform-style:preserve-3d;\">\n"
         << "    <model-viewer src=\"" << src.toHtmlEscaped() << "\"\n"
         << "                  camera-controls=\"false\" auto-rotate=\"false\" disable-zoom\n"
