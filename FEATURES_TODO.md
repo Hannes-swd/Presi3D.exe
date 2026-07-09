@@ -8,12 +8,9 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Autosave** | Alle X Minuten automatisch speichern, Wiederherstellung nach Absturz |
-| **Tastaturkürzel** | ⚠️ Teilweise – Menü-Shortcuts (Save/Open/Undo/Redo) und einzelne Editor-Shortcuts (Ctrl+C/V, Entf, Ctrl+A) vorhanden, aber kein zentrales/dokumentiertes Shortcut-System |
 | **Mehrfachauswahl** | Mehrere Elemente gleichzeitig markieren, verschieben, löschen (aktuell nur Einzelauswahl `m_selectedElem`) |
 | **Gruppenbildung** | Elemente zu Gruppen zusammenfassen und gemeinsam bearbeiten |
 | **Lineale und Führungslinien** | Einblendbare Lineale, ziehbare Hilfslinien (aktuell nur temporäre Snap-Ausrichtungslinien beim Ziehen, keine Lineale, keine dauerhaften Guides) |
-| **Zoom im 2D-Editor** | Ctrl+Mausrad zum Rein-/Rauszoomen in die Arbeitsfläche (aktuell nur Auto-Fit-Skalierung, kein manueller Zoom) |
 
 ---
 
@@ -21,7 +18,6 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Linien als eigenes Element** | Gerade Linien mit konfigurierbaren Pfeilspitzen an beiden Enden |
 | **Code-Block** | Monospace-Box mit Syntax-Highlighting (C++, Python, JS usw.) |
 | **Icons** | Eingebaute Icon-Bibliothek (z. B. Material Icons, Font Awesome), SVG-Import |
 | **SVG-Dateien** | SVG direkt importieren und als Vektorgrafik auf der Folie platzieren |

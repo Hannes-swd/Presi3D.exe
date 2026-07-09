@@ -5,7 +5,7 @@
 ; extracted automatically, so the setup.exe you hand out stays tiny.
 
 #define MyAppName "Presi 3D"
-#define MyAppVersion "1.8"
+#define MyAppVersion "1.9"
 #define MyAppExeName "Presi3D.exe"
 #define DepsUrl "https://github.com/Hannes-swd/Presi3D.exe/releases/download/deps-v3/Presi3D-deps.zip"
 #define DepsFileName "Presi3D-deps.zip"
