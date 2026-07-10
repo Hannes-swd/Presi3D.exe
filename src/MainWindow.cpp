@@ -10,6 +10,7 @@
 #include "export/HtmlExporter.h"
 #include "LocalHttpServer.h"
 #include "UpdateChecker.h"
+#include "models/TimelineEngine.h"
 
 #include <QApplication>
 #include <QMenuBar>
@@ -276,6 +277,9 @@ void MainWindow::connectSignals() {
             m_propPanel,  &PropertiesPanel::setSelectedTableCell);
     connect(m_editorArea, &EditorArea::tableCellSelected,
             m_formatBar,  &FormatBar::setTableCell);
+
+    connect(m_editorArea, &EditorArea::keyframeEditRequested, this, &MainWindow::onKeyframeEditRequested);
+    connect(m_editorArea, &EditorArea::keyframeEditDone,       this, &MainWindow::onKeyframeEditFinished);
 }
 
 void MainWindow::openVariableManager() {
@@ -287,6 +291,7 @@ void MainWindow::openVariableManager() {
 }
 
 void MainWindow::onSlideSelected(int index) {
+    finishKeyframeSessionIfActive(); // don't leave a session pointing at the old slide
     m_selectedSlide     = index;
     m_selectedElem      = -1;
     m_selectedWorldObj  = -1;
@@ -362,6 +367,14 @@ void MainWindow::onPresentationModified() {
     if (m_selectedWorldObj >= 0)
         m_propPanel->setSelectedWorldObject(m_selectedWorldObj);
 
+    // While a keyframe-edit session is open, the live element temporarily
+    // holds its keyframe override values instead of its real ones (see
+    // onKeyframeEditRequested), so this must not let a debounced commit
+    // snapshot that as the new undo baseline — the session's own start
+    // (pushUndoStep) and end (onKeyframeEditFinished, which re-enters here
+    // with the session already closed) are the only valid undo boundaries.
+    if (m_keyframeElemIndex >= 0) return;
+
     // Snapshot for undo: batched/debounced so continuous edits (dragging an
     // element, holding a spinbox arrow, ...) collapse into a single undo step.
     m_undoDirty = true;
@@ -405,6 +418,7 @@ void MainWindow::updateUndoRedoActions() {
 }
 
 void MainWindow::undo() {
+    finishKeyframeSessionIfActive(); // must run before *m_presentation is replaced below
     commitPendingUndo(); // make sure an in-progress edit is undoable too
     if (m_undoStack.empty()) return;
 
@@ -430,6 +444,7 @@ void MainWindow::undo() {
 }
 
 void MainWindow::redo() {
+    finishKeyframeSessionIfActive(); // must run before *m_presentation is replaced below
     if (m_redoStack.empty()) return;
 
     Presentation next = m_redoStack.back();
@@ -470,6 +485,100 @@ void MainWindow::onWorldObjectSelected(int index) {
         m_propPanel->setSelectedElement(-1);
     }
     m_propPanel->setSelectedWorldObject(index);
+}
+
+// Sparse diff of every keyframe-able property between the user-edited state
+// and the real baseline, for exactly the properties TimelineEngine knows how
+// to interpolate (see TimelineEngine.cpp's basePropValue/baseColorValue).
+static Keyframe diffKeyframe(const SlideElement& edited, const SlideElement& baseline) {
+    Keyframe kf;
+    auto addNum = [&](const QString& key, double a, double b) {
+        if (qAbs(a - b) > 1e-4) kf.props[key] = a;
+    };
+    addNum("x", edited.x, baseline.x);
+    addNum("y", edited.y, baseline.y);
+    addNum("width", edited.width, baseline.width);
+    addNum("height", edited.height, baseline.height);
+    addNum("rotation", edited.rotation, baseline.rotation);
+    addNum("opacity", edited.opacity, baseline.opacity);
+    addNum("fontSize", edited.fontSize, baseline.fontSize);
+    addNum("cornerRadius", edited.cornerRadius, baseline.cornerRadius);
+    addNum("borderWidth", edited.borderWidth, baseline.borderWidth);
+    auto addColor = [&](const QString& key, const QColor& a, const QColor& b) {
+        if (a != b) kf.props[key] = QVariant(a);
+    };
+    addColor("color", edited.color, baseline.color);
+    addColor("backgroundColor", edited.backgroundColor, baseline.backgroundColor);
+    addColor("borderColor", edited.borderColor, baseline.borderColor);
+    return kf;
+}
+
+// Reverts exactly the properties present in `kf` (i.e. exactly the ones
+// diffKeyframe() just found different from the real baseline) back to their
+// real (baseline) values on `e` — the inverse of the override-state swap
+// onKeyframeEditRequested() applied at session start. Deliberately touches
+// only those specific fields instead of `e = baseline`: while the session
+// was open, the user could have changed other things on the same live
+// element — e.timeline's delay/duration/trigger/loop via the gear dialog,
+// or even content/font via PropertiesPanel — and a wholesale overwrite would
+// silently discard all of that.
+static void restoreKeyframeableProps(SlideElement& e, const SlideElement& baseline, const Keyframe& kf) {
+    for (auto it = kf.props.constBegin(); it != kf.props.constEnd(); ++it) {
+        const QString& key = it.key();
+        if (key == "x") e.x = baseline.x;
+        else if (key == "y") e.y = baseline.y;
+        else if (key == "width") e.width = baseline.width;
+        else if (key == "height") e.height = baseline.height;
+        else if (key == "rotation") e.rotation = baseline.rotation;
+        else if (key == "opacity") e.opacity = baseline.opacity;
+        else if (key == "fontSize") e.fontSize = baseline.fontSize;
+        else if (key == "cornerRadius") e.cornerRadius = baseline.cornerRadius;
+        else if (key == "borderWidth") e.borderWidth = baseline.borderWidth;
+        else if (key == "color") e.color = baseline.color;
+        else if (key == "backgroundColor") e.backgroundColor = baseline.backgroundColor;
+        else if (key == "borderColor") e.borderColor = baseline.borderColor;
+    }
+}
+
+void MainWindow::onKeyframeEditRequested(int elemIndex, bool isEntry) {
+    finishKeyframeSessionIfActive(); // finish any previous session first
+    Slide* s = m_presentation->slideAt(m_selectedSlide);
+    if (!s || elemIndex < 0 || elemIndex >= s->elements.size()) return;
+
+    pushUndoStep();
+    SlideElement& e = s->elements[elemIndex];
+    m_keyframeBaseline = e;
+    const Keyframe& kf = isEntry ? e.timeline.entryStart : e.timeline.exitEnd;
+    e = TimelineEngine::interpolate(m_keyframeBaseline, kf, 0.f); // show the override state for editing
+
+    m_keyframeElemIndex = elemIndex;
+    m_keyframeIsEntry   = isEntry;
+
+    m_editorArea->ensure2DMode();
+    m_editorArea->refresh();
+    m_editorArea->selectElement(elemIndex);
+    m_editorArea->setKeyframeEditActive(true,
+        isEntry ? "Editing ENTRY start state \xe2\x80\x94 drag/style the element, then click Done"
+                : "Editing EXIT end state \xe2\x80\x94 drag/style the element, then click Done");
+}
+
+void MainWindow::onKeyframeEditFinished() {
+    if (m_keyframeElemIndex < 0) return;
+    Slide* s = m_presentation->slideAt(m_selectedSlide);
+    if (s && m_keyframeElemIndex < s->elements.size()) {
+        SlideElement& e = s->elements[m_keyframeElemIndex];
+        Keyframe kf = diffKeyframe(e, m_keyframeBaseline);
+        restoreKeyframeableProps(e, m_keyframeBaseline, kf);
+        if (m_keyframeIsEntry) e.timeline.entryStart = kf;
+        else                   e.timeline.exitEnd    = kf;
+    }
+    m_keyframeElemIndex = -1;
+    m_editorArea->setKeyframeEditActive(false);
+    onPresentationModified();
+}
+
+void MainWindow::finishKeyframeSessionIfActive() {
+    if (m_keyframeElemIndex >= 0) onKeyframeEditFinished();
 }
 
 void MainWindow::refreshAll() {
@@ -528,6 +637,12 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 
 void MainWindow::newPresentation() {
     if (!maybeSave()) return;
+    // Discard (don't commit) any in-progress keyframe session: its target
+    // element belongs to the presentation being replaced below, so diffing
+    // it against the new one would corrupt whatever element ends up at the
+    // same index.
+    m_keyframeElemIndex = -1;
+    m_editorArea->setKeyframeEditActive(false);
     delete m_presentation;
     m_presentation = new Presentation();
     m_presentation->addSlide("Slide 1");
@@ -549,6 +664,12 @@ void MainWindow::openPresentationFromFolder(const QString& folder) {
         return;
     }
 
+    // Discard (don't commit) any in-progress keyframe session: its target
+    // element belongs to the presentation being replaced below, so diffing
+    // it against the newly loaded one would corrupt whatever element ends
+    // up at the same index.
+    m_keyframeElemIndex = -1;
+    m_editorArea->setKeyframeEditActive(false);
     delete m_presentation;
     m_presentation  = loaded;
     m_selectedSlide = 0;
@@ -576,6 +697,7 @@ void MainWindow::openPresentation() {
 }
 
 void MainWindow::savePresentation() {
+    finishKeyframeSessionIfActive(); // export the real values, not a mid-session override state
     if (m_presentation->exportPath.isEmpty()) {
         savePresentationAs();
         return;
@@ -592,6 +714,7 @@ void MainWindow::savePresentation() {
 
 void MainWindow::autosave() {
     if (!m_autosaveEnabled || !m_presentation->modified || m_presentation->exportPath.isEmpty()) return;
+    finishKeyframeSessionIfActive(); // export the real values, not a mid-session override state
 
     auto result = HtmlExporter::exportTo(*m_presentation, m_presentation->exportPath);
     if (result.ok) {
@@ -606,6 +729,7 @@ void MainWindow::autosave() {
 }
 
 void MainWindow::savePresentationAs() {
+    finishKeyframeSessionIfActive(); // export the real values, not a mid-session override state
     ExportDialog dlg(m_presentation, this);
     dlg.exec();
     if (!m_presentation->exportPath.isEmpty()) {
@@ -616,6 +740,7 @@ void MainWindow::savePresentationAs() {
 }
 
 void MainWindow::exportPresentation() {
+    finishKeyframeSessionIfActive(); // export the real values, not a mid-session override state
     ExportDialog dlg(m_presentation, this);
     dlg.exec();
     if (!m_presentation->exportPath.isEmpty())

@@ -69,9 +69,7 @@ private slots:
     void onElemBorderColorClicked();
     void onElemBorderChanged();
     void onElemCornerRadiusChanged();
-    void onElemAnimChanged(int);
-    void onElemAnimDelayChanged(double);
-    void onElemAnimDurationChanged(double);
+    void onElemOpacityChanged(double);
 
     void onWoPosChanged();
     void onWoRotChanged();
@@ -159,12 +157,8 @@ private:
     QPushButton*    m_eBorderColorBtn = nullptr;
     QDoubleSpinBox* m_eCornerRadius   = nullptr;
 
-    // Animation controls
-    QComboBox*      m_eAnimType      = nullptr;
-    QLabel*         m_animDelayLabel = nullptr;
-    QDoubleSpinBox* m_eAnimDelay     = nullptr;
-    QLabel*         m_animDurLabel   = nullptr;
-    QDoubleSpinBox* m_eAnimDuration  = nullptr;
+    // Generic opacity (also animatable via the Timeline panel's keyframes)
+    QDoubleSpinBox* m_eOpacity       = nullptr;
 
     // Chart properties
     QGroupBox*      m_chartGroup        = nullptr;

@@ -1,6 +1,6 @@
 # Feature-Roadmap – Impress.js Editor
 
-> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung, LaTeX-Formeln), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, HTML-Import, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter/Hyperlinks), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Eintrittanimation (Daten + HTML-Export + Properties-Panel-UI), Undo/Redo (debounced, 50 Schritte), Datei speichern/öffnen (Projektordner-Format), Variablen-System (Editor-Dialog, Text/Zahl/Boolean, Berechnungen, global/lokal, Live-Vorschau im Editor + in Diagrammen, eingebaute Variablen `{today}`/`{now}`/`{year}`/`{month}`/`{monthName}`/`{day}`/`{weekday}`/`{week}`/`{time}`/`{hour}`/`{minute}`/`{slideNumber}`/`{totalSlides}`, Variablen auch im Webseiten-`<title>` nutzbar – siehe README.md „Built-in Variables")
+> **Bereits implementiert:** Slides erstellen/löschen/duplizieren/umbenennen/verschieben, 2D-Editor (Text WYSIWYG, alle Grundformen + ShapeText, Bild + Drag&Drop, Tabelle mit Zellbearbeitung/Spaltenresize/Merge, alle Diagrammtypen, iFrame/Web-Einbettung, LaTeX-Formeln), 3D-Ansicht (OpenGL-Gizmo), Properties Panel, HTML-Export, HTML-Import, FormatBar (Schriftart/Größe/Farbe/Ausrichtung/Bold/Italic/Underline/Strike/Listen/FormatPainter/Hyperlinks), Snap/Ausrichtungslinien, Rotation (Ctrl=Einrasten), Ebenenreihenfolge, Kopieren/Einfügen, Timeline-Animationssystem (Eintritt/Austritt pro Folienelement, Verzögerung + Dauer, Loop, Klick-Trigger, variablengebundene Sichtbarkeit, frei einstellbare Start-/Endzustände per Drag, HTML-Export + Properties-Panel-UI – siehe ANIMATION_PLAN.md), Undo/Redo (debounced, 50 Schritte), Datei speichern/öffnen (Projektordner-Format), Variablen-System (Editor-Dialog, Text/Zahl/Boolean, Berechnungen, global/lokal, Live-Vorschau im Editor + in Diagrammen, eingebaute Variablen `{today}`/`{now}`/`{year}`/`{month}`/`{monthName}`/`{day}`/`{weekday}`/`{week}`/`{time}`/`{hour}`/`{minute}`/`{slideNumber}`/`{totalSlides}`, Variablen auch im Webseiten-`<title>` nutzbar – siehe README.md „Built-in Variables")
 
 ---
 
@@ -24,7 +24,6 @@
 | **Videos** | Lokale Videodateien einbetten, Autoplay-/Loop-Optionen |
 | **GIFs** | Animierte GIFs auf Folien platzieren |
 | **Audio** | Hintergrundmusik oder Sound-Effekte pro Folie |
-| **QR-Code-Generator** | URL eingeben → QR-Code wird direkt als Element eingefügt |
 
 ---
 
@@ -33,7 +32,6 @@
 | Feature | Beschreibung |
 |---|---|
 | **Zeilenabstand / Zeichenabstand** | Einstellbar im Properties Panel |
-| **Google Fonts** | Google Fonts Integration (lokale Systemschriften bereits vorhanden) |
 | **Gradient-Text** | Text mit Farbverlauf füllen |
 | **Text-Schatten** | Konfigurierbare Schatten hinter Text |
 | **Emoji-Picker** | Emoji-Auswahldialog im Texteditor |
@@ -44,35 +42,8 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Themes / Templates** | Vorgefertigte Farbschemas und Layouts, eigene Themes speichern |
-| **Master-Slide / Vorlage** | Eine Basis-Folie definieren, die auf alle anderen angewendet wird |
-| **Globale Farbpalette** | Projektweite Farben definieren, überall nutzbar |
-| **Hintergrundverläufe** | Linearer und radialer Gradient als Folienhintergrund |
-| **Hintergrundbilder** | Bild als Folienhintergrund, mit Deckkraft und Positionsoptionen |
-| **Animierte Hintergründe** | Partikelsysteme, CSS-Animationen (Wellen, Sterne usw.) |
 | **Box-Shadow** | Konfigurierbare Schatten hinter Elementen |
 | **Deckkraft / Transparenz** | Dedizierter Opacity-Slider pro Element |
-| **Farben mit Dropper** | Farbe direkt von der Folie aufnehmen (Color-Picker mit Pipette) |
-
----
-
-## Priorität 5 – Diagramm-Erweiterungen
-
-| Feature | Beschreibung |
-|---|---|
-| **CSV-Import für Diagramme** | Diagramm-Daten direkt aus CSV-Dateien laden |
-
----
-
-## Priorität 6 – Variablen *(einzigartiges Alleinstellungsmerkmal)*
-
-Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
-
-| Feature | Beschreibung |
-|---|---|
-| **Variable Typen** | Text, Zahl (Integer/Float), Datum, Boolean (ja/nein), Farbe – aktuell nur Text/Zahl/Boolean, Datum & Farbe fehlen |
-| **Import aus CSV/JSON** | Variablenwerte aus externer Datei laden (z. B. aktuelle Verkaufszahlen) |
-| **Bedingte Sichtbarkeit** | Element nur anzeigen wenn `{zeige_abschnitt} == true` |
 
 ---
 
@@ -80,12 +51,7 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 | Feature | Beschreibung |
 |---|---|
-| **Austrittsanimationen** | Fade Out, Slide Out, Shrink usw. |
 | **Folienübergänge (UI)** | Impress.js-Übergänge konfigurieren (bereits im HTML, UI fehlt) |
-| **Timeline-Editor** | Visuelle Timeline pro Folie: Wann startet welche Animation? |
-| **Trigger** | Animation startet bei Klick, nach X Sekunden, oder wenn vorherige endet |
-| **Loop-Animationen** | Elemente dauerhaft animieren (pulsieren, rotieren) |
-| **Scroll-Animationen** | Elemente erscheinen beim Scrollen in der Webanwendung |
 | **3D-Kamerafahrten** | Animierter Pfad durch den 3D-Raum zwischen Folien |
 
 ---
@@ -94,14 +60,8 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 | Feature | Beschreibung |
 |---|---|
-| **Vollbildmodus** | Präsentation im Vollbild starten (F5) |
-| **Presenter-Ansicht** | Zweiter Bildschirm: Notizen + Timer + Vorschau nächste Folie |
-| **Notizen pro Folie** | Sprechernotizen eingeben (sichtbar nur im Presenter-Modus) |
-| **Timer / Stoppuhr** | Countdown oder Aufwärtszähler beim Präsentieren |
 | **Laserpointer** | Maus als Pointer darstellen (roter Kreis) |
 | **Zoom-Geste** | In eine Folie reinzoomen während der Präsentation |
-| **Nicht-lineare Navigation** | Verlinkungen zwischen beliebigen Folien (Verzweigungen) |
-| **Foliensortieransicht** | Tabellarischer Überblick aller Folien, per Drag & Drop anordnen |
 
 ---
 
@@ -123,7 +83,6 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 
 | Feature | Beschreibung |
 |---|---|
-| **Kommentare / Annotationen** | Notizzettel auf Folien hinterlassen, für Review-Prozesse |
 | **Versions-Historie** | Frühere Speicherstände anzeigen und wiederherstellen |
 | **Präsentation schützen** | Passwortschutz für Export |
 | **Wasserzeichen** | Logo oder Text als Wasserzeichen einblenden |
@@ -160,6 +119,5 @@ Kein anderes Präsentationsprogramm hat das – eine echte Stärke dieser App.
 ## Zusammenfassung: Die wichtigsten noch fehlenden Features
 
 1. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
-2. **Autosave** – schützt vor Datenverlust bei Absturz
 3. **Gruppenbildung** – baut auf Mehrfachauswahl auf
 4. **Lineale, Führungslinien & Zoom im 2D-Editor** – grundlegende Editier-Komfortfunktionen

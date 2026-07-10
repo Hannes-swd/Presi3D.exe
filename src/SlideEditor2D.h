@@ -21,11 +21,28 @@ public:
 
     void setSlide(Presentation* pres, int slideIndex);
 
+    // Timeline scrub/play preview: elements with a non-default TimelineTrack
+    // are rendered interpolated at `tSeconds` since slide-enter instead of at
+    // their base values. t < 0 turns preview off (render base values, as usual).
+    void setPreviewTime(float tSeconds);
+
+    // Keyframe edit session (driven by MainWindow/TimelinePanel): while active,
+    // a small banner is shown and Escape / clicking it emits keyframeEditDone().
+    // The element itself is edited via the normal selection/drag/PropertiesPanel
+    // path — MainWindow temporarily swaps its base values for the keyframe's
+    // override values and diffs the result back out when the session ends.
+    void setKeyframeEditActive(bool active, const QString& label = {});
+
+    // Programmatically select an element (e.g. when MainWindow starts a
+    // keyframe edit session) — mirrors what a mouse click on the canvas does.
+    void selectElement(int index);
+
 signals:
     void presentationModified();
     void elementSelected(int elemIndex); // -1 = none
     void tableCellSelected(int row, int col); // -1/-1 = none
     void zoomChanged(float zoom); // 1.0 = 100%
+    void keyframeEditDone(); // user pressed Escape or clicked the keyframe-edit banner
 
 public slots:
     void addTextElement();
@@ -196,4 +213,12 @@ private:
     float      m_divDragStart = 0.f;  // widget coord when drag started
     float      m_divFracA = 0.f;      // original frac of divider[idx]
     float      m_divFracB = 0.f;      // original frac of divider[idx+1]
+
+    // Timeline scrub/play preview
+    float m_previewTime = -1.f; // < 0 = off
+
+    // Keyframe edit session banner
+    bool     m_keyframeEditActive = false;
+    QString  m_keyframeEditLabel;
+    QRectF   m_keyframeDoneRect; // clickable "Done" area within the banner, updated on paint
 };

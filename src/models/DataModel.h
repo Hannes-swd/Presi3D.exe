@@ -6,6 +6,7 @@
 #include <QUuid>
 #include "models/ChartData.h"
 #include "models/VariableModel.h"
+#include "models/TimelineTrack.h"
 
 struct TableCell {
     QString text;
@@ -63,11 +64,11 @@ struct SlideElement {
     QString textAlignment         = "left"; // "left" | "center" | "right"
     QString verticalAlignment     = "top";  // "top" | "middle" | "bottom"
     bool    bold           = false;
+    float   opacity        = 1.f;  // 0=fully transparent, 1=fully opaque; animatable via timeline keyframes
 
-    // Entrance animation (applied when slide becomes .present in browser)
-    QString entranceAnim  = "";    // "" | "fadeIn" | "slideLeft" | "slideRight" | "slideUp" | "slideDown" | "zoomIn"
-    float   animDelay     = 0.3f;  // seconds
-    float   animDuration  = 0.5f;  // seconds
+    // Timeline animation (entry/exit, loop, click-triggers, variable-gated visibility)
+    TimelineTrack timeline;
+
     bool    italic         = false;
     bool    underline      = false;
     bool    strikethrough  = false;

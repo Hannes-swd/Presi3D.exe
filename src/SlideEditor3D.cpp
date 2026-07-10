@@ -527,6 +527,12 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
 
     for (const auto& elem : slide.elements) {
         QRectF r(elem.x * sx, elem.y * sy, elem.width * sx, elem.height * sy);
+        // This texture is a separate rasterization path from SlideEditor2D's
+        // drawElement() (not shared code), so element opacity — animatable via
+        // Timeline keyframes — has to be applied here too, or the 3D slide
+        // preview shows every element at full opacity regardless of its set
+        // (or currently keyframe-scrubbed) value.
+        p.setOpacity(double(elem.opacity));
 
         if (elem.type == SlideElement::Text) {
             if (elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent)

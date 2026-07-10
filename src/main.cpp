@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QPalette>
 #include <QColor>
+#include <QStyleHints>
 #include "MainWindow.h"
 #include "dialogs/StartDialog.h"
 
@@ -112,19 +113,45 @@ QToolTip { background: #1f2937; color: #f9fafb; border: none; padding: 4px 8px; 
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
+
+    // Force light mode at the Qt platform-theme level, not just via QSS/QPalette.
+    // On Windows, popup-style top-level windows (QMenu, QComboBox's dropdown list)
+    // can get a native dark background painted by the OS compositor itself
+    // (DWM's immersive-dark-mode chrome) whenever the user has Windows Dark
+    // Mode on — that background is painted before Qt's stylesheet/palette get
+    // a say, so no amount of QSS or QPalette tweaking reaches it. This app has
+    // no dark theme of its own, so telling Qt's platform integration the
+    // color scheme is Light (available since Qt 6.5) makes it skip that dark
+    // chrome entirely, regardless of the OS setting.
+    app.styleHints()->setColorScheme(Qt::ColorScheme::Light);
+
     app.setApplicationName("Presi 3D");
     app.setStyleSheet(QString::fromUtf8(DARK_QSS));
     app.setApplicationVersion(QStringLiteral(APP_VERSION));
     app.setOrganizationName("presiEditor");
 
-    // QToolTip on Windows sometimes ignores the QSS above (e.g. when a
-    // widget/container in between has its own local style sheet, or when
-    // Windows dark mode is active) and falls back to an unreadable
-    // white-on-white tooltip. Setting the palette roles directly makes
-    // tooltips readable everywhere regardless of that.
+    // Popup-style widgets (QToolTip, QMenu, QComboBox's dropdown list, ...)
+    // are top-level native windows on Windows, not just child widgets — parts
+    // of their chrome (background, hover highlight, ...) can fall back to the
+    // OS palette instead of the QSS above whenever Windows Dark Mode is
+    // active, producing unreadable dark-on-dark or light-on-light popups even
+    // though every other (non-popup) widget looks fine. Overriding the whole
+    // application QPalette to match the QSS's light theme — not just
+    // ToolTipBase/Text as before — makes every popup readable regardless of
+    // the OS theme setting.
     QPalette pal = app.palette();
-    pal.setColor(QPalette::ToolTipBase, QColor("#1f2937"));
-    pal.setColor(QPalette::ToolTipText, QColor("#f9fafb"));
+    pal.setColor(QPalette::Window,          QColor("#ffffff"));
+    pal.setColor(QPalette::WindowText,      QColor("#111827"));
+    pal.setColor(QPalette::Base,            QColor("#ffffff"));
+    pal.setColor(QPalette::AlternateBase,   QColor("#f9fafb"));
+    pal.setColor(QPalette::Text,            QColor("#111827"));
+    pal.setColor(QPalette::Button,          QColor("#ffffff"));
+    pal.setColor(QPalette::ButtonText,      QColor("#111827"));
+    pal.setColor(QPalette::Highlight,       QColor("#eff6ff"));
+    pal.setColor(QPalette::HighlightedText, QColor("#2563eb"));
+    pal.setColor(QPalette::PlaceholderText, QColor("#9ca3af"));
+    pal.setColor(QPalette::ToolTipBase,     QColor("#1f2937"));
+    pal.setColor(QPalette::ToolTipText,     QColor("#f9fafb"));
     app.setPalette(pal);
 
     StartDialog start;

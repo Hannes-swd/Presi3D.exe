@@ -2,6 +2,7 @@
 #include "ShapeUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "models/VariableEngine.h"
+#include "models/TimelineEngine.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -100,21 +101,14 @@ body {
     image-rendering: -webkit-optimize-contrast;
 }
 
-/* Entrance animations */
-.step [data-anim] { opacity: 0; }
-.step.present [data-anim="fadeIn"]    { animation: impressFadeIn    var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideLeft"] { animation: impressSlideLeft var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideRight"]{ animation: impressSlideRight var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideUp"]   { animation: impressSlideUp   var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideDown"] { animation: impressSlideDown var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="zoomIn"]    { animation: impressZoomIn    var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-
-@keyframes impressFadeIn    { from{opacity:0}               to{opacity:1} }
-@keyframes impressSlideLeft { from{transform:translateX(-60px);opacity:0} to{transform:none;opacity:1} }
-@keyframes impressSlideRight{ from{transform:translateX(60px);opacity:0}  to{transform:none;opacity:1} }
-@keyframes impressSlideUp   { from{transform:translateY(-60px);opacity:0} to{transform:none;opacity:1} }
-@keyframes impressSlideDown { from{transform:translateY(60px);opacity:0}  to{transform:none;opacity:1} }
-@keyframes impressZoomIn    { from{transform:scale(0.4);opacity:0}        to{transform:none;opacity:1} }
+/* Timeline entry/exit animations transition plain CSS properties (opacity,
+   transform, color, position, size, ...) driven by the TimelinePlayer JS
+   below — no canned @keyframes needed, since keyframe overrides are
+   arbitrary per element. Must list every property tlApplyFrame() (in the
+   script below) ever sets via el.style.*, or that property jumps instantly
+   instead of transitioning regardless of the JS-set transition-duration. */
+[data-timeline] { transition-property: opacity, transform, background-color, color, border-color,
+    left, top, width, height, border-radius, border-width, font-size; }
 )css"
     ).arg(bg).arg(sw).arg(sh);
 }
@@ -439,6 +433,12 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  document.querySelectorAll('[data-type=\"checkbox\"] input[type=\"checkbox\"]').forEach(function(input) {\n"
         << "    var v = findVarById(input.dataset.varId);\n"
         << "    input.checked = !!(v && v.boolValue);\n"
+        << "  });\n"
+        << "  document.querySelectorAll('[data-timeline]').forEach(function(el) {\n"
+        << "    var data = parseTimeline(el);\n"
+        << "    if (!data || !data.track.visibilityVarId) return;\n"
+        << "    var v = findVarById(data.track.visibilityVarId);\n"
+        << "    el.style.display = (v && v.boolValue) ? '' : 'none';\n"
         << "  });\n"
         << "  renderAllCharts();\n"
         << "}\n"
@@ -790,6 +790,143 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  renderAll();\n"
         << "});\n"
         << "\n"
+        << "// ── Timeline animation player (entry/exit/loop/click-trigger/variable-gated visibility) ──\n"
+        << "// Mirrors src/models/TimelineEngine.cpp's interpolation — keep both in sync.\n"
+        << "// Per-element base property values (for exactly the keys used by its keyframes) are\n"
+        << "// embedded alongside the override values in data-timeline at export time (see\n"
+        << "// HtmlExporter::elementToHtml), so this player never needs to re-derive them from CSS.\n"
+        << "function parseTimeline(el) {\n"
+        << "  if (!el.dataset.timeline) return null;\n"
+        << "  if (el._tl === undefined) {\n"
+        << "    try { el._tl = JSON.parse(b64DecodeUtf8(el.dataset.timeline)); }\n"
+        << "    catch (err) { el._tl = null; }\n"
+        << "  }\n"
+        << "  return el._tl;\n"
+        << "}\n"
+        << "function tlIsColor(k) { return k === 'color' || k === 'backgroundColor' || k === 'borderColor'; }\n"
+        << "function tlHexToRgba(hex) {\n"
+        << "  var h = hex.replace('#', '');\n"
+        << "  if (h.length === 8) { // AARRGGBB\n"
+        << "    return { a: parseInt(h.substr(0,2),16)/255, r: parseInt(h.substr(2,2),16), g: parseInt(h.substr(4,2),16), b: parseInt(h.substr(6,2),16) };\n"
+        << "  }\n"
+        << "  return { a: 1, r: parseInt(h.substr(0,2),16), g: parseInt(h.substr(2,2),16), b: parseInt(h.substr(4,2),16) };\n"
+        << "}\n"
+        << "function tlLerpColor(hexA, hexB, t) {\n"
+        << "  var a = tlHexToRgba(hexA), b = tlHexToRgba(hexB);\n"
+        << "  var r = Math.round(a.r + (b.r - a.r) * t), g = Math.round(a.g + (b.g - a.g) * t), bl = Math.round(a.b + (b.b - a.b) * t);\n"
+        << "  var al = a.a + (b.a - a.a) * t;\n"
+        << "  return 'rgba(' + r + ',' + g + ',' + bl + ',' + al.toFixed(3) + ')';\n"
+        << "}\n"
+        << "// Applies `kf` (override values) interpolated against `base` (base values) at\n"
+        << "// fraction t: t=0 -> kf values, t=1 -> base values (same convention as C++).\n"
+        << "function tlApplyFrame(el, kf, base, t) {\n"
+        << "  Object.keys(kf).forEach(function(key) {\n"
+        << "    var ov = kf[key], bv = base[key];\n"
+        << "    if (bv === undefined) return;\n"
+        << "    if (tlIsColor(key)) {\n"
+        << "      var css = tlLerpColor(ov, bv, t);\n"
+        << "      if (key === 'color') el.style.color = css;\n"
+        << "      else if (key === 'backgroundColor') el.style.backgroundColor = css;\n"
+        << "      else if (key === 'borderColor') el.style.borderColor = css;\n"
+        << "      return;\n"
+        << "    }\n"
+        << "    var v = ov + (bv - ov) * t;\n"
+        << "    if (key === 'x') el.style.left = v + 'px';\n"
+        << "    else if (key === 'y') el.style.top = v + 'px';\n"
+        << "    else if (key === 'width') el.style.width = v + 'px';\n"
+        << "    else if (key === 'height') el.style.height = v + 'px';\n"
+        << "    else if (key === 'cornerRadius') el.style.borderRadius = v + 'px';\n"
+        << "    else if (key === 'borderWidth') el.style.borderWidth = v + 'px';\n"
+        << "    else if (key === 'fontSize') el.style.fontSize = v + 'px';\n"
+        << "    else if (key === 'opacity') el.style.opacity = String(v);\n"
+        << "    else if (key === 'rotation') el.style.transform = (v !== 0) ? ('rotate(' + v + 'deg)') : 'none';\n"
+        << "  });\n"
+        << "}\n"
+        << "var timelineTimers = [];    // setTimeout ids for the currently active step, cleared on stepleave\n"
+        << "var timelineClickQueue = []; // pending click-triggered fire-functions for the currently active step, in order\n"
+        << "var timelineAutoDeadline = 0; // ms after stepenter by which all AUTO-triggered entry/exit should be done\n"
+        << "var timelineStepEnterAt = 0;\n"
+        << "function clearTimelineState() {\n"
+        << "  timelineTimers.forEach(function(id) { clearTimeout(id); });\n"
+        << "  timelineTimers = [];\n"
+        << "  timelineClickQueue = [];\n"
+        << "  timelineAutoDeadline = 0;\n"
+        << "}\n"
+        << "// Runs one element's entry -> hold -> exit -> (optional loop) sequence. Only the FIRST\n"
+        << "// entry/exit cycle counts toward timelineAutoDeadline — later loop iterations run in the\n"
+        << "// background so a looping element can never permanently block slide advancement.\n"
+        << "function runElementTimeline(el, data, countsTowardDeadline) {\n"
+        << "  var track = data.track, base = data.base;\n"
+        << "  function schedule(hasSide, delay, duration, trigger, kf, tFrom, tTo, cb) {\n"
+        << "    if (!hasSide) { cb(); return; }\n"
+        << "    var fire = function() {\n"
+        << "      if (duration > 0) {\n"
+        << "        el.style.transitionDuration = duration + 's';\n"
+        << "        requestAnimationFrame(function() { requestAnimationFrame(function() { tlApplyFrame(el, kf, base, tTo); }); });\n"
+        << "        var doneId = setTimeout(cb, duration * 1000);\n"
+        << "        timelineTimers.push(doneId);\n"
+        << "      } else {\n"
+        << "        el.style.transitionDuration = '0s';\n"
+        << "        tlApplyFrame(el, kf, base, tTo);\n"
+        << "        cb();\n"
+        << "      }\n"
+        << "    };\n"
+        << "    // Reset any transition-duration left over from a previous loop iteration's\n"
+        << "    // animated leg before this instantaneous jump to the wait-state frame — otherwise\n"
+        << "    // the element smoothly (and wrongly) tweens back to it instead of snapping.\n"
+        << "    el.style.transitionDuration = '0s';\n"
+        << "    tlApplyFrame(el, kf, base, tFrom);\n"
+        << "    // Click-gating only applies to the FIRST cycle (countsTowardDeadline): a\n"
+        << "    // click-triggered stage inside a loop would otherwise re-enter\n"
+        << "    // timelineClickQueue every iteration forever, permanently stealing every\n"
+        << "    // future \"next\" press instead of ever letting the presentation advance —\n"
+        << "    // repeat iterations fall through to the timed wait instead, using `delay`\n"
+        << "    // as an ordinary pause.\n"
+        << "    if (trigger === 'click' && countsTowardDeadline) {\n"
+        << "      timelineClickQueue.push(fire);\n"
+        << "    } else {\n"
+        << "      // Measured from \"now\", not from stepenter: if this stage only started\n"
+        << "      // once an earlier click-gated stage fired, elapsed time already spent\n"
+        << "      // waiting for that click must count too, or \"next\" could be let through\n"
+        << "      // before this stage — timed from stepenter as if it had started at 0 —\n"
+        << "      // has actually finished.\n"
+        << "      if (countsTowardDeadline)\n"
+        << "        timelineAutoDeadline = Math.max(timelineAutoDeadline, (Date.now() - timelineStepEnterAt) + (delay + duration) * 1000);\n"
+        << "      var id = setTimeout(fire, delay * 1000);\n"
+        << "      timelineTimers.push(id);\n"
+        << "    }\n"
+        << "  }\n"
+        << "  schedule(track.hasEntry, track.entryDelay, track.entryDuration, track.entryTrigger, track.entryStart, 0, 1, function() {\n"
+        << "    schedule(track.hasExit, track.exitDelay, track.exitDuration, track.exitTrigger, track.exitEnd, 1, 0, function() {\n"
+        << "      if (track.loop) {\n"
+        << "        var id = setTimeout(function() { runElementTimeline(el, data, false); }, Math.max(0, track.loopPause) * 1000);\n"
+        << "        timelineTimers.push(id);\n"
+        << "      }\n"
+        << "    });\n"
+        << "  });\n"
+        << "}\n"
+        << "function timelineInitStep(step) {\n"
+        << "  clearTimelineState();\n"
+        << "  timelineStepEnterAt = Date.now();\n"
+        << "  Array.from(step.querySelectorAll('[data-timeline]')).forEach(function(el) {\n"
+        << "    var data = parseTimeline(el);\n"
+        << "    if (data) runElementTimeline(el, data, true);\n"
+        << "  });\n"
+        << "}\n"
+        << "document.addEventListener('impress:stepenter', function(e) { timelineInitStep(e.target); });\n"
+        << "document.addEventListener('impress:stepleave', function() { clearTimelineState(); });\n"
+        << "// Gate slide advancement: consume pending click-triggers one at a time (like the bundled\n"
+        << "// substep plugin), and otherwise hold \"next\" until every auto-timed entry/exit is done.\n"
+        << "impress.addPreStepLeavePlugin(function(event) {\n"
+        << "  if (!event || !event.detail || event.detail.reason !== 'next') return;\n"
+        << "  if (timelineClickQueue.length > 0) {\n"
+        << "    var fire = timelineClickQueue.shift();\n"
+        << "    fire();\n"
+        << "    return false;\n"
+        << "  }\n"
+        << "  if (Date.now() - timelineStepEnterAt < timelineAutoDeadline) return false;\n"
+        << "}, 1);\n"
+        << "\n"
         << "// ── iframe \"portal\" workaround ──────────────────────────────────\n"
         << "// Browsers render <iframe> elements inside a CSS 3D-transformed\n"
         << "// ancestor (how impress.js positions every step) as a flattened,\n"
@@ -918,6 +1055,25 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
     if (e.rotation != 0.f)
         base += QString("transform:rotate(%1deg);transform-origin:center;")
                     .arg(double(e.rotation), 0, 'f', 2);
+    if (e.opacity < 0.999f)
+        base += QString("opacity:%1;").arg(double(e.opacity), 0, 'f', 3);
+
+    // Timeline animation (entry/exit/loop/trigger/variable-gated visibility),
+    // consumed by the TimelinePlayer JS registered in HtmlExporter::generateHtml().
+    // Alongside the keyframe overrides, embed the element's *base* values for
+    // exactly the properties its keyframes touch, so the JS player can
+    // interpolate without re-deriving numbers back out of rendered CSS.
+    QString timelineAttr;
+    if (!e.timeline.isDefault()) {
+        QStringList keys = e.timeline.entryStart.props.keys();
+        for (const QString& k : e.timeline.exitEnd.props.keys())
+            if (!keys.contains(k)) keys << k;
+        QJsonObject payload;
+        payload["track"] = e.timeline.toJson();
+        payload["base"]  = TimelineEngine::baseSnapshot(e, keys);
+        QByteArray tlJson = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+        timelineAttr = QString(" data-timeline=\"%1\"").arg(QString::fromLatin1(tlJson.toBase64()));
+    }
 
     if (e.type == SlideElement::Text) {
         QString justifyContent = "flex-start";
@@ -955,9 +1111,9 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             QString items;
             for (const QString& line : e.content.split('\n'))
                 items += "<li>" + line.toHtmlEscaped() + "</li>";
-            return QString("<div data-type=\"text\" data-list=\"%1\" style=\"%2\">"
-                           "<%3 style=\"margin:0;padding:0 0 0 1.3em;list-style:%4;\">%5</%3></div>")
-                       .arg(dataList, style, listTag, listType, items);
+            return QString("<div data-type=\"text\" data-list=\"%1\"%2 style=\"%3\">"
+                           "<%4 style=\"margin:0;padding:0 0 0 1.3em;list-style:%5;\">%6</%4></div>")
+                       .arg(dataList, timelineAttr, style, listTag, listType, items);
         }
 
         QString text = e.content.toHtmlEscaped().replace("\n", "<br>");
@@ -972,13 +1128,8 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                            "style=\"color:inherit;text-decoration:inherit;\">%2</a>")
                        .arg(href, text);
         }
-        if (!e.entranceAnim.isEmpty()) {
-            style += QString("--anim-delay:%1s;--anim-dur:%2s;")
-                         .arg(e.animDelay, 0, 'f', 2).arg(e.animDuration, 0, 'f', 2);
-            return QString("<div data-type=\"text\"%1 data-anim=\"%2\" style=\"%3\">%4</div>")
-                       .arg(varAttr, e.entranceAnim, style, text);
-        }
-        return QString("<div data-type=\"text\"%1 style=\"%2\">%3</div>").arg(varAttr, style, text);
+        return QString("<div data-type=\"text\"%1%2 style=\"%3\">%4</div>")
+                   .arg(varAttr, timelineAttr, style, text);
 
     } else if (e.type == SlideElement::Shape) {
         QString style = base + "background:" + colorToCss(e.backgroundColor) + ";";
@@ -1009,20 +1160,14 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             innerText = QString("<span%1 style=\"%2\">%3</span>")
                             .arg(varAttr, textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
         }
-        if (!e.entranceAnim.isEmpty()) {
-            style += QString("--anim-delay:%1s;--anim-dur:%2s;")
-                         .arg(e.animDelay, 0, 'f', 2).arg(e.animDuration, 0, 'f', 2);
-            return QString("<div data-type=\"shape\" data-shape=\"%1\" data-anim=\"%2\" style=\"%3\">%4</div>")
-                       .arg(e.content, e.entranceAnim, style, innerText);
-        }
-        return QString("<div data-type=\"shape\" data-shape=\"%1\" style=\"%2\">%3</div>")
-                   .arg(e.content, style, innerText);
+        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2 style=\"%3\">%4</div>")
+                   .arg(e.content, timelineAttr, style, innerText);
 
     } else if (e.type == SlideElement::Image) {
         QFileInfo fi(e.content);
         QString src = fi.exists() ? "assets/" + fi.fileName() : e.content;
-        return QString("<img data-type=\"image\" src=\"%1\" style=\"%2object-fit:contain;\" alt=\"\">")
-                   .arg(src, base);
+        return QString("<img data-type=\"image\" src=\"%1\"%2 style=\"%3object-fit:contain;\" alt=\"\">")
+                   .arg(src, timelineAttr, base);
 
     } else if (e.type == SlideElement::Table) {
         QString tableStyle = base
@@ -1043,7 +1188,7 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         for (double f : e.tableRowFracs)
             rowHeights << QString::number(f * e.height, 'f', 0) + "px";
 
-        QString html = QString("<div data-type=\"table\" style=\"%1\">").arg(tableStyle);
+        QString html = QString("<div data-type=\"table\"%1 style=\"%2\">").arg(timelineAttr, tableStyle);
         html += QString("<table style=\"width:100%;height:100%;border-collapse:collapse;"
                         "table-layout:fixed;border:%1;\">").arg(borderStyle);
 
@@ -1114,10 +1259,10 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
 
         if (e.chartData.isDataChart()) {
             return QString(
-                "<div data-type=\"chart\" data-chart-type=\"%1\" data-chart=\"%2\" style=\"%3\">"
+                "<div data-type=\"chart\" data-chart-type=\"%1\" data-chart=\"%2\"%3 style=\"%4\">"
                 "<canvas class=\"chart-canvas\" style=\"width:100%;height:100%;display:block;\"></canvas>"
                 "</div>")
-                .arg(e.chartData.type, chartDataB64, base);
+                .arg(e.chartData.type, chartDataB64, timelineAttr, base);
         }
 
         // Structural/special chart types (flowchart, mindmap, orgchart, uml,
@@ -1142,11 +1287,11 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         QString title  = e.chartData.title.isEmpty() ? ChartRenderer::typeName(e.chartData.type)
                                                       : e.chartData.title;
         return QString(
-            "<div data-type=\"chart\" data-chart-type=\"%1\" data-chart=\"%2\" style=\"%3\">"
-            "<img src=\"data:image/png;base64,%4\" "
-            "style=\"width:100%;height:100%;object-fit:contain;\" alt=\"%5\">"
+            "<div data-type=\"chart\" data-chart-type=\"%1\" data-chart=\"%2\"%3 style=\"%4\">"
+            "<img src=\"data:image/png;base64,%5\" "
+            "style=\"width:100%;height:100%;object-fit:contain;\" alt=\"%6\">"
             "</div>")
-            .arg(e.chartData.type, chartDataB64, base, b64img, title.toHtmlEscaped());
+            .arg(e.chartData.type, chartDataB64, timelineAttr, base, b64img, title.toHtmlEscaped());
 
     } else if (e.type == SlideElement::Formula) {
         QString style = base
@@ -1159,9 +1304,9 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
 
         QString latex = e.content.toHtmlEscaped();
         return QString(
-            "<div data-type=\"formula\" data-latex=\"%1\" style=\"%2\">"
-            "<div class=\"math\">$$%3$$</div></div>")
-            .arg(latex, style, latex);
+            "<div data-type=\"formula\" data-latex=\"%1\"%2 style=\"%3\">"
+            "<div class=\"math\">$$%4$$</div></div>")
+            .arg(latex, timelineAttr, style, latex);
 
     } else if (e.type == SlideElement::IFrame) {
         if (e.content.trimmed().isEmpty()) return {};
@@ -1172,7 +1317,7 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         // this iframe to a position:fixed element outside the 3D context
         // while its slide is active, keyed by this id.
         return QString(
-            "<div data-type=\"iframe-wrap\" data-portal-id=\"%3\" style=\"%1overflow:hidden;\">"
+            "<div data-type=\"iframe-wrap\" data-portal-id=\"%3\"%4 style=\"%1overflow:hidden;\">"
             "<iframe data-type=\"iframe\" src=\"%2\" "
             "style=\"position:absolute;inset:0;width:100%;height:100%;border:none;\" "
             "allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\" "
@@ -1182,7 +1327,7 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             "color:#fff;font:11px sans-serif;padding:3px 7px;border-radius:4px;text-decoration:none;\" "
             "title=\"If the page blocks embedding: open here in a new tab\">↗ Open</a>"
             "</div>")
-            .arg(base, url, e.id);
+            .arg(base, url, e.id, timelineAttr);
 
     } else if (e.type == SlideElement::Button) {
         QString style = base
@@ -1212,18 +1357,19 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                                  .arg(e.boundVariableId, e.varOp)
                                  .arg(e.varOpNumber, 0, 'f', 4)
                                  .arg(e.varOpBool ? "true" : "false", e.varOpText.toHtmlEscaped());
-            return QString("<a data-type=\"button\"%1%2 href=\"javascript:void(0)\" "
+            return QString("<a data-type=\"button\"%1%2%5 href=\"javascript:void(0)\" "
                            "onclick=\"runButtonAction(this);return false;\" style=\"%3\">%4</a>")
-                       .arg(varAttr, attrs, style, label);
+                       .arg(varAttr, attrs, style, label, timelineAttr);
         }
 
         QString targetHtmlId = uuidToHtmlId.value(e.targetSlideId);
         if (targetHtmlId.isEmpty())
-            return QString("<div data-type=\"button\"%1 style=\"%2opacity:.5;\">%3</div>").arg(varAttr, style, label);
+            return QString("<div data-type=\"button\"%1%4 style=\"%2opacity:.5;\">%3</div>")
+                       .arg(varAttr, style, label, timelineAttr);
 
-        return QString("<a data-type=\"button\"%1 data-target=\"%2\" href=\"#%2\" "
+        return QString("<a data-type=\"button\"%1%5 data-target=\"%2\" href=\"#%2\" "
                        "onclick=\"api.goto('%2');return false;\" style=\"%3\">%4</a>")
-                   .arg(varAttr, targetHtmlId, style, label);
+                   .arg(varAttr, targetHtmlId, style, label, timelineAttr);
 
     } else if (e.type == SlideElement::Checkbox) {
         QString style = base
@@ -1238,12 +1384,12 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                                 : QString();
 
         return QString(
-            "<label data-type=\"checkbox\" style=\"%1\">"
+            "<label data-type=\"checkbox\"%5 style=\"%1\">"
             "<input type=\"checkbox\" data-var-id=\"%2\" onchange=\"onCheckboxChange(this)\" "
             "style=\"width:1.3em;height:1.3em;flex:none;\">"
             "<span%3>%4</span>"
             "</label>")
-            .arg(style, e.boundVariableId, varAttr, rawLabel.toHtmlEscaped());
+            .arg(style, e.boundVariableId, varAttr, rawLabel.toHtmlEscaped(), timelineAttr);
 
     } else if (e.type == SlideElement::Slider) {
         QString style = base
@@ -1256,13 +1402,14 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                                       : QString(" data-slider-label=\"%1\"").arg(e.content.toHtmlEscaped());
 
         return QString(
-            "<div data-type=\"slider\" style=\"%1\">"
+            "<div data-type=\"slider\"%7 style=\"%1\">"
             "<span%2></span>"
             "<input type=\"range\" data-var-id=\"%3\" min=\"%4\" max=\"%5\" step=\"%6\" "
             "oninput=\"onSliderInput(this)\" style=\"width:100%;\">"
             "</div>")
             .arg(style, sliderLabelAttr, e.boundVariableId)
-            .arg(e.sliderMin, 0, 'f', 4).arg(e.sliderMax, 0, 'f', 4).arg(e.sliderStep, 0, 'f', 4);
+            .arg(e.sliderMin, 0, 'f', 4).arg(e.sliderMax, 0, 'f', 4).arg(e.sliderStep, 0, 'f', 4)
+            .arg(timelineAttr);
     }
     return {};
 }

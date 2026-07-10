@@ -1,6 +1,8 @@
 #include "EditorArea.h"
 #include "SlideEditor2D.h"
 #include "SlideEditor3D.h"
+#include "TimelinePanel.h"
+#include <cstdio>
 #include "dialogs/InsertTableDialog.h"
 #include "dialogs/InsertChartDialog.h"
 #include "dialogs/InsertFormulaDialog.h"
@@ -13,6 +15,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
+#include <QSplitter>
 #include <QPushButton>
 #include <QToolButton>
 #include <QMenu>
@@ -152,6 +155,13 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnZoomReset->setStyleSheet(LAYER_BTN_SS);
     tbRow->addWidget(m_btnZoomReset);
 
+    m_btnTimelineToggle = new QPushButton("Timeline", m_elemToolbar);
+    m_btnTimelineToggle->setCheckable(true);
+    m_btnTimelineToggle->setChecked(false);
+    m_btnTimelineToggle->setToolTip("Show/hide the per-slide animation Timeline panel");
+    m_btnTimelineToggle->setFixedWidth(80);
+    tbRow->addWidget(m_btnTimelineToggle);
+
     tbRow->addStretch();
     m_btnDelete = mkBtn("delete", "Delete", "Delete selected element");
     m_btnDelete->setStyleSheet(
@@ -213,14 +223,24 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_gizmoToolbar->setVisible(false); // hidden until 3D mode
     mainLayout->addWidget(m_gizmoToolbar);
 
-    // ── Stacked editor ────────────────────────────────────────────────
+    // ── Stacked editor + Timeline panel (vertical split) ───────────────
     m_stack    = new QStackedWidget(this);
     m_editor2D = new SlideEditor2D(this);
     m_editor3D = new SlideEditor3D(this);
     m_stack->addWidget(m_editor2D);
     m_stack->addWidget(m_editor3D);
     m_stack->setCurrentIndex(0);
-    mainLayout->addWidget(m_stack, 1);
+
+    m_timelinePanel = new TimelinePanel(this);
+    m_timelinePanel->setVisible(false); // hidden by default; shown via the Timeline toolbar toggle
+
+    auto* vsplit = new QSplitter(Qt::Vertical, this);
+    vsplit->addWidget(m_stack);
+    vsplit->addWidget(m_timelinePanel);
+    vsplit->setStretchFactor(0, 4);
+    vsplit->setStretchFactor(1, 1);
+    vsplit->setSizes({600, 180});
+    mainLayout->addWidget(vsplit, 1);
 
     // ── Connections ───────────────────────────────────────────────────
     connect(m_btn2D, &QPushButton::clicked, this, &EditorArea::switchTo2D);
@@ -337,11 +357,33 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_distanceSpin, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double v) {
         m_editor3D->setDistance(float(v));
     });
+
+    // ── Timeline panel ──────────────────────────────────────────────────
+    connect(m_btnTimelineToggle, &QPushButton::toggled, m_timelinePanel, &QWidget::setVisible);
+    connect(m_timelinePanel, &TimelinePanel::timelineModified,
+            this, &EditorArea::presentationModified);
+    connect(m_timelinePanel, &TimelinePanel::timelineModified,
+            m_editor2D, QOverload<>::of(&QWidget::update));
+    connect(m_timelinePanel, &TimelinePanel::keyframeEditRequested,
+            this, &EditorArea::keyframeEditRequested);
+    connect(m_timelinePanel, &TimelinePanel::previewTimeChanged, this, [this](float t) {
+        m_editor2D->setPreviewTime(t);
+    });
+    connect(m_editor2D, &SlideEditor2D::elementSelected, m_timelinePanel, &TimelinePanel::setSelectedElement);
+    connect(m_editor2D, &SlideEditor2D::keyframeEditDone, this, &EditorArea::keyframeEditDone);
 }
 
 void EditorArea::setPresentation(Presentation* pres, int slideIndex) {
     m_pres       = pres;
     m_slideIndex = slideIndex;
+    // TimelinePanel must be pointed at the new presentation *before*
+    // SlideEditor2D::setSlide() runs: that call synchronously emits
+    // elementSelected(-1), which TimelinePanel::setSelectedElement() (wired
+    // below) turns into an immediate rebuildRows() — if that happened while
+    // m_timelinePanel still referenced the *old* Presentation (which may
+    // already have been deleted by the caller, e.g. when opening a different
+    // project), rebuildRows() would dereference freed memory.
+    m_timelinePanel->setSlide(pres, slideIndex);
     m_editor2D->setSlide(pres, slideIndex);
     m_editor3D->setPresentation(pres, slideIndex);
 }
@@ -349,10 +391,27 @@ void EditorArea::setPresentation(Presentation* pres, int slideIndex) {
 void EditorArea::refresh() {
     m_editor2D->update();
     m_editor3D->update();
+    m_timelinePanel->refresh();
 }
 
 void EditorArea::activateFormatPainter(const SlideElement& source) {
     m_editor2D->activateFormatPainter(source);
+}
+
+void EditorArea::setSelectedElementForTimeline(int elemIndex) {
+    m_timelinePanel->setSelectedElement(elemIndex);
+}
+
+void EditorArea::setKeyframeEditActive(bool active, const QString& label) {
+    m_editor2D->setKeyframeEditActive(active, label);
+}
+
+void EditorArea::ensure2DMode() {
+    switchTo2D();
+}
+
+void EditorArea::selectElement(int index) {
+    m_editor2D->selectElement(index);
 }
 
 void EditorArea::switchTo2D() {

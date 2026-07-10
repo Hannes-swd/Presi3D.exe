@@ -340,6 +340,12 @@ void PropertiesPanel::buildElementGroup() {
     m_eAlign->addItems({"Left", "Center", "Right"});
     formStyle->addRow("Alignment:", m_eAlign);
 
+    m_eOpacity = makeSpin(0.0, 1.0, 0.05);
+    m_eOpacity->setDecimals(2);
+    m_eOpacity->setValue(1.0);
+    m_eOpacity->setToolTip("Base opacity; timeline keyframes (Timeline panel) can animate this per slide-step");
+    formStyle->addRow("Opacity:", m_eOpacity);
+
     gvbox->addWidget(secStyle.outer);
 
     // ── Form – nur für Shapes (offen, aber initial ausgeblendet) ──────────────
@@ -362,34 +368,6 @@ void PropertiesPanel::buildElementGroup() {
     m_elemFormSection = secForm.outer;
     gvbox->addWidget(secForm.outer);
 
-    // ── Animation (eingeklappt) ────────────────────────────────────────────────
-    auto secAnim = makeSection("Animation", false, m_elemGroup);
-    auto* formAnim = makeForm(secAnim.content);
-
-    m_eAnimType = new QComboBox(secAnim.content);
-    m_eAnimType->addItem("None",          "");
-    m_eAnimType->addItem("Fade In",     "fadeIn");
-    m_eAnimType->addItem("From Left",      "slideLeft");
-    m_eAnimType->addItem("From Right",     "slideRight");
-    m_eAnimType->addItem("From Top",       "slideUp");
-    m_eAnimType->addItem("From Bottom",     "slideDown");
-    m_eAnimType->addItem("Zoom",           "zoomIn");
-    formAnim->addRow("Animation:", m_eAnimType);
-
-    m_animDelayLabel = new QLabel("Delay (s):", secAnim.content);
-    m_eAnimDelay = makeSpin(0.0, 10.0, 0.1);
-    m_eAnimDelay->setDecimals(1);
-    m_eAnimDelay->setValue(0.3);
-    formAnim->addRow(m_animDelayLabel, m_eAnimDelay);
-
-    m_animDurLabel = new QLabel("Duration (s):", secAnim.content);
-    m_eAnimDuration = makeSpin(0.05, 10.0, 0.1);
-    m_eAnimDuration->setDecimals(1);
-    m_eAnimDuration->setValue(0.5);
-    formAnim->addRow(m_animDurLabel, m_eAnimDuration);
-
-    gvbox->addWidget(secAnim.outer);
-
     // Signals
     connect(m_elemContent, &QLineEdit::editingFinished, this, [this]() {
         onElemContentChanged(m_elemContent->text());
@@ -405,9 +383,7 @@ void PropertiesPanel::buildElementGroup() {
     connect(m_eBorderW,        &QDoubleSpinBox::valueChanged, this, [this](double) { onElemBorderChanged(); });
     connect(m_eBorderColorBtn, &QPushButton::clicked,         this, &PropertiesPanel::onElemBorderColorClicked);
     connect(m_eCornerRadius,   &QDoubleSpinBox::valueChanged, this, [this](double) { onElemCornerRadiusChanged(); });
-    connect(m_eAnimType,     &QComboBox::currentIndexChanged, this, &PropertiesPanel::onElemAnimChanged);
-    connect(m_eAnimDelay,    &QDoubleSpinBox::valueChanged,   this, [this](double v){ onElemAnimDelayChanged(v); });
-    connect(m_eAnimDuration, &QDoubleSpinBox::valueChanged,   this, [this](double v){ onElemAnimDurationChanged(v); });
+    connect(m_eOpacity, &QDoubleSpinBox::valueChanged, this, &PropertiesPanel::onElemOpacityChanged);
 
     m_elemFormSection->setVisible(false);
     m_elemGroup->setEnabled(false);
@@ -768,18 +744,7 @@ void PropertiesPanel::refreshElement() {
         m_eCornerRadius->setValue(e.cornerRadius);
     }
 
-    int animIdx = 0;
-    for (int i = 0; i < m_eAnimType->count(); ++i) {
-        if (m_eAnimType->itemData(i).toString() == e.entranceAnim) { animIdx = i; break; }
-    }
-    m_eAnimType->setCurrentIndex(animIdx);
-    m_eAnimDelay->setValue(e.animDelay);
-    m_eAnimDuration->setValue(e.animDuration);
-    bool hasAnim = !e.entranceAnim.isEmpty();
-    m_animDelayLabel->setEnabled(hasAnim);
-    m_eAnimDelay->setEnabled(hasAnim);
-    m_animDurLabel->setEnabled(hasAnim);
-    m_eAnimDuration->setEnabled(hasAnim);
+    m_eOpacity->setValue(e.opacity);
 
     m_updating = false;
 }
@@ -1002,31 +967,10 @@ void PropertiesPanel::onElemCornerRadiusChanged() {
     }
 }
 
-void PropertiesPanel::onElemAnimChanged(int idx) {
+void PropertiesPanel::onElemOpacityChanged(double v) {
     if (m_updating) return;
     if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
-        e->entranceAnim = m_eAnimType->itemData(idx).toString();
-        bool hasAnim = !e->entranceAnim.isEmpty();
-        m_animDelayLabel->setEnabled(hasAnim);
-        m_eAnimDelay->setEnabled(hasAnim);
-        m_animDurLabel->setEnabled(hasAnim);
-        m_eAnimDuration->setEnabled(hasAnim);
-        emit elementModified();
-    }
-}
-
-void PropertiesPanel::onElemAnimDelayChanged(double v) {
-    if (m_updating) return;
-    if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
-        e->animDelay = float(v);
-        emit elementModified();
-    }
-}
-
-void PropertiesPanel::onElemAnimDurationChanged(double v) {
-    if (m_updating) return;
-    if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
-        e->animDuration = float(v);
+        e->opacity = float(v);
         emit elementModified();
     }
 }

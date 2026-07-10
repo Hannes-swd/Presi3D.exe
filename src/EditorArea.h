@@ -9,6 +9,7 @@ class QDoubleSpinBox;
 class QSpinBox;
 class SlideEditor2D;
 class SlideEditor3D;
+class TimelinePanel;
 
 class EditorArea : public QWidget {
     Q_OBJECT
@@ -19,11 +20,19 @@ public:
     void refresh();
     void activateFormatPainter(const SlideElement& source);
 
+    // Timeline panel + keyframe edit session, driven by MainWindow.
+    void setSelectedElementForTimeline(int elemIndex);
+    void setKeyframeEditActive(bool active, const QString& label = {});
+    void ensure2DMode();
+    void selectElement(int index);
+
 signals:
     void presentationModified();
     void elementSelected(int elemIndex);
     void tableCellSelected(int row, int col);
     void worldObjectSelected(int index);
+    void keyframeEditRequested(int elemIndex, bool isEntry);
+    void keyframeEditDone();
 
 private slots:
     void switchTo2D();
@@ -36,6 +45,8 @@ private:
     QStackedWidget*  m_stack      = nullptr;
     SlideEditor2D*   m_editor2D   = nullptr;
     SlideEditor3D*   m_editor3D   = nullptr;
+    TimelinePanel*   m_timelinePanel = nullptr;
+    QPushButton*     m_btnTimelineToggle = nullptr;
 
     QPushButton*     m_btn2D      = nullptr;
     QPushButton*     m_btn3D      = nullptr;

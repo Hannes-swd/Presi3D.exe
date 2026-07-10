@@ -45,6 +45,9 @@ private slots:
     void onWorldObjectSelected(int index);
     void onFormatPainterRequested();
 
+    void onKeyframeEditRequested(int elemIndex, bool isEntry);
+    void onKeyframeEditFinished();
+
     void undo();
     void redo();
 
@@ -78,6 +81,14 @@ private:
     void resetUndoHistory();    // call when a different document is loaded
     void updateUndoRedoActions();
 
+    // Silently commits an in-progress keyframe-edit session (as if "Done" had
+    // been clicked), if one is active. Must run before anything reads or
+    // replaces *m_presentation from outside the session — undo/redo, save/
+    // autosave, opening/creating a different document — because while the
+    // session is open, the edited element's real values are temporarily
+    // swapped out for its keyframe override (see onKeyframeEditRequested).
+    void finishKeyframeSessionIfActive();
+
     Presentation*    m_presentation  = nullptr;
     int              m_selectedSlide = -1;
     QAction*         m_browserAction = nullptr;
@@ -98,6 +109,15 @@ private:
 
     int              m_selectedElem      = -1;
     int              m_selectedWorldObj  = -1;
+
+    // Keyframe edit session: while active, the element at m_keyframeElemIndex
+    // has its real (steady-state) values temporarily swapped for its
+    // entryStart/exitEnd keyframe override, so it can be edited with the
+    // normal 2D-canvas/PropertiesPanel tools; m_keyframeBaseline holds the
+    // real values to diff against and restore when the session ends.
+    int              m_keyframeElemIndex = -1;
+    bool             m_keyframeIsEntry   = false;
+    SlideElement     m_keyframeBaseline;
 
     std::deque<Presentation> m_undoStack;
     std::deque<Presentation> m_redoStack;

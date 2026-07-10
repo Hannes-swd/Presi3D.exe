@@ -23,6 +23,9 @@ set(SOURCES
     src/models/ChartData.cpp
     src/models/VariableModel.cpp
     src/models/VariableEngine.cpp
+    src/models/TimelineTrack.cpp
+    src/models/TimelineEngine.cpp
+    src/TimelinePanel.cpp
     src/rendering/ChartRenderer.cpp
     src/rendering/LatexRenderer.cpp
     src/export/HtmlExporter.cpp

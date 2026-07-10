@@ -1,5 +1,6 @@
 ﻿#include "HtmlImporter.h"
 #include "models/ChartData.h"
+#include "models/TimelineTrack.h"
 #include <QFile>
 #include <QDir>
 #include <QMap>
@@ -40,6 +41,22 @@ static QColor parseCssColor(const QString& raw) {
     }
     QColor col(c);
     return col.isValid() ? col : Qt::transparent;
+}
+
+// Restores SlideElement::timeline and ::opacity from the data-timeline
+// attribute (base64 JSON, {"track":{...},"base":{...}} — see
+// HtmlExporter::elementToHtml) and the generic CSS opacity property.
+// Applies to every element type, so every per-type parse branch calls this
+// once its `style` string and element tag are known.
+static void parseTimelineAndOpacity(const QString& tag, const QString& style, SlideElement& e) {
+    QString opa = cssProp(style, "opacity");
+    if (!opa.isEmpty()) e.opacity = opa.toFloat();
+
+    QString tlB64 = attrVal(tag, "data-timeline");
+    if (tlB64.isEmpty()) return;
+    QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromBase64(tlB64.toLatin1()));
+    if (doc.isObject())
+        e.timeline = TimelineTrack::fromJson(doc.object()["track"].toObject());
 }
 
 // Finds the "var presVariables = [...];" JSON array embedded in the bootstrap
@@ -580,6 +597,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 e.y      = cssProp(style, "top").remove("px").toFloat();
                 e.width  = cssProp(style, "width").remove("px").toFloat();
                 e.height = cssProp(style, "height").remove("px").toFloat();
+                parseTimelineAndOpacity(line, style, e);
                 slide.elements.append(e);
 
             } else if (line.startsWith("<iframe")) {
@@ -595,6 +613,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 e.y      = cssProp(style, "top").remove("px").toFloat();
                 e.width  = cssProp(style, "width").remove("px").toFloat();
                 e.height = cssProp(style, "height").remove("px").toFloat();
+                parseTimelineAndOpacity(line, style, e);
                 slide.elements.append(e);
 
             } else if (line.startsWith("<div")) {
@@ -625,11 +644,11 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 QString style  = attrVal(dTag, "style");
                 QString dtype  = attrVal(dTag, "data-type");
                 QString dshape = attrVal(dTag, "data-shape");
-                QString danim  = attrVal(dTag, "data-anim");
 
                 // Table element: parse the full line (exporter writes it on one line)
                 if (dtype == "table") {
                     SlideElement te = parseTableDiv(line);
+                    parseTimelineAndOpacity(dTag, style, te);
                     if (te.tableRows > 0 && te.tableCols > 0)
                         slide.elements.append(te);
                     continue;
@@ -656,6 +675,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                                 auto rotM = rotRe.match(chartTransform);
                                 if (rotM.hasMatch()) ce.rotation = rotM.captured(1).toFloat();
                             }
+                            parseTimelineAndOpacity(dTag, style, ce);
                             slide.elements.append(ce);
                         }
                     }
@@ -683,6 +703,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                         src.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
                            .replace("&quot;", "\"").replace("&#39;", "'");
                         ie.content = src;
+                        parseTimelineAndOpacity(dTag, style, ie);
                         slide.elements.append(ie);
                     }
                     continue;
@@ -712,6 +733,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     latex.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
                          .replace("&quot;", "\"").replace("&#39;", "'");
                     fe.content = latex;
+                    parseTimelineAndOpacity(dTag, style, fe);
                     slide.elements.append(fe);
                     continue;
                 }
@@ -752,6 +774,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                         if (!maxS.isEmpty())  se.sliderMax  = maxS.toDouble();
                         if (!stepS.isEmpty()) se.sliderStep = stepS.toDouble();
                     }
+                    parseTimelineAndOpacity(dTag, style, se);
                     slide.elements.append(se);
                     continue;
                 }
@@ -887,14 +910,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                         }
                     }
                 }
-                // Entrance animation
-                if (!danim.isEmpty()) {
-                    e.entranceAnim = danim;
-                    QString rawDelay = cssProp(style, "--anim-delay");
-                    QString rawDur   = cssProp(style, "--anim-dur");
-                    if (!rawDelay.isEmpty()) e.animDelay    = rawDelay.remove('s').toFloat();
-                    if (!rawDur.isEmpty())   e.animDuration = rawDur.remove('s').toFloat();
-                }
+                parseTimelineAndOpacity(dTag, style, e);
 
                 slide.elements.append(e);
 
@@ -959,6 +975,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                          .replace("&quot;", "\"").replace("&#39;", "'");
                     e.content = label;
                 }
+                parseTimelineAndOpacity(line, style, e);
                 slide.elements.append(e);
 
             } else if (line.startsWith("<label") && attrVal(line, "data-type") == "checkbox") {
@@ -991,6 +1008,7 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                        .replace("&quot;", "\"").replace("&#39;", "'");
                     e.content = lbl;
                 }
+                parseTimelineAndOpacity(line, style, e);
                 slide.elements.append(e);
             }
         }

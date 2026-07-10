@@ -7,6 +7,7 @@
 #include "dialogs/InsertIFrameDialog.h"
 #include "dialogs/InsertButtonDialog.h"
 #include "models/VariableEngine.h"
+#include "models/TimelineEngine.h"
 #include <QPainter>
 #include <QtMath>
 #include <QMouseEvent>
@@ -108,6 +109,25 @@ void SlideEditor2D::setSlide(Presentation* pres, int slideIndex) {
     m_dragDivider    = {};
     update();
     emit elementSelected(-1);
+}
+
+void SlideEditor2D::setPreviewTime(float tSeconds) {
+    m_previewTime = tSeconds;
+    update();
+}
+
+void SlideEditor2D::setKeyframeEditActive(bool active, const QString& label) {
+    m_keyframeEditActive = active;
+    m_keyframeEditLabel  = label;
+    update();
+}
+
+void SlideEditor2D::selectElement(int index) {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || index < -1 || index >= s->elements.size()) return;
+    m_selectedElem = index;
+    update();
+    emit elementSelected(index);
 }
 
 // ── Coordinate helpers ────────────────────────────────────────────────────────
@@ -384,7 +404,16 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
     p.setClipRect(sr);
     for (int i = 0; i < slide->elements.size(); ++i) {
         bool showSel = (i == m_selectedElem) && (i != m_editingElem);
-        drawElement(p, slide->elements[i], showSel, i == m_editingElem, slide->id);
+        const SlideElement& baseElem = slide->elements[i];
+        SlideElement previewElem;
+        const SlideElement* renderElem = &baseElem;
+        if (m_previewTime >= 0.f && !baseElem.timeline.isDefault()) {
+            previewElem = TimelineEngine::previewAt(baseElem, baseElem.timeline, m_previewTime);
+            renderElem = &previewElem;
+        }
+        p.setOpacity(double(renderElem->opacity));
+        drawElement(p, *renderElem, showSel, i == m_editingElem, slide->id);
+        p.setOpacity(1.0);
         if (i == m_editingElem)
             drawTextCursor(p, slide->elements[i]);
     }
@@ -422,6 +451,23 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
         p.drawRoundedRect(badge, 4, 4);
         p.setPen(Qt::white);
         p.drawText(badge, Qt::AlignCenter, label);
+    }
+
+    if (m_keyframeEditActive) {
+        QRectF banner(0, 0, width(), 30);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(230, 140, 20, 235));
+        p.drawRect(banner);
+        QFont f = p.font();
+        f.setPointSize(10);
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(Qt::white);
+        p.drawText(banner.adjusted(10, 0, -100, 0), Qt::AlignVCenter | Qt::AlignLeft, m_keyframeEditLabel);
+        m_keyframeDoneRect = QRectF(width() - 90, 4, 80, 22);
+        p.setBrush(QColor(0, 0, 0, 120));
+        p.drawRoundedRect(m_keyframeDoneRect, 4, 4);
+        p.drawText(m_keyframeDoneRect, Qt::AlignCenter, "Done (Esc)");
     }
 }
 
@@ -1029,6 +1075,11 @@ void SlideEditor2D::activateFormatPainter(const SlideElement& source) {
 // ── Mouse events ──────────────────────────────────────────────────────────────
 
 void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
+    if (m_keyframeEditActive && e->button() == Qt::LeftButton
+        && m_keyframeDoneRect.contains(e->position())) {
+        emit keyframeEditDone();
+        return;
+    }
     if (e->button() == Qt::MiddleButton) {
         m_panning        = true;
         m_panStartMouse  = e->position();
@@ -1414,6 +1465,18 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
 }
 
 void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
+    if (m_keyframeEditActive) {
+        // MainWindow's keyframe-edit session tracks the edited element by
+        // index into Slide::elements (see MainWindow::onKeyframeEditRequested).
+        // Delete/cut/paste/duplicate would shift that index out from under the
+        // session and corrupt an unrelated element when the session ends (its
+        // baseline would get written into whatever shifted into the old
+        // slot) — so keyboard input is restricted to Escape (end the session)
+        // while one is active. Dragging and PropertiesPanel edits still work
+        // normally, since neither goes through this handler.
+        if (e->key() == Qt::Key_Escape) emit keyframeEditDone();
+        return;
+    }
     if (m_editingElem >= 0) { handleTextEditKey(e); return; }
     if (m_tableEditMode)    { handleTableKey(e);     return; }
 
@@ -1896,6 +1959,13 @@ void SlideEditor2D::addImageElement() {
 }
 
 void SlideEditor2D::deleteSelectedElement() {
+    // MainWindow's keyframe-edit session tracks its target by index into
+    // Slide::elements; removing/reordering any element (this function or the
+    // layer-order ones below) would shift that index and, when the session
+    // later ends, write its data into whatever element shifted into the old
+    // slot. Closing any active session first — as if "Done" were clicked —
+    // commits it against the still-consistent pre-edit array.
+    if (m_keyframeEditActive) emit keyframeEditDone();
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
     s->elements.removeAt(m_selectedElem);
@@ -1908,6 +1978,9 @@ void SlideEditor2D::deleteSelectedElement() {
 // ── Layer / z-order ───────────────────────────────────────────────────────────
 
 void SlideEditor2D::bringToFront() {
+    // See the comment in deleteSelectedElement(): reordering shifts indices
+    // out from under an active keyframe-edit session, so close it first.
+    if (m_keyframeEditActive) emit keyframeEditDone();
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size() - 1) return;
     s->elements.move(m_selectedElem, s->elements.size() - 1);
@@ -1916,6 +1989,7 @@ void SlideEditor2D::bringToFront() {
 }
 
 void SlideEditor2D::bringForward() {
+    if (m_keyframeEditActive) emit keyframeEditDone();
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size() - 1) return;
     s->elements.swapItemsAt(m_selectedElem, m_selectedElem + 1);
@@ -1924,6 +1998,7 @@ void SlideEditor2D::bringForward() {
 }
 
 void SlideEditor2D::sendBackward() {
+    if (m_keyframeEditActive) emit keyframeEditDone();
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem <= 0) return;
     s->elements.swapItemsAt(m_selectedElem, m_selectedElem - 1);
@@ -1932,6 +2007,7 @@ void SlideEditor2D::sendBackward() {
 }
 
 void SlideEditor2D::sendToBack() {
+    if (m_keyframeEditActive) emit keyframeEditDone();
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem <= 0) return;
     s->elements.move(m_selectedElem, 0);
