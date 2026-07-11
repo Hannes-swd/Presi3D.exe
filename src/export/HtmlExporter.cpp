@@ -817,6 +817,13 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  var al = a.a + (b.a - a.a) * t;\n"
         << "  return 'rgba(' + r + ',' + g + ',' + bl + ',' + al.toFixed(3) + ')';\n"
         << "}\n"
+        << "// hasEntry/hasExit with no keyframe authored yet (added by dragging the timeline bar\n"
+        << "// directly, never opened via \"Start\\u25B8\"/\"\\u25C2End\") would otherwise interpolate\n"
+        << "// against an empty override and never visibly change -- falls back to a plain opacity\n"
+        << "// fade. Mirrors TimelineEngine.cpp's fadeKeyframeOrDefault -- keep both in sync.\n"
+        << "function tlFadeKfOrDefault(kf) {\n"
+        << "  return (kf && Object.keys(kf).length > 0) ? kf : { opacity: 0 };\n"
+        << "}\n"
         << "// Applies `kf` (override values) interpolated against `base` (base values) at\n"
         << "// fraction t: t=0 -> kf values, t=1 -> base values (same convention as C++).\n"
         << "function tlApplyFrame(el, kf, base, t) {\n"
@@ -896,8 +903,8 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "      timelineTimers.push(id);\n"
         << "    }\n"
         << "  }\n"
-        << "  schedule(track.hasEntry, track.entryDelay, track.entryDuration, track.entryTrigger, track.entryStart, 0, 1, function() {\n"
-        << "    schedule(track.hasExit, track.exitDelay, track.exitDuration, track.exitTrigger, track.exitEnd, 1, 0, function() {\n"
+        << "  schedule(track.hasEntry, track.entryDelay, track.entryDuration, track.entryTrigger, tlFadeKfOrDefault(track.entryStart), 0, 1, function() {\n"
+        << "    schedule(track.hasExit, track.exitDelay, track.exitDuration, track.exitTrigger, tlFadeKfOrDefault(track.exitEnd), 1, 0, function() {\n"
         << "      if (track.loop) {\n"
         << "        var id = setTimeout(function() { runElementTimeline(el, data, false); }, Math.max(0, track.loopPause) * 1000);\n"
         << "        timelineTimers.push(id);\n"
@@ -1068,6 +1075,13 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         QStringList keys = e.timeline.entryStart.props.keys();
         for (const QString& k : e.timeline.exitEnd.props.keys())
             if (!keys.contains(k)) keys << k;
+        // hasEntry/hasExit with an empty keyframe falls back to a plain opacity
+        // fade at playback time (tlFadeKfOrDefault in the JS below) — make sure
+        // "opacity" is embedded as a base value for that fallback to have
+        // something to interpolate against, same as if it were a real keyframe key.
+        if ((e.timeline.hasEntry && e.timeline.entryStart.isEmpty()) ||
+            (e.timeline.hasExit  && e.timeline.exitEnd.isEmpty()))
+            if (!keys.contains("opacity")) keys << "opacity";
         QJsonObject payload;
         payload["track"] = e.timeline.toJson();
         payload["base"]  = TimelineEngine::baseSnapshot(e, keys);

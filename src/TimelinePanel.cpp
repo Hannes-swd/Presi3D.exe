@@ -1,6 +1,8 @@
 #include "TimelinePanel.h"
 #include "models/VariableModel.h"
 #include <QPainter>
+#include <QIcon>
+#include <QSize>
 #include <QMouseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -17,6 +19,7 @@
 #include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QMenu>
+#include <QButtonGroup>
 #include <QPointer>
 #include <algorithm>
 #include <cmath>
@@ -30,7 +33,19 @@ TimelineBarWidget::TimelineBarWidget(QWidget* parent) : QWidget(parent) {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setMouseTracking(true);
     setToolTip("Right-click: add/remove entrance or exit animation, loop, details…\n"
-               "Left-click the wait area: quick-add. Drag the edge: resize. Drag the animated part: shift its timing.");
+               "Left-click an empty half: quick-add. Drag an occupied segment: behaviour depends on\n"
+               "the Move/Wait tool selected in the toolbar above.");
+}
+
+void TimelineBarWidget::setTool(Tool t) {
+    m_tool = t;
+    setToolTip(t == Tool::Move
+        ? "Right-click: add/remove entrance or exit animation, loop, details…\n"
+          "Left-click an empty half: quick-add. Drag the middle of a segment: shift WHEN it starts\n"
+          "(wait longer/shorter, keeps duration). Drag its outer edge: resize it (keeps the wait)."
+        : "Right-click: add/remove entrance or exit animation, loop, details…\n"
+          "Left-click an empty half: quick-add. Drag anywhere on a segment: trade wait-time vs.\n"
+          "animation duration (keeps the total length) — switch to the Move tool to shift timing instead.");
 }
 
 void TimelineBarWidget::bindElement(Presentation* pres, int slideIdx, int elemIdx) {
@@ -128,13 +143,18 @@ TimelineBarWidget::Handle TimelineBarWidget::hitTestHandle(const QPointF& pos, c
     float halfW = float(r.width()) / 2.f;
     float entryX = float(r.left()) + entryOccupiedFrac(t) * halfW;
     float exitX  = float(r.right()) - exitOccupiedFrac(t) * halfW;
-    const float tol = 8.f;
-    if (std::abs(float(pos.x()) - entryX) <= tol) return Handle::Entry;
-    if (std::abs(float(pos.x()) - exitX)  <= tol) return Handle::Exit;
-    // Inside the already-occupied segment (but not on its edge handle): drag
-    // to shift the whole segment (move its delay, keep its duration).
-    if (t.hasEntry && pos.x() > r.left() && pos.x() < entryX) return Handle::EntryShift;
-    if (t.hasExit  && pos.x() < r.right() && pos.x() > exitX) return Handle::ExitShift;
+    const float edgeTol = 8.f; // px around the segment's outer edge that counts as a resize grab
+
+    if (t.hasEntry && pos.x() > r.left() && pos.x() < entryX) {
+        if (m_tool == Tool::Wait) return Handle::EntryWait;
+        // Move tool: the outer edge (boundary with the "always visible"
+        // rest of the bar) resizes; anywhere else in the segment shifts it.
+        return std::abs(float(pos.x()) - entryX) <= edgeTol ? Handle::EntryResize : Handle::EntryMove;
+    }
+    if (t.hasExit && pos.x() < r.right() && pos.x() > exitX) {
+        if (m_tool == Tool::Wait) return Handle::ExitWait;
+        return std::abs(float(pos.x()) - exitX) <= edgeTol ? Handle::ExitResize : Handle::ExitMove;
+    }
     return Handle::None;
 }
 
@@ -158,6 +178,19 @@ void TimelineBarWidget::mousePressEvent(QMouseEvent* ev) {
         QAction* detailsAct = menu.addAction("Timeline details…");
 
         QAction* chosen = menu.exec(ev->globalPosition().toPoint());
+
+        // Select this bar's element (see the left-click path below for why
+        // this is deferred at all). Queued only now, AFTER menu.exec()'s
+        // nested event loop has fully returned — queuing it any earlier
+        // (e.g. before menu.exec()) would let that nested loop itself pump
+        // the queue and fire this 0ms timer *while the menu is still open*,
+        // tearing this widget down (via rebuildRows()) out from under
+        // QMenu::exec() and corrupting the heap exactly like the Choice
+        // handling below already had to guard against.
+        QPointer<TimelineBarWidget> selfForActivate(this);
+        QTimer::singleShot(0, this, [selfForActivate]() {
+            if (selfForActivate) emit selfForActivate->activated();
+        });
 
         enum class Choice { None, Entry, Exit, Loop, Details };
         Choice choice = Choice::None;
@@ -187,12 +220,16 @@ void TimelineBarWidget::mousePressEvent(QMouseEvent* ev) {
                 liveTrack->hasEntry = !liveTrack->hasEntry;
                 if (liveTrack->hasEntry && liveTrack->entryDelay <= 0.f && liveTrack->entryDuration <= 0.f)
                     liveTrack->entryDelay = kBarSeconds * 0.25f; // default wait, so the bar visibly shows something
+                if (liveTrack->hasEntry && liveTrack->entryStart.isEmpty())
+                    liveTrack->entryStart.props["opacity"] = 0.0; // ANIMATION_PLAN.md's simple default: plain fade-in, no keyframe authored yet
                 emit self->changed();
                 break;
             case Choice::Exit:
                 liveTrack->hasExit = !liveTrack->hasExit;
                 if (liveTrack->hasExit && liveTrack->exitDelay <= 0.f && liveTrack->exitDuration <= 0.f)
                     liveTrack->exitDelay = kBarSeconds * 0.25f;
+                if (liveTrack->hasExit && liveTrack->exitEnd.isEmpty())
+                    liveTrack->exitEnd.props["opacity"] = 0.0; // plain fade-out by default, same as entry
                 emit self->changed();
                 break;
             case Choice::Loop:
@@ -210,28 +247,63 @@ void TimelineBarWidget::mousePressEvent(QMouseEvent* ev) {
     }
     if (ev->button() != Qt::LeftButton) return;
 
+    // Select this bar's element (see the right-click branch above for the
+    // full reasoning on why this is deferred). No nested event loop precedes
+    // this on the left-click path, but it's still deferred for the same
+    // reason as the quick-add case below: emitting synchronously here would
+    // let TimelinePanel::rebuildRows() tear this widget down before the
+    // drag-state set up right below even gets a chance to matter.
+    {
+        QPointer<TimelineBarWidget> selfForActivate(this);
+        QTimer::singleShot(0, this, [selfForActivate]() {
+            if (selfForActivate) emit selfForActivate->activated();
+        });
+    }
+
     m_dragging = hitTestHandle(ev->position(), *track);
     m_dragStartX = float(ev->position().x());
-    if (m_dragging == Handle::EntryShift) {
+    if (m_dragging == Handle::EntryMove) {
         m_dragStartDelay = track->entryDelay;
-    } else if (m_dragging == Handle::ExitShift) {
+    } else if (m_dragging == Handle::ExitMove) {
         m_dragStartDelay = track->exitDelay;
+    } else if (m_dragging == Handle::EntryResize) {
+        m_dragStartDuration = track->entryDuration;
+    } else if (m_dragging == Handle::ExitResize) {
+        m_dragStartDuration = track->exitDuration;
+    } else if (m_dragging == Handle::EntryWait) {
+        m_dragStartDelay = track->entryDelay;
+        m_dragStartTotal = track->entryDelay + track->entryDuration;
+    } else if (m_dragging == Handle::ExitWait) {
+        m_dragStartDelay = track->exitDelay;
+        m_dragStartTotal = track->exitDelay + track->exitDuration;
     } else if (m_dragging == Handle::None) {
         // Click on the empty (not-yet-occupied) part of a half: activate it
         // with a default wait, so the feature is discoverable without the
         // gear dialog. (Deactivating again is a right-click, see above.)
+        // changed() is deferred (same QPointer + QTimer::singleShot(0)
+        // pattern as the right-click menu above and activated() below): it
+        // reaches TimelinePanel::rebuildRows() synchronously, which would
+        // deleteLater() and replace this exact widget while still on the
+        // call stack of its own mousePressEvent — heap corruption in
+        // practice (Debug Assertion Failed / _CrtIsValidHeapPointer), not
+        // just a cosmetic glitch.
         QRectF r = QRectF(rect()).adjusted(1, 6, -1, -6);
         bool leftHalf = ev->position().x() < r.center().x();
+        QPointer<TimelineBarWidget> selfForAdd(this);
         if (leftHalf && !track->hasEntry) {
             track->hasEntry   = true;
             track->entryDelay = kBarSeconds * 0.25f;
-            emit changed();
+            if (track->entryStart.isEmpty())
+                track->entryStart.props["opacity"] = 0.0; // plain fade-in default, see the right-click menu's Entry case
             update();
+            QTimer::singleShot(0, this, [selfForAdd]() { if (selfForAdd) emit selfForAdd->changed(); });
         } else if (!leftHalf && !track->hasExit) {
             track->hasExit   = true;
             track->exitDelay = kBarSeconds * 0.25f;
-            emit changed();
+            if (track->exitEnd.isEmpty())
+                track->exitEnd.props["opacity"] = 0.0;
             update();
+            QTimer::singleShot(0, this, [selfForAdd]() { if (selfForAdd) emit selfForAdd->changed(); });
         }
     }
 }
@@ -243,30 +315,36 @@ void TimelineBarWidget::mouseMoveEvent(QMouseEvent* ev) {
     QRectF r = QRectF(rect()).adjusted(1, 6, -1, -6);
     float halfW = float(r.width()) / 2.f;
 
-    if (m_dragging == Handle::Entry) {
-        float occ = std::clamp(float(ev->position().x() - r.left()) / halfW, 0.f, 1.f);
-        float total = occ * kBarSeconds;
-        float oldTotal = track->entryDelay + track->entryDuration;
-        float ratio = oldTotal > 0.f ? track->entryDuration / oldTotal : 0.f;
-        track->entryDuration = total * ratio;
-        track->entryDelay    = total - track->entryDuration;
-        track->hasEntry      = total > 0.001f;
-    } else if (m_dragging == Handle::Exit) {
-        float occ = std::clamp(float(r.right() - ev->position().x()) / halfW, 0.f, 1.f);
-        float total = occ * kBarSeconds;
-        float oldTotal = track->exitDelay + track->exitDuration;
-        float ratio = oldTotal > 0.f ? track->exitDuration / oldTotal : 0.f;
-        track->exitDuration = total * ratio;
-        track->exitDelay    = total - track->exitDuration;
-        track->hasExit      = total > 0.001f;
-    } else if (m_dragging == Handle::EntryShift) {
+    if (m_dragging == Handle::EntryMove) {
+        // Move tool: shift delay, keep duration fixed — moves WHEN the
+        // entrance animation starts (and ends) without changing its length.
         float deltaSeconds = (float(ev->position().x()) - m_dragStartX) / halfW * kBarSeconds;
         float maxDelay = qMax(0.f, kBarSeconds - track->entryDuration);
         track->entryDelay = std::clamp(m_dragStartDelay + deltaSeconds, 0.f, maxDelay);
-    } else if (m_dragging == Handle::ExitShift) {
+    } else if (m_dragging == Handle::ExitMove) {
         float deltaSeconds = (m_dragStartX - float(ev->position().x())) / halfW * kBarSeconds;
         float maxDelay = qMax(0.f, kBarSeconds - track->exitDuration);
         track->exitDelay = std::clamp(m_dragStartDelay + deltaSeconds, 0.f, maxDelay);
+    } else if (m_dragging == Handle::EntryResize) {
+        // Move tool, edge grab: resize the segment (change duration), keep
+        // delay fixed — drag the edge right to make the animation longer.
+        float deltaSeconds = (float(ev->position().x()) - m_dragStartX) / halfW * kBarSeconds;
+        float maxDuration = qMax(0.f, kBarSeconds - track->entryDelay);
+        track->entryDuration = std::clamp(m_dragStartDuration + deltaSeconds, 0.f, maxDuration);
+    } else if (m_dragging == Handle::ExitResize) {
+        float deltaSeconds = (m_dragStartX - float(ev->position().x())) / halfW * kBarSeconds;
+        float maxDuration = qMax(0.f, kBarSeconds - track->exitDelay);
+        track->exitDuration = std::clamp(m_dragStartDuration + deltaSeconds, 0.f, maxDuration);
+    } else if (m_dragging == Handle::EntryWait) {
+        // Wait tool: trade delay against duration, keeping the total
+        // (delay+duration) — and thus the segment's on-screen extent — fixed.
+        float deltaSeconds = (float(ev->position().x()) - m_dragStartX) / halfW * kBarSeconds;
+        track->entryDelay    = std::clamp(m_dragStartDelay + deltaSeconds, 0.f, m_dragStartTotal);
+        track->entryDuration = m_dragStartTotal - track->entryDelay;
+    } else if (m_dragging == Handle::ExitWait) {
+        float deltaSeconds = (m_dragStartX - float(ev->position().x())) / halfW * kBarSeconds;
+        track->exitDelay    = std::clamp(m_dragStartDelay + deltaSeconds, 0.f, m_dragStartTotal);
+        track->exitDuration = m_dragStartTotal - track->exitDelay;
     }
     update();
     emit changed();
@@ -288,6 +366,37 @@ TimelinePanel::TimelinePanel(QWidget* parent) : QWidget(parent) {
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(4, 4, 4, 4);
     outer->setSpacing(4);
+
+    // Tool toolbar: picks what dragging an occupied entry/exit segment does
+    // (see TimelineBarWidget::Tool). Exclusive/checkable so exactly one tool
+    // is active at a time, same as a paint program's tool palette.
+    auto* toolbar = new QHBoxLayout;
+    m_moveToolBtn = new QPushButton(QIcon(":/icons/open_with.svg"), "Move", this);
+    m_moveToolBtn->setIconSize(QSize(16, 16));
+    m_moveToolBtn->setToolTip("Move tool:\n"
+                               "• Drag the middle of a segment to shift WHEN it starts (wait longer/shorter before it appears), keeping its duration fixed.\n"
+                               "• Drag its outer edge to resize it (make the animation longer/shorter), keeping the wait fixed.");
+    m_moveToolBtn->setCheckable(true);
+    m_moveToolBtn->setChecked(true);
+    m_waitToolBtn = new QPushButton(QIcon(":/icons/hourglass.svg"), "Wait time", this);
+    m_waitToolBtn->setIconSize(QSize(16, 16));
+    m_waitToolBtn->setToolTip("Wait tool: drag anywhere on a segment to trade wait-time vs.\n"
+                               "animation duration, keeping its total on-screen length fixed.");
+    m_waitToolBtn->setCheckable(true);
+    auto* toolGroup = new QButtonGroup(this);
+    toolGroup->setExclusive(true);
+    toolGroup->addButton(m_moveToolBtn);
+    toolGroup->addButton(m_waitToolBtn);
+    toolbar->addWidget(m_moveToolBtn);
+    toolbar->addWidget(m_waitToolBtn);
+    toolbar->addStretch(1);
+    outer->addLayout(toolbar);
+    connect(m_moveToolBtn, &QPushButton::toggled, this, [this](bool on) {
+        if (on) setActiveTool(TimelineBarWidget::Tool::Move);
+    });
+    connect(m_waitToolBtn, &QPushButton::toggled, this, [this](bool on) {
+        if (on) setActiveTool(TimelineBarWidget::Tool::Wait);
+    });
 
     auto* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
@@ -319,6 +428,12 @@ TimelinePanel::TimelinePanel(QWidget* parent) : QWidget(parent) {
     connect(m_scrub, &QSlider::valueChanged, this, &TimelinePanel::onScrubChanged);
 }
 
+void TimelinePanel::setActiveTool(TimelineBarWidget::Tool t) {
+    m_activeTool = t;
+    for (TimelineBarWidget* bar : m_rowsContainer->findChildren<TimelineBarWidget*>())
+        bar->setTool(t);
+}
+
 void TimelinePanel::setSlide(Presentation* pres, int slideIndex) {
     m_pres = pres;
     m_slideIdx = slideIndex;
@@ -335,6 +450,17 @@ void TimelinePanel::setSelectedElement(int elemIndex) {
 void TimelinePanel::refresh() { rebuildRows(); }
 
 void TimelinePanel::rebuildRows() {
+    // Never tear down rows while one of their bars is mid-drag: changed()
+    // fires on every pixel of drag movement and round-trips (via
+    // MainWindow::onPresentationModified -> EditorArea::refresh()) right
+    // back into this function, and deleteLater()-ing the widget the user's
+    // mouse is still down on would cancel the gesture after its first move.
+    // The dragged bar already mutates the live TimelineTrack directly and
+    // repaints itself, so skipping the rebuild loses nothing — it just runs
+    // once for real when the drag actually ends.
+    for (TimelineBarWidget* bar : m_rowsContainer->findChildren<TimelineBarWidget*>())
+        if (bar->isDragging()) return;
+
     QLayoutItem* item;
     while ((item = m_rowsLayout->takeAt(0)) != nullptr) {
         if (QWidget* w = item->widget()) {
@@ -362,9 +488,12 @@ void TimelinePanel::rebuildRows() {
         auto* hl  = new QHBoxLayout(row);
         hl->setContentsMargins(2, 2, 2, 2);
         hl->setSpacing(4);
+        // Explicit opaque background for both states, not just the selected one
+        // ("transparent" lets whatever paints behind this row show through
+        // instead of guaranteeing the app's light background/text colors).
         row->setStyleSheet(i == m_selectedElem
-            ? "background: rgba(90,140,255,60); color:#111827;"
-            : "background: transparent; color:#111827;");
+            ? "background: #eff6ff; color:#2563eb; border-radius: 4px;" // matches the app's standard selection color (QMenu/QListWidget/QPushButton:checked in main.cpp)
+            : "background: #ffffff; color:#111827; border-radius: 4px;");
 
         QString shortId = e.id.left(6);
         QString labelTxt = QString("%1 %2").arg(typeNames[e.type], shortId);
@@ -375,10 +504,11 @@ void TimelinePanel::rebuildRows() {
 
         auto* bar = new TimelineBarWidget(row);
         bar->bindElement(m_pres, m_slideIdx, i);
+        bar->setTool(m_activeTool);
         hl->addWidget(bar, 1);
 
         auto* gearBtn = new QToolButton(row);
-        gearBtn->setText("⚙"); // ⚙
+        gearBtn->setIcon(QIcon(":/icons/tune.svg"));
         gearBtn->setToolTip("Timeline details: delay/duration/trigger, loop, variable-gated visibility");
         hl->addWidget(gearBtn);
 
@@ -393,6 +523,7 @@ void TimelinePanel::rebuildRows() {
         hl->addWidget(endBtn);
 
         connect(bar, &TimelineBarWidget::changed, this, [this]() { emit timelineModified(); });
+        connect(bar, &TimelineBarWidget::activated, this, [this, i]() { emit elementActivated(i); });
         connect(bar, &TimelineBarWidget::detailsRequested, this, [this, i]() { openDetailDialog(i); });
         connect(gearBtn, &QToolButton::clicked, this, [this, i]() { openDetailDialog(i); });
         connect(startBtn, &QPushButton::clicked, this, [this, i]() { emit keyframeEditRequested(i, true); });
@@ -495,10 +626,14 @@ void TimelinePanel::openDetailDialog(int elemIndex) {
         t.entryDelay    = float(entryDelay->value());
         t.entryDuration = float(entryDuration->value());
         t.entryTrigger  = entryTrigger->currentData().toString();
+        if (t.hasEntry && t.entryStart.isEmpty())
+            t.entryStart.props["opacity"] = 0.0; // plain fade-in default until "Start▸" authors a real keyframe
         t.hasExit       = exitEnabled->isChecked();
         t.exitDelay     = float(exitDelay->value());
         t.exitDuration  = float(exitDuration->value());
         t.exitTrigger   = exitTrigger->currentData().toString();
+        if (t.hasExit && t.exitEnd.isEmpty())
+            t.exitEnd.props["opacity"] = 0.0;
         t.loop          = loopEnabled->isChecked();
         t.loopPause     = float(loopPause->value());
         t.visibilityVarId = visCombo->currentData().toString();

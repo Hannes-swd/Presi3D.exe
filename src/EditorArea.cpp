@@ -369,6 +369,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_timelinePanel, &TimelinePanel::previewTimeChanged, this, [this](float t) {
         m_editor2D->setPreviewTime(t);
     });
+    connect(m_timelinePanel, &TimelinePanel::elementActivated, this, &EditorArea::selectElement);
     connect(m_editor2D, &SlideEditor2D::elementSelected, m_timelinePanel, &TimelinePanel::setSelectedElement);
     connect(m_editor2D, &SlideEditor2D::keyframeEditDone, this, &EditorArea::keyframeEditDone);
 }

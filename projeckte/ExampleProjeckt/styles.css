@@ -25,18 +25,11 @@ body {
     image-rendering: -webkit-optimize-contrast;
 }
 
-/* Entrance animations */
-.step [data-anim] { opacity: 0; }
-.step.present [data-anim="fadeIn"]    { animation: impressFadeIn    var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideLeft"] { animation: impressSlideLeft var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideRight"]{ animation: impressSlideRight var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideUp"]   { animation: impressSlideUp   var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="slideDown"] { animation: impressSlideDown var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-.step.present [data-anim="zoomIn"]    { animation: impressZoomIn    var(--anim-dur,0.5s) var(--anim-delay,0.3s) both; }
-
-@keyframes impressFadeIn    { from{opacity:0}               to{opacity:1} }
-@keyframes impressSlideLeft { from{transform:translateX(-60px);opacity:0} to{transform:none;opacity:1} }
-@keyframes impressSlideRight{ from{transform:translateX(60px);opacity:0}  to{transform:none;opacity:1} }
-@keyframes impressSlideUp   { from{transform:translateY(-60px);opacity:0} to{transform:none;opacity:1} }
-@keyframes impressSlideDown { from{transform:translateY(60px);opacity:0}  to{transform:none;opacity:1} }
-@keyframes impressZoomIn    { from{transform:scale(0.4);opacity:0}        to{transform:none;opacity:1} }
+/* Timeline entry/exit animations transition plain CSS properties (opacity,
+   transform, color, position, size, ...) driven by the TimelinePlayer JS
+   below — no canned @keyframes needed, since keyframe overrides are
+   arbitrary per element. Must list every property tlApplyFrame() (in the
+   script below) ever sets via el.style.*, or that property jumps instantly
+   instead of transitioning regardless of the JS-set transition-duration. */
+[data-timeline] { transition-property: opacity, transform, background-color, color, border-color,
+    left, top, width, height, border-radius, border-width, font-size; }

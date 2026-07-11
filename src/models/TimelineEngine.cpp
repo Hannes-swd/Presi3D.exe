@@ -64,6 +64,20 @@ QJsonObject TimelineEngine::baseSnapshot(const SlideElement& e, const QStringLis
     return o;
 }
 
+namespace {
+// hasEntry/hasExit with no keyframe authored yet (e.g. added by dragging the
+// timeline bar directly, never opened via "Start▸"/"◂End") would otherwise
+// interpolate against an empty override and never visibly change — falls
+// back to a plain opacity fade, ANIMATION_PLAN.md's "simple special case".
+// TimelineTrack::isDefault()/quick-add already seed this at creation time
+// (see TimelinePanel.cpp), but this covers tracks saved before that existed.
+const Keyframe& fadeKeyframeOrDefault(const Keyframe& kf) {
+    if (!kf.isEmpty()) return kf;
+    static const Keyframe fade = [] { Keyframe k; k.props["opacity"] = 0.0; return k; }();
+    return fade;
+}
+}
+
 SlideElement TimelineEngine::previewAt(const SlideElement& base, const TimelineTrack& track, float tSeconds) {
     SlideElement cur = base;
     if (track.hasEntry) {
@@ -71,13 +85,13 @@ SlideElement TimelineEngine::previewAt(const SlideElement& base, const TimelineT
         if (tSeconds < track.entryDelay) p = 0.f;
         else if (track.entryDuration <= 0.f) p = 1.f;
         else p = std::clamp((tSeconds - track.entryDelay) / track.entryDuration, 0.f, 1.f);
-        cur = interpolate(base, track.entryStart, p);
+        cur = interpolate(base, fadeKeyframeOrDefault(track.entryStart), p);
     }
     if (track.hasExit && tSeconds >= track.exitDelay) {
         float p;
         if (track.exitDuration <= 0.f) p = 1.f;
         else p = std::clamp((tSeconds - track.exitDelay) / track.exitDuration, 0.f, 1.f);
-        cur = interpolate(base, track.exitEnd, 1.f - p);
+        cur = interpolate(base, fadeKeyframeOrDefault(track.exitEnd), 1.f - p);
     }
     return cur;
 }
