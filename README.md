@@ -55,16 +55,53 @@ SLIDE MANAGEMENT
   images with drag-and-drop, tables with cell editing/column resize/merge
 - Charts (multiple types) via ChartRenderer, LaTeX formulas via
   LatexRenderer, iframe/web embeds, navigation buttons
-- Format bar: font, size, color, alignment, bold/italic/underline/strike,
-  lists, format painter
+- Format bar: font, size, color, alignment, bold/italic/underline/strike
+  (with selectable underline style - solid/dashed/dotted/wavy - and
+  color), lists, format painter, hyperlinks on text elements
 - Snap/alignment guides, rotation with Ctrl-to-snap, layer ordering,
-  copy/paste, entrance animations
+  copy/paste, per-element opacity slider
 - Undo/redo (debounced, 50 steps)
 
 3D SPATIAL VIEW
 - Real OpenGL viewport: orbit / pan / zoom, click-to-pick slides
 - Color-coded axis gizmo (X=red, Y=green, Z=blue)
 - Position/rotation/scale editing directly from the Properties Panel
+- Per-slide camera zoom and view offset - fine-tune how each slide is
+  framed when it becomes the active step, independent of its raw
+  position/rotation
+- Per-slide visibility overrides - set the opacity of every other slide
+  while a given slide is active (with a global default-inactive-opacity
+  fallback), so off-path slides can fade into the background instead of
+  disappearing outright
+
+WORLD OBJECTS (3D)
+- Free-floating glTF/GLB models placed directly in 3D world space,
+  independent of any slide - a logo or decorative object that drifts
+  past the camera as it flies between slides
+- Visible/selectable only in the 3D view, with the same move/rotate/
+  scale + opacity controls as slides, via the Properties Panel
+- Included in HTML export using the `<model-viewer>` web component
+
+INTERACTIVE ELEMENTS
+- Checkbox and Slider elements bound to a Boolean/Number variable -
+  viewers can toggle or drag them live during the presentation, and the
+  bound variable updates immediately (including anywhere else it's
+  referenced via `{name}`)
+- Buttons support two actions: navigate to another slide, or change a
+  variable (increment/decrement/set/toggle) - enabling simple
+  interactive/branching presentations without any code
+
+TIMELINE ANIMATIONS
+- Per-element entry and exit animations with independent delay and
+  duration
+- Looping segments, click-triggered segments (in addition to automatic/
+  timed ones), and variable-gated visibility (show/hide based on a
+  Boolean variable)
+- Freely draggable start/end keyframe states - any property (position,
+  color, opacity, ...) can be set for the entry/exit state and Presi 3D
+  interpolates smoothly to/from it, not just a fixed list of canned
+  effects
+- Fully reflected in HTML export, not just the editor preview
 
 WEB EMBEDS DONE RIGHT
 - iframe element with a URL dialog; YouTube links are auto-normalized
@@ -87,6 +124,11 @@ EXPORT / IMPORT
 - Re-import: opens existing Impress.js HTML exports back into the
   editor for further editing
 
+STAYING UP TO DATE
+- Checks GitHub releases for a newer version on startup and via
+  Help -> Check for Updates..., and can download + launch the new
+  installer directly from the app
+
 Unique Advantages vs Competitors
 ---------------------------------
 ```
@@ -98,6 +140,8 @@ Exports to standalone website   Yes     No          No        Yes
 Live iframe/web embeds          Yes     Limited     Limited   Yes (manual HTML)
 Re-import own exported HTML     Yes     N/A         N/A       No
 Chart / LaTeX / table elements  Yes     Yes         Yes       No (manual)
+Free-floating 3D models (glTF)  Yes     No          No        No
+Interactive, variable-bound UI  Yes     No          No        No (manual)
 ```
 
 Presi 3D is the only tool in this comparison that pairs a true 3D
