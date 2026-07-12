@@ -861,6 +861,15 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                                .replace("&#39;", "'");
                         e.content = elemTxt;
                     }
+                } else if (dtype == "icon") {
+                    e.type = SlideElement::Icon;
+                    QString dicon = attrVal(dTag, "data-icon");
+                    e.content = dicon;
+                    QColor fc = parseCssColor(cssProp(style, "color"));
+                    if (fc.isValid()) e.color = fc;
+                    parseTimelineAndOpacity(dTag, style, e);
+                    slide.elements.append(e);
+                    continue;
                 } else {
                     e.type = SlideElement::Shape;
                     if (!dshape.isEmpty())

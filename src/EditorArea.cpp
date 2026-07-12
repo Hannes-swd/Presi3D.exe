@@ -12,6 +12,7 @@
 #include "dialogs/InsertSliderDialog.h"
 #include "dialogs/InsertWorldObjectDialog.h"
 #include "dialogs/ShapePickerDialog.h"
+#include "dialogs/IconPickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -76,6 +77,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     };
     m_btnText   = mkBtn("title",        "Text",    "Add text box");
     m_btnShape  = mkBtn("shapes",       "Shapes",  "Insert shape");
+    m_btnIcon   = mkBtn("view_module",  "Icons",   "Insert an icon (Material Design style)");
     m_btnImage  = mkBtn("image",        "Image",   "Import image");
     m_btnTable   = mkBtn("table",        "Table",  "Insert table");
     m_btnChart   = mkBtn("bar_chart",    "Chart",  "Insert chart");
@@ -251,6 +253,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         ShapePickerDialog dlg(this);
         if (dlg.exec() == QDialog::Accepted && !dlg.selectedShape().isEmpty())
             m_editor2D->addShapeElement(dlg.selectedShape());
+    });
+    connect(m_btnIcon, &QPushButton::clicked, this, [this]() {
+        IconPickerDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted && !dlg.selectedIcon().isEmpty())
+            m_editor2D->addIconElement(dlg.selectedIcon());
     });
     connect(m_btnImage, &QPushButton::clicked, m_editor2D, &SlideEditor2D::addImageElement);
     connect(m_btnTable,    &QPushButton::clicked, this, [this]() {

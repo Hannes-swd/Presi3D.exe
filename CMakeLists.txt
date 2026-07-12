@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(Presi3D VERSION 1.10 LANGUAGES CXX)
+project(Presi3D VERSION 1.11 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,9 @@ set(SOURCES
     src/dialogs/InsertSliderDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
+    src/dialogs/IconPickerDialog.cpp
+    src/IconUtils.cpp
+    src/IconPackManager.cpp
     src/dialogs/VariableManagerDialog.cpp
     src/FormatBar.cpp
     src/models/WorldObjectMesh.cpp

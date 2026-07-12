@@ -1,5 +1,6 @@
 #include "HtmlExporter.h"
 #include "ShapeUtils.h"
+#include "IconUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "models/VariableEngine.h"
 #include "models/TimelineEngine.h"
@@ -1176,6 +1177,32 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         }
         return QString("<div data-type=\"shape\" data-shape=\"%1\"%2 style=\"%3\">%4</div>")
                    .arg(e.content, timelineAttr, style, innerText);
+
+    } else if (e.type == SlideElement::Icon) {
+        int iw = qMax(4, int(e.width));
+        int ih = qMax(4, int(e.height));
+        QImage img(iw, ih, QImage::Format_ARGB32);
+        img.fill(Qt::transparent);
+        QPainter painter(&img);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(e.color.isValid() ? e.color : Qt::black);
+        painter.drawPath(IconUtils::iconToPath(e.content, QRectF(0, 0, iw, ih)));
+        painter.end();
+
+        QByteArray imgBa;
+        QBuffer buf(&imgBa);
+        buf.open(QIODevice::WriteOnly);
+        img.save(&buf, "PNG");
+        QString b64img = imgBa.toBase64();
+        QString iconStyle = base + "color:" + colorToCss(e.color.isValid() ? e.color : Qt::black) + ";";
+
+        return QString(
+            "<div data-type=\"icon\" data-icon=\"%1\"%2 style=\"%3\">"
+            "<img src=\"data:image/png;base64,%4\" "
+            "style=\"width:100%;height:100%;object-fit:contain;\" alt=\"\">"
+            "</div>")
+            .arg(e.content, timelineAttr, iconStyle, b64img);
 
     } else if (e.type == SlideElement::Image) {
         QFileInfo fi(e.content);

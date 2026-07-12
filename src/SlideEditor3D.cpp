@@ -1,5 +1,6 @@
 #include "SlideEditor3D.h"
 #include "ShapeUtils.h"
+#include "IconUtils.h"
 #include "models/WorldObjectMesh.h"
 #include "rendering/ChartRenderer.h"
 #include <QMouseEvent>
@@ -587,6 +588,11 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
             } else {
                 p.drawPath(ShapeUtils::shapeToPath(elem.content, r));
             }
+
+        } else if (elem.type == SlideElement::Icon) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(elem.color.isValid() ? elem.color : Qt::black);
+            p.drawPath(IconUtils::iconToPath(elem.content, r));
 
         } else if (elem.type == SlideElement::Image) {
             QPixmap px(elem.content);

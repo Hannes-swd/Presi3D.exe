@@ -1,6 +1,7 @@
 #include "PropertiesPanel.h"
 #include "rendering/ChartRenderer.h"
 #include "dialogs/ChartEditorDialog.h"
+#include "dialogs/IconPickerDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -368,6 +369,16 @@ void PropertiesPanel::buildElementGroup() {
     m_elemFormSection = secForm.outer;
     gvbox->addWidget(secForm.outer);
 
+    // ── Icon – nur für Icons (offen, aber initial ausgeblendet) ────────────────
+    auto secIcon = makeSection("Icon", true, m_elemGroup);
+    auto* formIcon = makeForm(secIcon.content);
+
+    m_iconChangeBtn = new QPushButton("Change Icon\xE2\x80\xA6", secIcon.content);
+    formIcon->addRow(m_iconChangeBtn);
+
+    m_elemIconSection = secIcon.outer;
+    gvbox->addWidget(secIcon.outer);
+
     // Signals
     connect(m_elemContent, &QLineEdit::editingFinished, this, [this]() {
         onElemContentChanged(m_elemContent->text());
@@ -384,8 +395,10 @@ void PropertiesPanel::buildElementGroup() {
     connect(m_eBorderColorBtn, &QPushButton::clicked,         this, &PropertiesPanel::onElemBorderColorClicked);
     connect(m_eCornerRadius,   &QDoubleSpinBox::valueChanged, this, [this](double) { onElemCornerRadiusChanged(); });
     connect(m_eOpacity, &QDoubleSpinBox::valueChanged, this, &PropertiesPanel::onElemOpacityChanged);
+    connect(m_iconChangeBtn, &QPushButton::clicked, this, &PropertiesPanel::onElemChangeIconClicked);
 
     m_elemFormSection->setVisible(false);
+    m_elemIconSection->setVisible(false);
     m_elemGroup->setEnabled(false);
 }
 
@@ -710,10 +723,10 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button", "Checkbox", "Slider"};
+    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button", "Checkbox", "Slider", "Icon"};
     m_elemType->setText(typeNames[e.type]);
 
-    m_elemContent->setEnabled(e.type != SlideElement::Shape);
+    m_elemContent->setEnabled(e.type != SlideElement::Shape && e.type != SlideElement::Icon);
     m_elemContent->setText(e.content);
 
     m_eX->setValue(e.x);
@@ -743,6 +756,8 @@ void PropertiesPanel::refreshElement() {
                           ? e.borderColor : Qt::darkGray);
         m_eCornerRadius->setValue(e.cornerRadius);
     }
+
+    m_elemIconSection->setVisible(e.type == SlideElement::Icon);
 
     m_eOpacity->setValue(e.opacity);
 
@@ -955,6 +970,16 @@ void PropertiesPanel::onElemBorderColorClicked() {
     if (c.isValid()) {
         e->borderColor = c;
         updateColorButton(m_eBorderColorBtn, c);
+        emit elementModified();
+    }
+}
+
+void PropertiesPanel::onElemChangeIconClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e || e->type != SlideElement::Icon) return;
+    IconPickerDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted && !dlg.selectedIcon().isEmpty()) {
+        e->content = dlg.selectedIcon();
         emit elementModified();
     }
 }

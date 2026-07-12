@@ -70,6 +70,7 @@ private slots:
     void onElemBorderChanged();
     void onElemCornerRadiusChanged();
     void onElemOpacityChanged(double);
+    void onElemChangeIconClicked();
 
     void onWoPosChanged();
     void onWoRotChanged();
@@ -156,6 +157,10 @@ private:
     QDoubleSpinBox* m_eBorderW        = nullptr;
     QPushButton*    m_eBorderColorBtn = nullptr;
     QDoubleSpinBox* m_eCornerRadius   = nullptr;
+
+    // Icon-only section (hidden when a non-icon element is selected)
+    QWidget*        m_elemIconSection = nullptr;
+    QPushButton*    m_iconChangeBtn   = nullptr;
 
     // Generic opacity (also animatable via the Timeline panel's keyframes)
     QDoubleSpinBox* m_eOpacity       = nullptr;

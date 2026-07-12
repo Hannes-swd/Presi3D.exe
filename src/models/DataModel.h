@@ -21,12 +21,12 @@ struct TableCell {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button, Checkbox, Slider };
+    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button, Checkbox, Slider, Icon };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
     Type    type = Text;
-    QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula) | button label (Button)
+    QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula) | button label (Button) | icon id (Icon)
     int     listStyle = NoList;
 
     // ── Hyperlink (Text elements) ────────────────────────────────────────────

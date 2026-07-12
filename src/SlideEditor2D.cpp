@@ -1,5 +1,6 @@
 #include "SlideEditor2D.h"
 #include "ShapeUtils.h"
+#include "IconUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "rendering/LatexRenderer.h"
 #include "dialogs/ChartEditorDialog.h"
@@ -572,6 +573,26 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         }
 
         // Selection outline and restore rotation transform
+        if (selected) {
+            p.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(wr);
+        }
+        if (hasRot) p.restore();
+        return;
+
+    } else if (e.type == SlideElement::Icon) {
+        bool hasRot = (e.rotation != 0.f);
+        if (hasRot) {
+            p.save();
+            p.translate(wr.center());
+            p.rotate(double(e.rotation));
+            p.translate(-wr.center());
+        }
+        p.setPen(Qt::NoPen);
+        p.setBrush(e.color.isValid() ? e.color : Qt::black);
+        p.drawPath(IconUtils::iconToPath(e.content, wr));
+
         if (selected) {
             p.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
             p.setBrush(Qt::NoBrush);
@@ -1678,6 +1699,20 @@ void SlideEditor2D::addShapeElement(const QString& shapeType) {
     e.x = 300; e.y = 250; e.width = 500; e.height = 350;
     e.backgroundColor = QColor(100, 149, 237);
     e.borderWidth     = 0.f;
+    s->elements.append(e);
+    m_selectedElem = s->elements.size() - 1;
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::addIconElement(const QString& iconId) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || iconId.isEmpty()) return;
+    SlideElement e;
+    e.type = SlideElement::Icon; e.content = iconId;
+    e.x = 400; e.y = 400; e.width = 160; e.height = 160;
+    e.color = QColor(55, 65, 81);
     s->elements.append(e);
     m_selectedElem = s->elements.size() - 1;
     update();

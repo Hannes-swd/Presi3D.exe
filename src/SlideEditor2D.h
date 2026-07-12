@@ -47,6 +47,7 @@ signals:
 public slots:
     void addTextElement();
     void addShapeElement(const QString& shapeType = "rect");
+    void addIconElement(const QString& iconId);
     void addImageElement();
     void addTableElement(int rows, int cols);
     void addChartElement(const QString& chartType);

@@ -10,6 +10,7 @@
 #include "export/HtmlExporter.h"
 #include "LocalHttpServer.h"
 #include "UpdateChecker.h"
+#include "IconPackManager.h"
 #include "models/TimelineEngine.h"
 
 #include <QApplication>
@@ -105,6 +106,12 @@ void MainWindow::setupMenuBar() {
     QMenu* editMenu = menuBar()->addMenu("&Edit");
     m_undoAction = editMenu->addAction("&Undo", this, &MainWindow::undo, QKeySequence::Undo);
     m_redoAction = editMenu->addAction("&Redo", this, &MainWindow::redo, QKeySequence::Redo);
+    editMenu->addSeparator();
+    editMenu->addAction("Manage Icon Package...", this, [this]() {
+        auto& mgr = IconPackManager::instance();
+        if (mgr.isInstalled()) mgr.uninstallInteractive(this);
+        else                   mgr.installInteractive(this);
+    });
 
     QMenu* helpMenu = menuBar()->addMenu("&Help");
     helpMenu->addAction("&About", this, [this]() {
