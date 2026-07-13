@@ -18,6 +18,8 @@
 #include <QMenu>
 #include <QToolBar>
 #include <QToolButton>
+#include <QScrollArea>
+#include <QFrame>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QCloseEvent>
@@ -154,11 +156,26 @@ void MainWindow::setupToolBar() {
     varsAction->setToolTip("Create variables and use them as {name} in any text");
 
     // ── Format toolbar (second row) ──
+    // Wrapped in a QScrollArea: FormatBar's content can get wider than the
+    // window (many buttons/combos across text + geometry groups), and a
+    // QToolBar does not offer any overflow/scroll mechanism for a single
+    // custom widget added via addWidget() — without this, controls past the
+    // visible edge are simply inaccessible.
     addToolBarBreak();
     QToolBar* ftb = addToolBar("Format");
     ftb->setMovable(false);
     m_formatBar = new FormatBar(ftb);
-    ftb->addWidget(m_formatBar);
+    auto* formatScroll = new QScrollArea(ftb);
+    formatScroll->setWidget(m_formatBar);
+    formatScroll->setWidgetResizable(true);
+    formatScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // AsNeeded (not AlwaysOff): a hardcoded/estimated height could clip
+    // content if it's ever off by a few pixels — better a rare scrollbar
+    // than the whole row silently vanishing.
+    formatScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    formatScroll->setFrameShape(QFrame::NoFrame);
+    formatScroll->setMinimumHeight(m_formatBar->sizeHint().height() + 8);
+    ftb->addWidget(formatScroll);
 }
 
 void MainWindow::setupUpdateButton() {
@@ -284,6 +301,8 @@ void MainWindow::connectSignals() {
             m_propPanel,  &PropertiesPanel::setSelectedTableCell);
     connect(m_editorArea, &EditorArea::tableCellSelected,
             m_formatBar,  &FormatBar::setTableCell);
+    connect(m_editorArea, &EditorArea::textSelectionChanged,
+            m_formatBar,  &FormatBar::setTextSelection);
 
     connect(m_editorArea, &EditorArea::keyframeEditRequested, this, &MainWindow::onKeyframeEditRequested);
     connect(m_editorArea, &EditorArea::keyframeEditDone,       this, &MainWindow::onKeyframeEditFinished);

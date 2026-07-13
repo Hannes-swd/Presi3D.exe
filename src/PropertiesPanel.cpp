@@ -892,6 +892,9 @@ void PropertiesPanel::onElemContentChanged(const QString& text) {
     if (m_updating) return;
     if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
         e->content = text;
+        // This is a wholesale replacement (no diff against the old content),
+        // so any existing code-span offsets would point at the wrong text.
+        e->codeSpans.clear();
         emit elementModified();
     }
 }

@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QUrl>
+#include <algorithm>
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include "tiny_gltf.h"
 
@@ -162,6 +163,44 @@ static bool hasFormulaElement(const Presentation& pres) {
     return false;
 }
 
+// Does any slide contain a text element with inline code spans? Only then load highlight.js.
+static bool hasCodeBlockElement(const Presentation& pres) {
+    for (const Slide& s : pres.slides)
+        for (const SlideElement& e : s.elements)
+            if (e.type == SlideElement::Text && !e.codeSpans.isEmpty()) return true;
+    return false;
+}
+
+static QString escapeAndBr(const QString& s) {
+    return s.toHtmlEscaped().replace("\n", "<br>");
+}
+
+// Builds a text element's inner HTML, wrapping e.codeSpans in
+// <code class="language-xxx"> for highlight.js. Mirror of HtmlImporter's
+// code-span parsing — keep both in sync.
+static QString buildTextWithCodeSpans(const SlideElement& e) {
+    QVector<CodeSpan> spans = e.codeSpans;
+    std::sort(spans.begin(), spans.end(),
+              [](const CodeSpan& a, const CodeSpan& b) { return a.start < b.start; });
+    const QString& content = e.content;
+    QString result;
+    int pos = 0;
+    for (const CodeSpan& sp : spans) {
+        int start = qBound(0, sp.start, content.length());
+        int len   = qBound(0, sp.length, content.length() - start);
+        if (start < pos || len <= 0) continue; // overlapping/empty span, skip defensively
+        if (start > pos)
+            result += escapeAndBr(content.mid(pos, start - pos));
+        QString lang = sp.language.isEmpty() ? "plaintext" : sp.language;
+        result += QString("<code class=\"language-%1\">%2</code>")
+                      .arg(lang.toHtmlEscaped(), escapeAndBr(content.mid(start, len)));
+        pos = start + len;
+    }
+    if (pos < content.length())
+        result += escapeAndBr(content.mid(pos));
+    return result;
+}
+
 QString HtmlExporter::generateHtml(const Presentation& pres) {
     QMap<QString, QString> uuidToHtmlId;
     QMap<QString, QString> uuidToVisString;
@@ -187,6 +226,10 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
     if (!pres.worldObjects.isEmpty())
         out << "  <script type=\"module\" "
                "src=\"https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js\"></script>\n";
+    if (hasCodeBlockElement(pres))
+        out << "  <link rel=\"stylesheet\" "
+               "href=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css\">\n"
+               "  <script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\"></script>\n";
     out << "</head>\n"
         << "<body>\n\n"
         << "<div id=\"impress\"\n"
@@ -209,6 +252,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "<script>\n"
         << "var api = impress();\n"
         << "api.init();\n"
+        << "if (window.hljs) hljs.highlightAll();\n"
         << "var steps = Array.from(document.querySelectorAll('.step'));\n"
         << "var impEl = document.getElementById('impress');\n"
         << "var defaultInactiveOpacity = parseFloat(impEl.dataset.defaultInactiveOpacity || 0.3);\n"
@@ -1131,10 +1175,14 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                        .arg(dataList, timelineAttr, style, listTag, listType, items);
         }
 
-        QString text = e.content.toHtmlEscaped().replace("\n", "<br>");
+        QString text = e.codeSpans.isEmpty()
+                           ? e.content.toHtmlEscaped().replace("\n", "<br>")
+                           : buildTextWithCodeSpans(e);
         // Live {var} substitution at presentation time: only for plain text (no
-        // hyperlink wrapper to rebuild, no list markup) — see VARIABLEN_PLAN.md.
-        QString varAttr = (e.hyperlink.trimmed().isEmpty() && e.content.contains('{'))
+        // hyperlink wrapper to rebuild, no list markup, no code spans) — see
+        // VARIABLEN_PLAN.md. Code spans are mutually exclusive with {var} templating
+        // since the runtime rebuild would overwrite the <code> markup.
+        QString varAttr = (e.hyperlink.trimmed().isEmpty() && e.content.contains('{') && e.codeSpans.isEmpty())
                                ? QString(" data-var-template=\"%1\"").arg(e.content.toHtmlEscaped())
                                : QString();
         if (!e.hyperlink.trimmed().isEmpty()) {

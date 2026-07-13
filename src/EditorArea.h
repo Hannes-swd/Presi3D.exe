@@ -33,6 +33,7 @@ signals:
     void worldObjectSelected(int index);
     void keyframeEditRequested(int elemIndex, bool isEntry);
     void keyframeEditDone();
+    void textSelectionChanged(int cursorPos, int selAnchor);
 
 private slots:
     void switchTo2D();

@@ -17,6 +17,12 @@ public:
     void setContext(Presentation* pres, int slideIdx, int elemIdx);
     void setTableCell(int row, int col);
 
+public slots:
+    // Live cursor/selection offsets from SlideEditor2D (via EditorArea), used
+    // to show/apply the code-language combo for the range under the cursor.
+    // (-1,-1) = not currently editing text.
+    void setTextSelection(int cursorPos, int selAnchor);
+
 signals:
     void modified();
     void formatPainterRequested();
@@ -41,6 +47,7 @@ private slots:
     void onUnderlineColorClicked();
     void onUnderlineStyleChanged(int idx);
     void onLinkClicked();
+    void onCodeLangChanged(int idx);
     void onXChanged(double v);
     void onYChanged(double v);
     void onWChanged(double v);
@@ -58,6 +65,11 @@ private:
     int           m_cellRow   = -1;
     int           m_cellCol   = -1;
     bool          m_updating  = false;
+
+    // Live text-selection range reported by SlideEditor2D (normalized lo/hi;
+    // -1/-1 = no active text edit). Used by the code-language combo.
+    int           m_selStart  = -1;
+    int           m_selEnd    = -1;
 
     // Text group
     QFontComboBox* m_fontCombo      = nullptr;
@@ -80,6 +92,7 @@ private:
     QComboBox*     m_ulStyleCombo   = nullptr;
     QPushButton*   m_fmtPainterBtn  = nullptr;
     QPushButton*   m_linkBtn        = nullptr;
+    QComboBox*     m_codeLangCombo  = nullptr;
 
     // Geometry group
     QDoubleSpinBox* m_posX  = nullptr;

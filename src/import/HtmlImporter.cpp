@@ -27,6 +27,17 @@ static QString cssProp(const QString& style, const QString& prop) {
     return m.hasMatch() ? m.captured(1).trimmed() : QString();
 }
 
+// Undo HtmlExporter's text encoding for one plain-text segment: <br> → \n,
+// then HTML entity unescape. Used both for plain text and for the inner
+// text of <code> spans — see the Text-element import block below.
+static QString unescapeTextSegment(QString s) {
+    s.replace("<br>", "\n");
+    s.replace("&amp;", "&").replace("&lt;", "<")
+     .replace("&gt;", ">").replace("&quot;", "\"")
+     .replace("&#39;", "'");
+    return s;
+}
+
 // Parse a CSS color string to QColor
 static QColor parseCssColor(const QString& raw) {
     QString c = raw.trimmed();
@@ -854,12 +865,38 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                         while (liIt.hasNext()) items << liIt.next().captured(1);
                         e.content = items.join('\n');
                     } else {
-                        // Restore text: unescape HTML entities and <br> → \n
-                        elemTxt.replace("<br>", "\n");
-                        elemTxt.replace("&amp;", "&").replace("&lt;", "<")
-                               .replace("&gt;", ">").replace("&quot;", "\"")
-                               .replace("&#39;", "'");
-                        e.content = elemTxt;
+                        // Restore text: unescape HTML entities and <br> → \n, and pull
+                        // <code class="language-xxx">…</code> segments back out into
+                        // e.codeSpans (mirror of HtmlExporter::buildTextWithCodeSpans).
+                        // Offsets must be computed AFTER per-segment unescaping, since
+                        // entity unescaping changes character counts (e.g. "&amp;" → "&") —
+                        // so each segment (plain gap or code chunk) is unescaped first,
+                        // then appended to the running `content`, with the span's start
+                        // recorded at that point.
+                        QRegularExpression codeRe(
+                            "<code class=\"language-([^\"]*)\">(.*?)</code>",
+                            QRegularExpression::DotMatchesEverythingOption);
+                        QString content;
+                        QVector<CodeSpan> spans;
+                        int last = 0;
+                        auto codeIt = codeRe.globalMatch(elemTxt);
+                        while (codeIt.hasNext()) {
+                            auto m = codeIt.next();
+                            if (m.capturedStart() > last)
+                                content += unescapeTextSegment(elemTxt.mid(last, m.capturedStart() - last));
+                            QString chunk = unescapeTextSegment(m.captured(2));
+                            CodeSpan sp;
+                            sp.start    = content.length();
+                            sp.length   = chunk.length();
+                            sp.language = m.captured(1);
+                            spans << sp;
+                            content += chunk;
+                            last = m.capturedEnd();
+                        }
+                        if (last < elemTxt.length())
+                            content += unescapeTextSegment(elemTxt.mid(last));
+                        e.content   = content;
+                        e.codeSpans = spans;
                     }
                 } else if (dtype == "icon") {
                     e.type = SlideElement::Icon;

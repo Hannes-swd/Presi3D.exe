@@ -3,6 +3,7 @@
 #include "IconUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "rendering/LatexRenderer.h"
+#include "rendering/CodeHighlighter.h"
 #include "dialogs/ChartEditorDialog.h"
 #include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/InsertIFrameDialog.h"
@@ -33,9 +34,18 @@
 #include <QTimer>
 #include <QUuid>
 #include <QImageWriter>
+#include <QFile>
+#include <QTextStream>
 
 SlideElement SlideEditor2D::s_clipboard;
 bool         SlideEditor2D::s_hasClipboard = false;
+
+// Forward decls (defined further below, near the inline text-edit code) —
+// also used by drawElement()'s code-span rendering path.
+static void buildLayout(QTextLayout& layout, const SlideElement& e,
+                        const QFont& font, float width,
+                        const QString& alignOverride = {});
+static QFont elemFont(const SlideElement& e, float scaleY);
 
 // Defaults — overridden by m_pres->slideWidth/slideHeight when available
 static constexpr float SLIDE_W_DEFAULT = 1920.f;
@@ -497,7 +507,8 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
 
         if (wr.width() < 1.0 || wr.height() < 1.0) return;
 
-        QString displayText = isBeingEdited ? e.content : substituteVars(e.content, currentSlideId);
+        bool hasCode = !e.codeSpans.isEmpty() && e.listStyle == SlideElement::NoList;
+        QString displayText = (isBeingEdited || hasCode) ? e.content : substituteVars(e.content, currentSlideId);
         if (e.listStyle != SlideElement::NoList) {
             QStringList lines = displayText.split('\n');
             QStringList fmt;
@@ -526,9 +537,63 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.setFont(font);
         p.setPen(e.color.isValid() ? e.color : Qt::black);
         p.setClipRect(wr, Qt::IntersectClip);
-        p.drawText(wr.toRect(),
-                   int(Qt::TextWordWrap | valign | align),
-                   displayText);
+        if (hasCode) {
+            // Render code spans with a monospace font + subtle background tint,
+            // plus real per-token colors from CodeHighlighter — via
+            // QTextLayout::FormatRange. Overlapping ranges are merged by Qt
+            // (later entries only override the properties they set), so the
+            // span-wide range below supplies font/background and the narrower
+            // token ranges on top just add a foreground color.
+            QTextLayout layout(displayText, font);
+            buildLayout(layout, e, font, float(wr.width()), e.textAlignment);
+            QVector<QTextLayout::FormatRange> ranges;
+            for (const CodeSpan& sp : e.codeSpans) {
+                int start = qBound(0, sp.start, displayText.length());
+                int len   = qBound(0, sp.length, displayText.length() - start);
+                if (len <= 0) continue;
+                QTextCharFormat fmt;
+                fmt.setFontFamilies({"Consolas", "monospace"});
+                fmt.setBackground(QColor(128, 128, 128, 60));
+                ranges << QTextLayout::FormatRange{start, len, fmt};
+
+                for (const auto& tok : CodeHighlighter::tokenize(displayText.mid(start, len), sp.language)) {
+                    QColor col = CodeHighlighter::colorForToken(tok.kind);
+                    if (!col.isValid()) continue;
+                    int tStart = qBound(0, start + tok.start, displayText.length());
+                    int tLen   = qBound(0, tok.length, displayText.length() - tStart);
+                    if (tLen <= 0) continue;
+                    QTextCharFormat tfmt;
+                    tfmt.setForeground(col);
+                    ranges << QTextLayout::FormatRange{tStart, tLen, tfmt};
+                }
+            }
+            layout.setFormats(ranges);
+            // Vertical alignment: shift the draw origin down when content is
+            // shorter than the box, mirroring drawText's valign flags.
+            float totalH = 0.f;
+            for (int ln = 0; ln < layout.lineCount(); ++ln) totalH += layout.lineAt(ln).height();
+            float yOff = 0.f;
+            if (valign == Qt::AlignVCenter) yOff = qMax(0.f, (float(wr.height()) - totalH) / 2.f);
+            else if (valign == Qt::AlignBottom) yOff = qMax(0.f, float(wr.height()) - totalH);
+            {
+                QFile dbg("C:/Users/hanne/Cpp/impress.js editor/debug_codeblock.log");
+                dbg.open(QIODevice::Append | QIODevice::Text);
+                QTextStream ts(&dbg);
+                ts << "hasCode draw: wr=" << wr.x() << "," << wr.y() << "," << wr.width() << "," << wr.height()
+                   << " displayTextLen=" << displayText.length()
+                   << " spans=" << e.codeSpans.size()
+                   << " lineCount=" << layout.lineCount()
+                   << " totalH=" << totalH
+                   << " font=" << font.family()
+                   << " fontSize=" << e.fontSize
+                   << "\n";
+            }
+            layout.draw(&p, wr.topLeft() + QPointF(0, yOff));
+        } else {
+            p.drawText(wr.toRect(),
+                       int(Qt::TextWordWrap | valign | align),
+                       displayText);
+        }
         p.restore();
 
     } else if (e.type == SlideElement::Shape) {
@@ -1313,6 +1378,7 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
             if (m_selAnchor == m_cursorPos) m_selAnchor = -1;
             m_cursorVisible = true;
             update();
+            emit textSelectionChanged(m_cursorPos, m_selAnchor);
         }
         return;
     }
@@ -1684,6 +1750,14 @@ void SlideEditor2D::pasteTextAsNewElement(const QString& text) {
     SlideElement e;
     e.type = SlideElement::Text; e.content = text;
     e.x = 200; e.y = 200; e.width = 700; e.height = 90; e.fontSize = 36;
+    if (CodeHighlighter::looksLikeCode(text)) {
+        CodeSpan sp;
+        sp.start    = 0;
+        sp.length   = text.length();
+        sp.language = CodeHighlighter::guessLanguage(text);
+        e.codeSpans << sp;
+        e.fontFamily = "Consolas";
+    }
     s->elements.append(e);
     m_selectedElem = s->elements.size() - 1;
     update();
@@ -2056,7 +2130,7 @@ void SlideEditor2D::sendToBack() {
 // The layout origin is at (0,0); add elemToWidget(e).topLeft() to get widget coords.
 static void buildLayout(QTextLayout& layout, const SlideElement& e,
                         const QFont& font, float width,
-                        const QString& alignOverride = {}) {
+                        const QString& alignOverride) {
     layout.setFont(font);
     QTextOption opt;
     const QString& align = alignOverride.isEmpty() ? e.textAlignment : alignOverride;
@@ -2083,6 +2157,41 @@ static QFont elemFont(const SlideElement& e, float scaleY) {
     return f;
 }
 
+// Keep CodeSpan offsets valid across inline text edits (insert/remove at a
+// cursor position). Called alongside every text.insert()/text.remove() in
+// handleTextEditKey() below.
+static int mapOffsetAfterRemoval(int offset, int pos, int len) {
+    if (offset <= pos)       return offset;
+    if (offset <= pos + len) return pos;
+    return offset - len;
+}
+
+static void adjustSpansForRemoval(QVector<CodeSpan>& spans, int pos, int len) {
+    if (len <= 0) return;
+    QVector<CodeSpan> result;
+    for (CodeSpan sp : spans) {
+        int end      = sp.start + sp.length;
+        int newStart = mapOffsetAfterRemoval(sp.start, pos, len);
+        int newEnd   = mapOffsetAfterRemoval(end, pos, len);
+        sp.start  = newStart;
+        sp.length = newEnd - newStart;
+        if (sp.length > 0) result << sp;
+    }
+    spans = result;
+}
+
+// Insertion at `pos`: offsets at/after pos shift by `len`, except when pos
+// falls strictly inside a span (or exactly at its end), where the newly
+// typed text is treated as a continuation of that code span.
+static void adjustSpansForInsertion(QVector<CodeSpan>& spans, int pos, int len) {
+    if (len <= 0) return;
+    for (CodeSpan& sp : spans) {
+        int end = sp.start + sp.length;
+        if (pos <= sp.start)      sp.start += len;
+        else if (pos <= end)      sp.length += len;
+    }
+}
+
 void SlideEditor2D::startTextEdit(int idx, QPointF clickPos) {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || idx < 0 || idx >= s->elements.size()) return;
@@ -2103,6 +2212,7 @@ void SlideEditor2D::startTextEdit(int idx, QPointF clickPos) {
     m_cursorBlink->start();
     setFocus();
     update();
+    emit textSelectionChanged(m_cursorPos, m_selAnchor);
 }
 
 const QString& SlideEditor2D::getEditText(const SlideElement& e) const {
@@ -2217,11 +2327,21 @@ void SlideEditor2D::finishTextEdit() {
     m_textSelecting    = false;
     m_cursorVisible    = false;
     update();
+    emit textSelectionChanged(-1, -1);
 }
 
 void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_editingElem < 0 || m_editingElem >= s->elements.size()) return;
+
+    // Emits textSelectionChanged with the final cursor/selection on every
+    // return path below, so FormatBar's Code button/language combo stay in
+    // sync without instrumenting each of this function's many early returns.
+    struct SelectionNotifier {
+        SlideEditor2D* self;
+        ~SelectionNotifier() { emit self->textSelectionChanged(self->m_cursorPos, self->m_selAnchor); }
+    } notifyOnExit{this};
+
     SlideElement& elem = s->elements[m_editingElem];
     QString& text = m_editingShapeText ? elem.shapeText : elem.content;
 
@@ -2239,6 +2359,7 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
         int lo = qMin(m_cursorPos, m_selAnchor);
         int hi = qMax(m_cursorPos, m_selAnchor);
         text.remove(lo, hi - lo);
+        if (!m_editingShapeText) adjustSpansForRemoval(elem.codeSpans, lo, hi - lo);
         m_cursorPos = lo;
         m_selAnchor = -1;
     };
@@ -2280,7 +2401,28 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
         QString clip = QApplication::clipboard()->text();
         if (!clip.isEmpty()) {
             if (m_selAnchor >= 0) deleteSelection();
-            text.insert(m_cursorPos, clip);
+            int insertPos = m_cursorPos;
+            text.insert(insertPos, clip);
+            if (!m_editingShapeText) {
+                adjustSpansForInsertion(elem.codeSpans, insertPos, clip.length());
+                // Pasted text that looks like source code auto-becomes a code
+                // block: replace/trim any spans it overlaps and mark the whole
+                // pasted range with a guessed language (same "replace" rule
+                // FormatBar::onCodeToggled uses for manual toggling).
+                if (elem.type == SlideElement::Text && elem.listStyle == SlideElement::NoList
+                    && CodeHighlighter::looksLikeCode(clip)) {
+                    QVector<CodeSpan> kept;
+                    for (const CodeSpan& sp : elem.codeSpans)
+                        if (sp.start + sp.length <= insertPos || sp.start >= insertPos + clip.length())
+                            kept << sp;
+                    CodeSpan added;
+                    added.start    = insertPos;
+                    added.length   = clip.length();
+                    added.language = CodeHighlighter::guessLanguage(clip);
+                    kept << added;
+                    elem.codeSpans = kept;
+                }
+            }
             m_cursorPos += clip.length();
             emit presentationModified();
             update();
@@ -2344,19 +2486,28 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
     // ── Backspace / Delete ────────────────────────────────────────────────
     if (ke->key() == Qt::Key_Backspace) {
         if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) deleteSelection();
-        else if (m_cursorPos > 0) { text.remove(m_cursorPos - 1, 1); m_cursorPos--; }
+        else if (m_cursorPos > 0) {
+            text.remove(m_cursorPos - 1, 1);
+            if (!m_editingShapeText) adjustSpansForRemoval(elem.codeSpans, m_cursorPos - 1, 1);
+            m_cursorPos--;
+        }
         emit presentationModified(); update(); return;
     }
     if (ke->key() == Qt::Key_Delete) {
         if (m_selAnchor >= 0 && m_selAnchor != m_cursorPos) deleteSelection();
-        else if (m_cursorPos < text.length()) text.remove(m_cursorPos, 1);
+        else if (m_cursorPos < text.length()) {
+            text.remove(m_cursorPos, 1);
+            if (!m_editingShapeText) adjustSpansForRemoval(elem.codeSpans, m_cursorPos, 1);
+        }
         emit presentationModified(); update(); return;
     }
 
     // ── Enter ─────────────────────────────────────────────────────────────
     if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
         if (m_selAnchor >= 0) deleteSelection();
-        text.insert(m_cursorPos, '\n'); m_cursorPos++;
+        text.insert(m_cursorPos, '\n');
+        if (!m_editingShapeText) adjustSpansForInsertion(elem.codeSpans, m_cursorPos, 1);
+        m_cursorPos++;
         emit presentationModified(); update(); return;
     }
 
@@ -2365,6 +2516,7 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
     if (!ch.isEmpty() && ch[0].isPrint()) {
         if (m_selAnchor >= 0) deleteSelection();
         text.insert(m_cursorPos, ch);
+        if (!m_editingShapeText) adjustSpansForInsertion(elem.codeSpans, m_cursorPos, ch.length());
         m_cursorPos += ch.length();
         emit presentationModified(); update(); return;
     }

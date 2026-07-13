@@ -28,6 +28,7 @@ set(SOURCES
     src/TimelinePanel.cpp
     src/rendering/ChartRenderer.cpp
     src/rendering/LatexRenderer.cpp
+    src/rendering/CodeHighlighter.cpp
     src/export/HtmlExporter.cpp
     src/import/HtmlImporter.cpp
     src/dialogs/ExportDialog.cpp

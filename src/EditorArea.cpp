@@ -349,6 +349,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
             this, &EditorArea::elementSelected);
     connect(m_editor2D, &SlideEditor2D::tableCellSelected,
             this, &EditorArea::tableCellSelected);
+    connect(m_editor2D, &SlideEditor2D::textSelectionChanged,
+            this, &EditorArea::textSelectionChanged);
 
     connect(m_editor3D, &SlideEditor3D::presentationModified,
             this, &EditorArea::presentationModified);

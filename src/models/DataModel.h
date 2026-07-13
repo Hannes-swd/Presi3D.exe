@@ -20,6 +20,15 @@ struct TableCell {
     bool    merged    = false; // covered by another cell's span (skip drawing)
 };
 
+// A sub-range of a Text element's `content` marked as an inline code block.
+// Offsets are plain QChar indices into `content`, same convention as
+// SlideEditor2D's m_cursorPos/m_selAnchor — not a general rich-text run.
+struct CodeSpan {
+    int     start    = 0;
+    int     length   = 0;
+    QString language; // hljs "language-xxx" alias, e.g. "javascript", "plaintext"
+};
+
 struct SlideElement {
     enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button, Checkbox, Slider, Icon };
     enum ListStyle { NoList = 0, Bullets, Numbered };
@@ -28,6 +37,9 @@ struct SlideElement {
     Type    type = Text;
     QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula) | button label (Button) | icon id (Icon)
     int     listStyle = NoList;
+
+    // ── Inline code blocks (Text elements only) ───────────────────────────────
+    QVector<CodeSpan> codeSpans;
 
     // ── Hyperlink (Text elements) ────────────────────────────────────────────
     QString hyperlink; // URL the whole text element links to; empty = no link

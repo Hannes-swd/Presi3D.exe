@@ -43,6 +43,10 @@ signals:
     void tableCellSelected(int row, int col); // -1/-1 = none
     void zoomChanged(float zoom); // 1.0 = 100%
     void keyframeEditDone(); // user pressed Escape or clicked the keyframe-edit banner
+    // Live cursor/selection offsets while inline-editing a Text element's
+    // content, so FormatBar can show/apply per-range code-span state.
+    // (-1,-1) = not currently editing text.
+    void textSelectionChanged(int cursorPos, int selAnchor);
 
 public slots:
     void addTextElement();

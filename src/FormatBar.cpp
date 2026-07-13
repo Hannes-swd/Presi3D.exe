@@ -166,6 +166,26 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
 
     tr->addWidget(makeSep(m_textGroup));
 
+    // Single compact combo instead of a separate toggle button: first entry
+    // turns code formatting off, any language entry turns it on with that
+    // language (spans are normally created automatically on paste — see
+    // SlideEditor2D::handleTextEditKey/pasteTextAsNewElement — this combo is
+    // for overriding/correcting the guessed language, or for the rare manual
+    // case where auto-detection didn't trigger).
+    m_codeLangCombo = new QComboBox(m_textGroup);
+    m_codeLangCombo->addItem("Code: off", QString());
+    for (const char* langPair : {"plaintext:Plain code", "javascript:JavaScript", "python:Python",
+                                  "cpp:C++", "csharp:C#", "java:Java", "html:HTML", "css:CSS",
+                                  "json:JSON", "bash:Bash", "sql:SQL", "php:PHP", "xml:XML"}) {
+        QString s = QString::fromLatin1(langPair);
+        m_codeLangCombo->addItem(s.section(':', 1), s.section(':', 0, 0));
+    }
+    m_codeLangCombo->setFixedWidth(100);
+    m_codeLangCombo->setToolTip("Mark the selected text as a code block / choose its language");
+    tr->addWidget(m_codeLangCombo);
+
+    tr->addWidget(makeSep(m_textGroup));
+
     m_fmtPainterBtn = new QPushButton(QIcon(":/icons/format_paint.svg"), "Format", m_textGroup);
     m_fmtPainterBtn->setIconSize(QSize(14, 14));
     m_fmtPainterBtn->setToolTip("Apply format to another element");
@@ -217,6 +237,8 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     connect(m_strikeBtn,    &QPushButton::clicked, this, &FormatBar::onStrikethrough);
     connect(m_ulColorBtn,   &QPushButton::clicked, this, &FormatBar::onUnderlineColorClicked);
     connect(m_linkBtn,      &QPushButton::clicked, this, &FormatBar::onLinkClicked);
+    connect(m_codeLangCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &FormatBar::onCodeLangChanged);
     connect(m_ulStyleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &FormatBar::onUnderlineStyleChanged);
     connect(m_fmtPainterBtn, &QPushButton::clicked, this, &FormatBar::formatPainterRequested);
@@ -275,6 +297,8 @@ void FormatBar::refresh() {
     // Reset underline/list/vAlign (not supported per cell)
     m_ulStyleCombo->setEnabled(false);
     m_ulColorBtn->setEnabled(false);
+    m_codeLangCombo->setEnabled(false);
+    m_codeLangCombo->setCurrentIndex(0);
     m_listBullet->setChecked(false);
     m_listNumbered->setChecked(false);
     m_listBullet->setEnabled(isText);
@@ -350,6 +374,22 @@ void FormatBar::refresh() {
         m_ulStyleCombo->setEnabled(e->underline);
         m_ulColorBtn->setEnabled(e->underline);
         m_fmtPainterBtn->setEnabled(true);
+
+        // Code-span state at the current selection/cursor position (only
+        // meaningful outside of list-formatted text — see plan notes).
+        if (e->listStyle == SlideElement::NoList && m_selStart >= 0) {
+            m_codeLangCombo->setEnabled(true);
+            const CodeSpan* active = nullptr;
+            for (const CodeSpan& sp : e->codeSpans) {
+                if (m_selStart >= sp.start && m_selStart <= sp.start + sp.length) { active = &sp; break; }
+            }
+            if (active) {
+                int idx = m_codeLangCombo->findData(active->language.isEmpty() ? "plaintext" : active->language);
+                m_codeLangCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+            } else {
+                m_codeLangCombo->setCurrentIndex(0); // "Code: off"
+            }
+        }
     } else {
         updateColorSwatch(m_colorBtn,   Qt::black);
         updateColorSwatch(m_bgColorBtn, Qt::transparent);
@@ -537,6 +577,56 @@ void FormatBar::onLinkClicked() {
         "Target URL (leave empty to remove):", QLineEdit::Normal, e->hyperlink, &ok);
     if (!ok) { refresh(); return; }
     e->hyperlink = url.trimmed();
+    refresh();
+    emit modified();
+}
+void FormatBar::setTextSelection(int cursorPos, int selAnchor) {
+    if (cursorPos < 0) {
+        m_selStart = -1;
+        m_selEnd   = -1;
+    } else {
+        int anchor = (selAnchor < 0) ? cursorPos : selAnchor;
+        m_selStart = qMin(cursorPos, anchor);
+        m_selEnd   = qMax(cursorPos, anchor);
+    }
+    refresh();
+}
+void FormatBar::onCodeLangChanged(int) {
+    if (m_updating) return;
+    auto* e = currentElem();
+    if (!e || e->type != SlideElement::Text || e->listStyle != SlideElement::NoList || m_selStart < 0) {
+        refresh();
+        return;
+    }
+    QString lang = m_codeLangCombo->currentData().toString();
+    int hi = qMax(m_selEnd, m_selStart); // collapsed cursor: hi == m_selStart
+
+    CodeSpan* active = nullptr;
+    for (CodeSpan& sp : e->codeSpans) {
+        if (m_selStart >= sp.start && m_selStart <= sp.start + sp.length) { active = &sp; break; }
+    }
+
+    if (lang.isEmpty()) {
+        // "Code: off" — remove any span covering the current position/selection.
+        if (!active) { refresh(); return; }
+        QVector<CodeSpan> kept;
+        for (const CodeSpan& sp : e->codeSpans)
+            if (sp.start + sp.length <= m_selStart || sp.start >= hi) kept << sp;
+        e->codeSpans = kept;
+    } else if (active) {
+        active->language = lang;
+    } else {
+        if (m_selStart >= m_selEnd) { refresh(); return; } // need a non-empty selection to arm a new span
+        QVector<CodeSpan> kept;
+        for (const CodeSpan& sp : e->codeSpans)
+            if (sp.start + sp.length <= m_selStart || sp.start >= m_selEnd) kept << sp;
+        CodeSpan added;
+        added.start    = m_selStart;
+        added.length   = m_selEnd - m_selStart;
+        added.language = lang;
+        kept << added;
+        e->codeSpans = kept;
+    }
     refresh();
     emit modified();
 }
