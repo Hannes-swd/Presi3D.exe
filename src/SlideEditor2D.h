@@ -13,6 +13,7 @@ class QDragEnterEvent;
 class QDropEvent;
 class QPainter;
 class QWheelEvent;
+class QComboBox;
 
 class SlideEditor2D : public QWidget {
     Q_OBJECT
@@ -154,6 +155,14 @@ private:
     void finishTextEdit();
     void handleTextEditKey(QKeyEvent*);
     int  textPositionAt(const SlideElement&, QPointF widgetPos) const;
+
+    // Floating "language" picker shown just above a selected/edited code
+    // block (mirrors FormatBar's per-selection combo, but as a persistent
+    // per-block control — see drawElement()'s hasCode path for what counts
+    // as a code block). Shown/positioned from paintEvent() each repaint.
+    void updateCodeLangOverlay();
+    void onCodeLangOverlayChanged(int);
+    QComboBox* m_codeLangCombo = nullptr;
 
     Presentation* m_pres         = nullptr;
     int           m_slideIndex   = -1;

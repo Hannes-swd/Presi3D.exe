@@ -252,7 +252,11 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "<script>\n"
         << "var api = impress();\n"
         << "api.init();\n"
-        << "if (window.hljs) hljs.highlightAll();\n"
+        // hljs.highlightAll() only picks up `pre code` by default; our code
+        // spans are inline <code class="language-x"> without a <pre> wrapper,
+        // so each one needs to be highlighted explicitly.
+        << "if (window.hljs) document.querySelectorAll('code[class*=\"language-\"]')"
+           ".forEach(function(el){ hljs.highlightElement(el); });\n"
         << "var steps = Array.from(document.querySelectorAll('.step'));\n"
         << "var impEl = document.getElementById('impress');\n"
         << "var defaultInactiveOpacity = parseFloat(impEl.dataset.defaultInactiveOpacity || 0.3);\n"

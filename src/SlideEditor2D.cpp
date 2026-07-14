@@ -34,8 +34,7 @@
 #include <QTimer>
 #include <QUuid>
 #include <QImageWriter>
-#include <QFile>
-#include <QTextStream>
+#include <QComboBox>
 
 SlideElement SlideEditor2D::s_clipboard;
 bool         SlideEditor2D::s_hasClipboard = false;
@@ -46,6 +45,7 @@ static void buildLayout(QTextLayout& layout, const SlideElement& e,
                         const QFont& font, float width,
                         const QString& alignOverride = {});
 static QFont elemFont(const SlideElement& e, float scaleY);
+static float textVOff(const QTextLayout& layout, float elemH, const QString& vAlign);
 
 // Defaults — overridden by m_pres->slideWidth/slideHeight when available
 static constexpr float SLIDE_W_DEFAULT = 1920.f;
@@ -89,6 +89,18 @@ static QVector<QPointF> handlePoints(const QRectF& r) {
     };
 }
 
+// Same curated language list as FormatBar's per-selection combo (kept in
+// sync manually — see FormatBar.cpp's m_codeLangCombo setup).
+static void populateCodeLangItems(QComboBox* combo) {
+    combo->addItem("Code: off", QString());
+    for (const char* langPair : {"plaintext:Plain code", "javascript:JavaScript", "python:Python",
+                                  "cpp:C++", "csharp:C#", "java:Java", "html:HTML", "css:CSS",
+                                  "json:JSON", "bash:Bash", "sql:SQL", "php:PHP", "xml:XML"}) {
+        QString s = QString::fromLatin1(langPair);
+        combo->addItem(s.section(':', 1), s.section(':', 0, 0));
+    }
+}
+
 // ── Constructor ───────────────────────────────────────────────────────────────
 
 SlideEditor2D::SlideEditor2D(QWidget* parent) : QWidget(parent) {
@@ -105,6 +117,17 @@ SlideEditor2D::SlideEditor2D(QWidget* parent) : QWidget(parent) {
         m_cursorVisible = !m_cursorVisible;
         if (m_editingElem >= 0) update();
     });
+
+    m_codeLangCombo = new QComboBox(this);
+    populateCodeLangItems(m_codeLangCombo);
+    m_codeLangCombo->setFixedWidth(110);
+    m_codeLangCombo->setToolTip("This code block's language");
+    m_codeLangCombo->setStyleSheet(
+        "QComboBox { background:#ffffff; color:#111827; border:1px solid #9ca3af; "
+        "            padding:1px 4px; font-size:11px; }");
+    m_codeLangCombo->hide();
+    connect(m_codeLangCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &SlideEditor2D::onCodeLangOverlayChanged);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -480,6 +503,8 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
         p.drawRoundedRect(m_keyframeDoneRect, 4, 4);
         p.drawText(m_keyframeDoneRect, Qt::AlignCenter, "Done (Esc)");
     }
+
+    updateCodeLangOverlay();
 }
 
 int SlideEditor2D::slideNumberFor(const QString& currentSlideId) const {
@@ -525,14 +550,6 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         font.setUnderline(e.underline || !e.hyperlink.trimmed().isEmpty());
         font.setStrikeOut(e.strikethrough);
 
-        Qt::Alignment align = Qt::AlignLeft;
-        if (e.textAlignment == "center") align = Qt::AlignHCenter;
-        else if (e.textAlignment == "right") align = Qt::AlignRight;
-
-        Qt::Alignment valign = Qt::AlignTop;
-        if (e.verticalAlignment == "middle") valign = Qt::AlignVCenter;
-        else if (e.verticalAlignment == "bottom") valign = Qt::AlignBottom;
-
         p.save();
         p.setFont(font);
         p.setPen(e.color.isValid() ? e.color : Qt::black);
@@ -545,7 +562,6 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             // span-wide range below supplies font/background and the narrower
             // token ranges on top just add a foreground color.
             QTextLayout layout(displayText, font);
-            buildLayout(layout, e, font, float(wr.width()), e.textAlignment);
             QVector<QTextLayout::FormatRange> ranges;
             for (const CodeSpan& sp : e.codeSpans) {
                 int start = qBound(0, sp.start, displayText.length());
@@ -567,32 +583,22 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                     ranges << QTextLayout::FormatRange{tStart, tLen, tfmt};
                 }
             }
+            // Formats must be set before beginLayout()/createLine() (done inside
+            // buildLayout) — setting them afterward invalidates the already-built
+            // line layout, leaving lineCount() at 0 and drawing nothing.
             layout.setFormats(ranges);
-            // Vertical alignment: shift the draw origin down when content is
-            // shorter than the box, mirroring drawText's valign flags.
-            float totalH = 0.f;
-            for (int ln = 0; ln < layout.lineCount(); ++ln) totalH += layout.lineAt(ln).height();
-            float yOff = 0.f;
-            if (valign == Qt::AlignVCenter) yOff = qMax(0.f, (float(wr.height()) - totalH) / 2.f);
-            else if (valign == Qt::AlignBottom) yOff = qMax(0.f, float(wr.height()) - totalH);
-            {
-                QFile dbg("C:/Users/hanne/Cpp/impress.js editor/debug_codeblock.log");
-                dbg.open(QIODevice::Append | QIODevice::Text);
-                QTextStream ts(&dbg);
-                ts << "hasCode draw: wr=" << wr.x() << "," << wr.y() << "," << wr.width() << "," << wr.height()
-                   << " displayTextLen=" << displayText.length()
-                   << " spans=" << e.codeSpans.size()
-                   << " lineCount=" << layout.lineCount()
-                   << " totalH=" << totalH
-                   << " font=" << font.family()
-                   << " fontSize=" << e.fontSize
-                   << "\n";
-            }
+            buildLayout(layout, e, font, float(wr.width()), e.textAlignment);
+            float yOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
             layout.draw(&p, wr.topLeft() + QPointF(0, yOff));
         } else {
-            p.drawText(wr.toRect(),
-                       int(Qt::TextWordWrap | valign | align),
-                       displayText);
+            // QTextLayout (not QPainter::drawText) so line breaks/positions are
+            // pixel-identical to textPositionAt()/drawTextCursor()'s hit-testing
+            // layout — drawText's own wrapping could disagree by a line or two
+            // on long multi-line text, making clicks land on the wrong line.
+            QTextLayout layout(displayText, font);
+            buildLayout(layout, e, font, float(wr.width()));
+            float vOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
+            layout.draw(&p, wr.topLeft() + QPointF(0, vOff));
         }
         p.restore();
 
@@ -1096,6 +1102,50 @@ void SlideEditor2D::drawTableElement(QPainter& p, const SlideElement& e, bool se
         p.setBrush(Qt::NoBrush);
         p.drawRect(wr.adjusted(-1, -1, 1, 1));
     }
+}
+
+void SlideEditor2D::updateCodeLangOverlay() {
+    const Slide* slide = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    int idx = (m_editingElem >= 0) ? m_editingElem : m_selectedElem;
+    const SlideElement* e = (slide && idx >= 0 && idx < slide->elements.size())
+                            ? &slide->elements[idx] : nullptr;
+    bool hasCode = e && e->type == SlideElement::Text
+                && e->listStyle == SlideElement::NoList
+                && !e->codeSpans.isEmpty();
+    if (!hasCode) {
+        m_codeLangCombo->hide();
+        return;
+    }
+
+    QString lang = e->codeSpans.first().language.isEmpty() ? "plaintext" : e->codeSpans.first().language;
+    int di = m_codeLangCombo->findData(lang);
+    m_codeLangCombo->blockSignals(true);
+    m_codeLangCombo->setCurrentIndex(di >= 0 ? di : 0);
+    m_codeLangCombo->blockSignals(false);
+
+    QRectF wr = elemToWidget(*e);
+    int comboH = m_codeLangCombo->sizeHint().height();
+    int x = int(wr.left());
+    int y = int(wr.top()) - comboH - 4;
+    if (y < 0) y = int(wr.top()) + 4; // not enough room above — sit just inside the top edge
+    m_codeLangCombo->move(x, y);
+    m_codeLangCombo->show();
+    m_codeLangCombo->raise();
+}
+
+void SlideEditor2D::onCodeLangOverlayChanged(int) {
+    Slide* slide = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    int idx = (m_editingElem >= 0) ? m_editingElem : m_selectedElem;
+    if (!slide || idx < 0 || idx >= slide->elements.size()) return;
+    SlideElement& e = slide->elements[idx];
+    if (e.codeSpans.isEmpty()) return;
+
+    QString lang = m_codeLangCombo->currentData().toString();
+    if (lang.isEmpty()) e.codeSpans.clear();       // "Code: off" — back to plain text
+    else for (CodeSpan& sp : e.codeSpans) sp.language = lang;
+
+    update();
+    emit presentationModified();
 }
 
 void SlideEditor2D::drawHandles(QPainter& p, const QRectF& r, float rotation) const {
