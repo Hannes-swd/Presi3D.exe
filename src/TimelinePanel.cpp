@@ -438,12 +438,18 @@ void TimelinePanel::setSlide(Presentation* pres, int slideIndex) {
     m_pres = pres;
     m_slideIdx = slideIndex;
     m_selectedElem = -1;
+    m_selectedElems.clear();
     m_scrub->setValue(0);
     rebuildRows();
 }
 
 void TimelinePanel::setSelectedElement(int elemIndex) {
-    m_selectedElem = elemIndex;
+    setSelectedElements(elemIndex >= 0 ? QVector<int>{elemIndex} : QVector<int>{});
+}
+
+void TimelinePanel::setSelectedElements(const QVector<int>& indices) {
+    m_selectedElem  = indices.isEmpty() ? -1 : indices.first();
+    m_selectedElems = indices;
     rebuildRows();
 }
 
@@ -482,8 +488,31 @@ void TimelinePanel::rebuildRows() {
     static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart",
                                        "Formula", "iFrame", "Button", "Checkbox", "Slider"};
 
+    // Elements sharing a non-empty groupId collapse into a single row (the
+    // "Strahl"/beam in the animation window) instead of one row per member —
+    // see FEATURES_TODO.md "Gruppenbildung". Ungrouped elements keep their own
+    // row exactly as before. QVector<bool> tracks which indices have already
+    // been folded into an earlier group's row so they're not shown twice.
+    QVector<bool> consumed(slide->elements.size(), false);
+
     for (int i = 0; i < slide->elements.size(); ++i) {
-        SlideElement& e = slide->elements[i];
+        if (consumed[i]) continue;
+        const SlideElement& primary = slide->elements[i];
+
+        QVector<int> members;
+        if (primary.groupId.isEmpty()) {
+            members.append(i);
+        } else {
+            for (int j = i; j < slide->elements.size(); ++j)
+                if (slide->elements[j].groupId == primary.groupId) members.append(j);
+        }
+        for (int m : members) consumed[m] = true;
+
+        bool isGroup = members.size() > 1;
+        bool rowSelected = false;
+        for (int m : members)
+            if (m_selectedElems.contains(m)) { rowSelected = true; break; }
+
         auto* row = new QWidget(m_rowsContainer);
         auto* hl  = new QHBoxLayout(row);
         hl->setContentsMargins(2, 2, 2, 2);
@@ -491,25 +520,33 @@ void TimelinePanel::rebuildRows() {
         // Explicit opaque background for both states, not just the selected one
         // ("transparent" lets whatever paints behind this row show through
         // instead of guaranteeing the app's light background/text colors).
-        row->setStyleSheet(i == m_selectedElem
+        row->setStyleSheet(rowSelected
             ? "background: #eff6ff; color:#2563eb; border-radius: 4px;" // matches the app's standard selection color (QMenu/QListWidget/QPushButton:checked in main.cpp)
             : "background: #ffffff; color:#111827; border-radius: 4px;");
 
-        QString shortId = e.id.left(6);
-        QString labelTxt = QString("%1 %2").arg(typeNames[e.type], shortId);
+        QString labelTxt = isGroup
+            ? QString("Gruppe (%1)").arg(members.size())
+            : QString("%1 %2").arg(typeNames[primary.type], primary.id.left(6));
         auto* label = new QLabel(labelTxt, row);
         label->setFixedWidth(90);
         label->setStyleSheet("font-size:10px; color:#111827; background:transparent;");
         hl->addWidget(label);
 
+        // The group's beam visualizes (and Start/End keyframe-capture edits)
+        // its lowest-index member as the representative; the gear dialog
+        // still applies whatever timing it sets to every member (see
+        // openDetailDialog()).
+        int repIdx = members.first();
         auto* bar = new TimelineBarWidget(row);
-        bar->bindElement(m_pres, m_slideIdx, i);
+        bar->bindElement(m_pres, m_slideIdx, repIdx);
         bar->setTool(m_activeTool);
         hl->addWidget(bar, 1);
 
         auto* gearBtn = new QToolButton(row);
         gearBtn->setIcon(QIcon(":/icons/tune.svg"));
-        gearBtn->setToolTip("Timeline details: delay/duration/trigger, loop, variable-gated visibility");
+        gearBtn->setToolTip(isGroup
+            ? "Timeline details for the whole group: delay/duration/trigger, loop, variable-gated visibility"
+            : "Timeline details: delay/duration/trigger, loop, variable-gated visibility");
         hl->addWidget(gearBtn);
 
         auto* startBtn = new QPushButton("Start▸", row); // Start▸
@@ -523,23 +560,27 @@ void TimelinePanel::rebuildRows() {
         hl->addWidget(endBtn);
 
         connect(bar, &TimelineBarWidget::changed, this, [this]() { emit timelineModified(); });
-        connect(bar, &TimelineBarWidget::activated, this, [this, i]() { emit elementActivated(i); });
-        connect(bar, &TimelineBarWidget::detailsRequested, this, [this, i]() { openDetailDialog(i); });
-        connect(gearBtn, &QToolButton::clicked, this, [this, i]() { openDetailDialog(i); });
-        connect(startBtn, &QPushButton::clicked, this, [this, i]() { emit keyframeEditRequested(i, true); });
-        connect(endBtn, &QPushButton::clicked, this, [this, i]() { emit keyframeEditRequested(i, false); });
+        connect(bar, &TimelineBarWidget::activated, this, [this, repIdx]() { emit elementActivated(repIdx); });
+        connect(bar, &TimelineBarWidget::detailsRequested, this, [this, members]() { openDetailDialog(members); });
+        connect(gearBtn, &QToolButton::clicked, this, [this, members]() { openDetailDialog(members); });
+        connect(startBtn, &QPushButton::clicked, this, [this, repIdx]() { emit keyframeEditRequested(repIdx, true); });
+        connect(endBtn, &QPushButton::clicked, this, [this, repIdx]() { emit keyframeEditRequested(repIdx, false); });
 
         m_rowsLayout->insertWidget(m_rowsLayout->count() - 1, row);
     }
 }
 
-void TimelinePanel::openDetailDialog(int elemIndex) {
+void TimelinePanel::openDetailDialog(const QVector<int>& members) {
+    if (members.isEmpty()) return;
+    int elemIndex = members.first();
     SlideElement* e = tpGetElem(m_pres, m_slideIdx, elemIndex);
     if (!e) return;
     TimelineTrack& track = e->timeline;
+    bool isGroup = members.size() > 1;
 
     QDialog dlg(this);
-    dlg.setWindowTitle("Timeline: " + e->id.left(8));
+    dlg.setWindowTitle(isGroup ? QString("Timeline: Gruppe (%1)").arg(members.size())
+                               : "Timeline: " + e->id.left(8));
     auto* vbox = new QVBoxLayout(&dlg);
 
     // ── Entry ──────────────────────────────────────────────────────────────
@@ -618,25 +659,30 @@ void TimelinePanel::openDetailDialog(int elemIndex) {
     vbox->addWidget(visGroup);
 
     bool changedAny = false;
-    auto apply = [&, this, elemIndex]() {
-        SlideElement* live = tpGetElem(m_pres, m_slideIdx, elemIndex);
-        if (!live) return;
-        TimelineTrack& t = live->timeline;
-        t.hasEntry      = entryEnabled->isChecked();
-        t.entryDelay    = float(entryDelay->value());
-        t.entryDuration = float(entryDuration->value());
-        t.entryTrigger  = entryTrigger->currentData().toString();
-        if (t.hasEntry && t.entryStart.isEmpty())
-            t.entryStart.props["opacity"] = 0.0; // plain fade-in default until "Start▸" authors a real keyframe
-        t.hasExit       = exitEnabled->isChecked();
-        t.exitDelay     = float(exitDelay->value());
-        t.exitDuration  = float(exitDuration->value());
-        t.exitTrigger   = exitTrigger->currentData().toString();
-        if (t.hasExit && t.exitEnd.isEmpty())
-            t.exitEnd.props["opacity"] = 0.0;
-        t.loop          = loopEnabled->isChecked();
-        t.loopPause     = float(loopPause->value());
-        t.visibilityVarId = visCombo->currentData().toString();
+    // Applies the dialog's settings to every group member (or just the one
+    // element outside a group) — mirrors PropertiesPanel's "edit once, apply
+    // to all selected" rule for shared group styling.
+    auto apply = [&, this, members]() {
+        for (int idx : members) {
+            SlideElement* live = tpGetElem(m_pres, m_slideIdx, idx);
+            if (!live) continue;
+            TimelineTrack& t = live->timeline;
+            t.hasEntry      = entryEnabled->isChecked();
+            t.entryDelay    = float(entryDelay->value());
+            t.entryDuration = float(entryDuration->value());
+            t.entryTrigger  = entryTrigger->currentData().toString();
+            if (t.hasEntry && t.entryStart.isEmpty())
+                t.entryStart.props["opacity"] = 0.0; // plain fade-in default until "Start▸" authors a real keyframe
+            t.hasExit       = exitEnabled->isChecked();
+            t.exitDelay     = float(exitDelay->value());
+            t.exitDuration  = float(exitDuration->value());
+            t.exitTrigger   = exitTrigger->currentData().toString();
+            if (t.hasExit && t.exitEnd.isEmpty())
+                t.exitEnd.props["opacity"] = 0.0;
+            t.loop          = loopEnabled->isChecked();
+            t.loopPause     = float(loopPause->value());
+            t.visibilityVarId = visCombo->currentData().toString();
+        }
         changedAny = true;
         rebuildRows();
         emit timelineModified();

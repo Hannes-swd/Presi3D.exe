@@ -11,6 +11,7 @@
 #include "models/VariableEngine.h"
 #include "models/TimelineEngine.h"
 #include <QPainter>
+#include <QPainterPath>
 #include <QtMath>
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -35,9 +36,10 @@
 #include <QUuid>
 #include <QImageWriter>
 #include <QComboBox>
+#include <algorithm>
 
-SlideElement SlideEditor2D::s_clipboard;
-bool         SlideEditor2D::s_hasClipboard = false;
+QVector<SlideElement> SlideEditor2D::s_clipboard;
+bool                  SlideEditor2D::s_hasClipboard = false;
 
 // Forward decls (defined further below, near the inline text-edit code) —
 // also used by drawElement()'s code-span rendering path.
@@ -139,10 +141,12 @@ void SlideEditor2D::setSlide(Presentation* pres, int slideIndex) {
     m_pres           = pres;
     m_slideIndex     = slideIndex;
     m_selectedElem   = -1;
+    m_selectedElems.clear();
     m_resizingHandle = -1;
     m_dragDivider    = {};
     update();
     emit elementSelected(-1);
+    emit elementsSelected(m_selectedElems);
 }
 
 void SlideEditor2D::setPreviewTime(float tSeconds) {
@@ -159,9 +163,64 @@ void SlideEditor2D::setKeyframeEditActive(bool active, const QString& label) {
 void SlideEditor2D::selectElement(int index) {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || index < -1 || index >= s->elements.size()) return;
+    selectWithGroupExpansion(index);
+}
+
+// ── Multi-selection / grouping helpers ───────────────────────────────────────
+
+QVector<int> SlideEditor2D::groupMembers(int elemIndex) const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    QVector<int> result;
+    if (!s || elemIndex < 0 || elemIndex >= s->elements.size()) return result;
+    const QString& gid = s->elements[elemIndex].groupId;
+    if (gid.isEmpty()) { result.append(elemIndex); return result; }
+    for (int i = 0; i < s->elements.size(); ++i)
+        if (s->elements[i].groupId == gid) result.append(i);
+    return result;
+}
+
+void SlideEditor2D::setSingleSelection(int index) {
     m_selectedElem = index;
+    m_selectedElems.clear();
+    if (index >= 0) m_selectedElems.append(index);
+}
+
+void SlideEditor2D::selectWithGroupExpansion(int hitIndex) {
+    if (hitIndex < 0) {
+        m_selectedElem = -1;
+        m_selectedElems.clear();
+    } else {
+        m_selectedElem  = hitIndex;
+        m_selectedElems = groupMembers(hitIndex);
+    }
     update();
-    emit elementSelected(index);
+    emit elementSelected(m_selectedElems.size() == 1 ? m_selectedElem : -1);
+    emit elementsSelected(m_selectedElems);
+}
+
+QRectF SlideEditor2D::selectionWidgetRect() const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    QRectF result;
+    if (!s) return result;
+    for (int idx : m_selectedElems) {
+        if (idx < 0 || idx >= s->elements.size()) continue;
+        QRectF wr = elemToWidget(s->elements[idx]);
+        result = result.isNull() ? wr : result.united(wr);
+    }
+    return result;
+}
+
+QRectF SlideEditor2D::selectionSlideRect() const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    QRectF result;
+    if (!s) return result;
+    for (int idx : m_selectedElems) {
+        if (idx < 0 || idx >= s->elements.size()) continue;
+        const SlideElement& e = s->elements[idx];
+        QRectF r(e.x, e.y, e.width, e.height);
+        result = result.isNull() ? r : result.united(r);
+    }
+    return result;
 }
 
 // ── Coordinate helpers ────────────────────────────────────────────────────────
@@ -246,20 +305,32 @@ int SlideEditor2D::hitTest(const QPointF& wpos) const {
 
 int SlideEditor2D::hitHandle(const QPointF& wpos) const {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
-    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return -1;
-    const SlideElement& elem = s->elements[m_selectedElem];
-    QRectF wr = elemToWidget(elem);
-    float rot = elem.rotation;
+    if (!s || m_selectedElems.isEmpty()) return -1;
 
-    // Check rotation handle first: circle 30px above TC in local space, then rotated
-    QPointF localRotHandle(wr.center().x(), wr.top() - 30);
-    QPointF rotHandleW = (rot != 0.f) ? rotatePt(localRotHandle, wr.center(), rot)
-                                       : localRotHandle;
-    QRectF rhr(rotHandleW.x() - HANDLE_R, rotHandleW.y() - HANDLE_R,
-               HANDLE_R * 2, HANDLE_R * 2);
-    if (rhr.contains(wpos)) return 8;
+    QRectF wr;
+    float  rot = 0.f;
 
-    // Resize handles: un-rotate click into local space first
+    if (m_selectedElems.size() == 1) {
+        int idx = m_selectedElems.first();
+        if (idx < 0 || idx >= s->elements.size()) return -1;
+        const SlideElement& elem = s->elements[idx];
+        wr  = elemToWidget(elem);
+        rot = elem.rotation;
+
+        // Check rotation handle first: circle 30px above TC in local space, then rotated.
+        // Only offered for a single selected element — group rotation isn't supported.
+        QPointF localRotHandle(wr.center().x(), wr.top() - 30);
+        QPointF rotHandleW = (rot != 0.f) ? rotatePt(localRotHandle, wr.center(), rot)
+                                           : localRotHandle;
+        QRectF rhr(rotHandleW.x() - HANDLE_R, rotHandleW.y() - HANDLE_R,
+                   HANDLE_R * 2, HANDLE_R * 2);
+        if (rhr.contains(wpos)) return 8;
+    } else {
+        wr = selectionWidgetRect();
+        if (wr.isNull()) return -1;
+    }
+
+    // Resize handles: un-rotate click into local space first (rot==0 for multi-selection)
     QPointF testPos = (rot != 0.f) ? unrotatePt(wpos, wr.center(), rot) : wpos;
     const auto pts = handlePoints(wr);
     for (int i = 0; i < pts.size(); ++i) {
@@ -346,7 +417,7 @@ void SlideEditor2D::applySnapAndGuides(SlideElement& e) {
     QVector<float> xCands = {0.f, sw * 0.5f, sw};
     QVector<float> yCands = {0.f, sh * 0.5f, sh};
     for (int i = 0; i < s->elements.size(); ++i) {
-        if (i == m_selectedElem) continue;
+        if (m_selectedElems.contains(i)) continue;
         const SlideElement& o = s->elements[i];
         xCands << o.x << (o.x + o.width  * 0.5f) << (o.x + o.width);
         yCands << o.y << (o.y + o.height * 0.5f) << (o.y + o.height);
@@ -437,7 +508,7 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
     // Elements (clipped to slide)
     p.setClipRect(sr);
     for (int i = 0; i < slide->elements.size(); ++i) {
-        bool showSel = (i == m_selectedElem) && (i != m_editingElem);
+        bool showSel = m_selectedElems.contains(i) && (i != m_editingElem);
         const SlideElement& baseElem = slide->elements[i];
         SlideElement previewElem;
         const SlideElement* renderElem = &baseElem;
@@ -468,9 +539,20 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
     }
 
     // Selection handles (drawn outside clip so they extend beyond slide edge)
-    if (m_selectedElem >= 0 && m_selectedElem < slide->elements.size())
-        drawHandles(p, elemToWidget(slide->elements[m_selectedElem]),
-                    slide->elements[m_selectedElem].rotation);
+    if (m_selectedElems.size() == 1) {
+        int idx = m_selectedElems.first();
+        if (idx >= 0 && idx < slide->elements.size())
+            drawHandles(p, elemToWidget(slide->elements[idx]), slide->elements[idx].rotation);
+    } else if (m_selectedElems.size() > 1) {
+        drawGroupHandles(p, selectionWidgetRect());
+    }
+
+    // Marquee (rubber-band) selection rectangle
+    if (m_marqueeActive) {
+        p.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
+        p.setBrush(QColor(0, 120, 215, 40));
+        p.drawRect(m_marqueeRect);
+    }
 
     // Zoom indicator (only shown once the user has actually zoomed)
     if (!qFuzzyCompare(m_zoom, 1.0f)) {
@@ -1181,6 +1263,31 @@ void SlideEditor2D::drawHandles(QPainter& p, const QRectF& r, float rotation) co
     p.restore();
 }
 
+// Bounding-box chrome for a multi/group selection: a rounded dashed outline
+// (the "abrunden" group-styling ask, read as the group's own visual framing)
+// plus resize handles on its corners/edges. No rotation handle — group
+// rotation-as-one-unit isn't supported (see FEATURES_TODO.md scope note).
+void SlideEditor2D::drawGroupHandles(QPainter& p, const QRectF& r) const {
+    if (r.isNull()) return;
+    p.save();
+
+    QPainterPath path;
+    path.addRoundedRect(r.adjusted(-6, -6, 6, 6), 8, 8);
+    p.setPen(QPen(QColor(0, 120, 215), 2, Qt::DashLine));
+    p.setBrush(Qt::NoBrush);
+    p.drawPath(path);
+
+    const auto pts = handlePoints(r);
+    for (const auto& pt : pts) {
+        p.setPen(QPen(QColor(0, 120, 215), 1.5));
+        p.setBrush(Qt::white);
+        p.drawRect(QRectF(pt.x() - HANDLE_V, pt.y() - HANDLE_V,
+                          HANDLE_V * 2,       HANDLE_V * 2));
+    }
+
+    p.restore();
+}
+
 // ── Format painter ────────────────────────────────────────────────────────────
 
 static void applyFormat(SlideElement& dst, const SlideElement& src) {
@@ -1231,8 +1338,9 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
         if (hit >= 0 && m_pres) {
             Slide* s = m_pres->slideAt(m_slideIndex);
             applyFormat(s->elements[hit], m_formatTemplate);
-            m_selectedElem = hit;
+            setSingleSelection(hit);
             emit elementSelected(hit);
+            emit elementsSelected(m_selectedElems);
             emit presentationModified();
         }
         m_formatPainterMode = false;
@@ -1347,10 +1455,15 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     }
     if (handle >= 0) {
         Slide* s = m_pres->slideAt(m_slideIndex);
-        const SlideElement& elem = s->elements[m_selectedElem];
         m_resizingHandle = handle;
-        m_resizeOrigX = elem.x;   m_resizeOrigY = elem.y;
-        m_resizeOrigW = elem.width; m_resizeOrigH = elem.height;
+        QRectF bbox = selectionSlideRect();
+        m_resizeOrigX = float(bbox.x());     m_resizeOrigY = float(bbox.y());
+        m_resizeOrigW = float(bbox.width()); m_resizeOrigH = float(bbox.height());
+        m_resizeOrigMembers.clear();
+        for (int idx : m_selectedElems) {
+            const SlideElement& el = s->elements[idx];
+            m_resizeOrigMembers.append(QRectF(el.x, el.y, el.width, el.height));
+        }
         m_dragStartSlide = widgetToSlide(e->position());
         return;
     }
@@ -1360,16 +1473,56 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     if (hit != m_selectedElem && m_tableEditMode) {
         exitTableEditMode();
     }
-    m_selectedElem = hit;
+
+    const bool toggleMod = (e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier));
+
+    if (hit < 0) {
+        if (!toggleMod) {
+            // Empty space: start a rubber-band marquee drag. A plain click with
+            // no movement clears the selection on release (mouseReleaseEvent).
+            m_marqueeActive = true;
+            m_marqueeStart  = e->position();
+            m_marqueeRect   = QRectF(m_marqueeStart, QSizeF(0, 0));
+            update();
+            return;
+        }
+    } else {
+        QVector<int> members = groupMembers(hit);
+        if (toggleMod) {
+            // Ctrl/Shift+click: toggle this element's whole group into/out of
+            // the existing selection, without disturbing the rest of it.
+            if (m_selectedElems.contains(hit)) {
+                for (int m : members) m_selectedElems.removeAll(m);
+            } else {
+                for (int m : members)
+                    if (!m_selectedElems.contains(m)) m_selectedElems.append(m);
+            }
+            m_selectedElem = m_selectedElems.isEmpty() ? -1 : hit;
+        } else if (!m_selectedElems.contains(hit)) {
+            // Plain click outside the current selection: replace it with just
+            // this element's group. Clicking a member already selected keeps
+            // the whole selection intact so the following drag moves everyone.
+            m_selectedElems = members;
+            m_selectedElem  = hit;
+        } else {
+            // Clicking a member already in the selection: keep the whole
+            // selection so the drag that follows moves every member.
+            m_selectedElem = hit;
+        }
+    }
 
     if (hit >= 0 && m_pres) {
         m_dragging       = true;
         m_dragStartSlide = widgetToSlide(e->position());
         Slide* s         = m_pres->slideAt(m_slideIndex);
         m_dragOrigin     = QPointF(s->elements[hit].x, s->elements[hit].y);
+        m_dragOrigins.clear();
+        for (int idx : m_selectedElems)
+            m_dragOrigins.append(QPointF(s->elements[idx].x, s->elements[idx].y));
     }
 
-    emit elementSelected(m_selectedElem);
+    emit elementSelected(m_selectedElems.size() == 1 ? m_selectedElem : -1);
+    emit elementsSelected(m_selectedElems);
     update();
 }
 
@@ -1377,6 +1530,13 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
     // Canvas panning (middle-mouse-button drag)
     if (m_panning) {
         m_panOffset = m_panStartOffset + (e->position() - m_panStartMouse);
+        update();
+        return;
+    }
+
+    // Rubber-band marquee selection drag
+    if (m_marqueeActive) {
+        m_marqueeRect = QRectF(m_marqueeStart, e->position()).normalized();
         update();
         return;
     }
@@ -1454,30 +1614,62 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
         return;
     }
 
-    // Resize mode
+    // Resize mode — origin is the bounding box of the whole selection; for a
+    // single selected element that box is just its own rect, so this collapses
+    // to the previous single-element behavior exactly (scale=1, offset=0).
     if (m_resizingHandle >= 0) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
-        if (s && m_selectedElem >= 0 && m_selectedElem < s->elements.size()) {
+        if (s && !m_selectedElems.isEmpty() && m_selectedElems.size() == m_resizeOrigMembers.size()) {
             bool constrain = (e->modifiers() & Qt::ControlModifier) != 0;
-            applyResize(s->elements[m_selectedElem], m_resizingHandle,
-                        curSlide,
+            SlideElement bboxElem; // pseudo-element standing in for the selection's bbox
+            bboxElem.x = m_resizeOrigX; bboxElem.y = m_resizeOrigY;
+            bboxElem.width = m_resizeOrigW; bboxElem.height = m_resizeOrigH;
+            applyResize(bboxElem, m_resizingHandle, curSlide,
                         m_resizeOrigX, m_resizeOrigY,
                         m_resizeOrigW, m_resizeOrigH, constrain);
+            float scaleX = (m_resizeOrigW > 0.0001f) ? bboxElem.width  / m_resizeOrigW : 1.f;
+            float scaleY = (m_resizeOrigH > 0.0001f) ? bboxElem.height / m_resizeOrigH : 1.f;
+            for (int k = 0; k < m_selectedElems.size(); ++k) {
+                int idx = m_selectedElems[k];
+                if (idx < 0 || idx >= s->elements.size()) continue;
+                const QRectF& orig = m_resizeOrigMembers[k];
+                SlideElement& el = s->elements[idx];
+                el.x      = float(bboxElem.x + (orig.x() - m_resizeOrigX) * scaleX);
+                el.y      = float(bboxElem.y + (orig.y() - m_resizeOrigY) * scaleY);
+                el.width  = float(orig.width()  * scaleX);
+                el.height = float(orig.height() * scaleY);
+            }
             update();
             emit presentationModified();
         }
         return;
     }
 
-    // Move mode
-    if (m_dragging && m_selectedElem >= 0) {
+    // Move mode — apply the same delta to every selected element; snap/guides
+    // are computed against the primary element only, then the corrective nudge
+    // that snapping introduced is applied to the rest of the selection too.
+    if (m_dragging && !m_selectedElems.isEmpty() && m_selectedElems.size() == m_dragOrigins.size()) {
         Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
         if (!s) return;
         QPointF delta = curSlide - m_dragStartSlide;
-        SlideElement& elem = s->elements[m_selectedElem];
-        elem.x = float(m_dragOrigin.x() + delta.x());
-        elem.y = float(m_dragOrigin.y() + delta.y());
-        applySnapAndGuides(elem);
+        int primaryPos = m_selectedElems.indexOf(m_selectedElem);
+        QPointF corrective(0, 0);
+        if (primaryPos >= 0 && m_selectedElem < s->elements.size()) {
+            SlideElement& primary = s->elements[m_selectedElem];
+            QPointF preSnap = m_dragOrigins[primaryPos] + delta;
+            primary.x = float(preSnap.x());
+            primary.y = float(preSnap.y());
+            applySnapAndGuides(primary);
+            corrective = QPointF(primary.x, primary.y) - preSnap;
+        }
+        for (int k = 0; k < m_selectedElems.size(); ++k) {
+            int idx = m_selectedElems[k];
+            if (idx == m_selectedElem || idx < 0 || idx >= s->elements.size()) continue;
+            SlideElement& el = s->elements[idx];
+            QPointF np = m_dragOrigins[k] + delta + corrective;
+            el.x = float(np.x());
+            el.y = float(np.y());
+        }
         update();
         emit presentationModified();
         return;
@@ -1516,6 +1708,32 @@ void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
         return;
     }
     if (e->button() == Qt::LeftButton) {
+        if (m_marqueeActive) {
+            m_marqueeActive = false;
+            // Only treat it as a real marquee if the user actually dragged a
+            // visible distance; a plain click-release with no movement clears
+            // the selection instead (matches clicking empty space elsewhere).
+            if (m_marqueeRect.width() > 3 || m_marqueeRect.height() > 3) {
+                QVector<int> newSel;
+                const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+                if (s) {
+                    for (int i = 0; i < s->elements.size(); ++i) {
+                        if (m_marqueeRect.intersects(elemToWidget(s->elements[i]))) {
+                            for (int m : groupMembers(i))
+                                if (!newSel.contains(m)) newSel.append(m);
+                        }
+                    }
+                }
+                m_selectedElems = newSel;
+                m_selectedElem  = newSel.isEmpty() ? -1 : newSel.first();
+            } else {
+                m_selectedElems.clear();
+                m_selectedElem = -1;
+            }
+            m_marqueeRect = QRectF();
+            emit elementSelected(m_selectedElems.size() == 1 ? m_selectedElem : -1);
+            emit elementsSelected(m_selectedElems);
+        }
         m_textSelecting     = false;
         m_dragging          = false;
         m_resizingHandle    = -1;
@@ -1556,36 +1774,36 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
     const SlideElement& elem = s->elements[hit];
 
     if (elem.type == SlideElement::Chart) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         openChartEditor();
         return;
     } else if (elem.type == SlideElement::Formula) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         openFormulaEditor();
         return;
     } else if (elem.type == SlideElement::IFrame) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         openIFrameEditor();
         return;
     } else if (elem.type == SlideElement::Button) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         openButtonEditor();
         return;
     } else if (elem.type == SlideElement::Checkbox) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         openCheckboxEditor();
         return;
     } else if (elem.type == SlideElement::Slider) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         openSliderEditor();
         return;
     } else if (elem.type == SlideElement::Text) {
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Shape) {
-        m_selectedElem = hit;
+        setSingleSelection(hit);
         startTextEdit(hit, e->position());
     } else if (elem.type == SlideElement::Table) {
-        m_selectedElem  = hit;
+        setSingleSelection(hit);
         m_tableEditMode = true;
         CellPos cp = hitTableCell(hit, e->position());
         if (!cp.valid()) { m_selTableRow = 0; m_selTableCol = 0; }
@@ -1596,6 +1814,7 @@ void SlideEditor2D::mouseDoubleClickEvent(QMouseEvent* e) {
         m_cursorBlink->start();
         m_cursorVisible = true;
         emit elementSelected(hit);
+        emit elementsSelected(m_selectedElems);
         emit tableCellSelected(m_selTableRow, m_selTableCol);
         update();
     }
@@ -1617,9 +1836,14 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
     if (m_editingElem >= 0) { handleTextEditKey(e); return; }
     if (m_tableEditMode)    { handleTableKey(e);     return; }
 
-    const bool ctrl = e->modifiers() & Qt::ControlModifier;
+    const bool ctrl  = e->modifiers() & Qt::ControlModifier;
+    const bool shift = e->modifiers() & Qt::ShiftModifier;
 
-    if (ctrl && e->key() == Qt::Key_C) {
+    if (ctrl && shift && e->key() == Qt::Key_G) {
+        ungroupSelectedElements();
+    } else if (ctrl && e->key() == Qt::Key_G) {
+        groupSelectedElements();
+    } else if (ctrl && e->key() == Qt::Key_C) {
         copySelectedElement();
     } else if (ctrl && e->key() == Qt::Key_X) {
         copySelectedElement(); deleteSelectedElement();
@@ -1659,7 +1883,9 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
         deleteSelectedElement();
     } else if (e->key() == Qt::Key_Escape) {
         m_selectedElem = -1;
+        m_selectedElems.clear();
         emit elementSelected(-1);
+        emit elementsSelected(m_selectedElems);
         update();
     } else if (ctrl && (e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal)) {
         zoomIn();
@@ -1674,22 +1900,39 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
 
 void SlideEditor2D::copySelectedElement() {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
-    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
-    s_clipboard    = s->elements[m_selectedElem];
-    s_hasClipboard = true;
+    if (!s || m_selectedElems.isEmpty()) return;
+    s_clipboard.clear();
+    for (int idx : m_selectedElems)
+        if (idx >= 0 && idx < s->elements.size()) s_clipboard.append(s->elements[idx]);
+    s_hasClipboard = !s_clipboard.isEmpty();
 }
 
 void SlideEditor2D::pasteElement() {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
-    if (!s || !s_hasClipboard) return;
-    SlideElement newElem = s_clipboard;
-    newElem.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    newElem.x += 20; newElem.y += 20;
-    s->elements.append(newElem);
-    m_selectedElem = s->elements.size() - 1;
+    if (!s || !s_hasClipboard || s_clipboard.isEmpty()) return;
+
+    // If the copied set shared a group, give the pasted copies their own new
+    // shared group id — keeps the duplicate cohesive without merging it into
+    // the original group (which may still be on the slide).
+    QString newGroupId;
+    if (s_clipboard.size() > 1 && !s_clipboard.first().groupId.isEmpty())
+        newGroupId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    m_selectedElems.clear();
+    for (const SlideElement& src : s_clipboard) {
+        SlideElement newElem = src;
+        newElem.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        newElem.x += 20; newElem.y += 20;
+        if (!newGroupId.isEmpty()) newElem.groupId = newGroupId;
+        else if (s_clipboard.size() == 1) newElem.groupId.clear(); // never silently rejoin a stale group
+        s->elements.append(newElem);
+        m_selectedElems.append(s->elements.size() - 1);
+    }
+    m_selectedElem = m_selectedElems.isEmpty() ? -1 : m_selectedElems.last();
     update();
     emit presentationModified();
-    emit elementSelected(m_selectedElem);
+    emit elementSelected(m_selectedElems.size() == 1 ? m_selectedElem : -1);
+    emit elementsSelected(m_selectedElems);
 }
 
 void SlideEditor2D::resizeEvent(QResizeEvent*) { update(); }
@@ -1760,18 +2003,29 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
     }
 
     QMenu menu(this);
-    if (m_selectedElem >= 0) {
+    if (!m_selectedElems.isEmpty()) {
+        const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        bool isGrouped = s && m_selectedElem >= 0 && m_selectedElem < s->elements.size()
+                         && !s->elements[m_selectedElem].groupId.isEmpty();
+
         menu.addAction("Copy  (Ctrl+C)", this, &SlideEditor2D::copySelectedElement);
         menu.addAction("Cut (Ctrl+X)", this, [this]() {
             copySelectedElement(); deleteSelectedElement();
         });
         menu.addSeparator();
+        if (m_selectedElems.size() >= 2 && !isGrouped)
+            menu.addAction("Gruppieren  (Ctrl+G)", this, &SlideEditor2D::groupSelectedElements);
+        if (isGrouped)
+            menu.addAction("Gruppierung aufheben  (Ctrl+Shift+G)", this, &SlideEditor2D::ungroupSelectedElements);
+        if ((m_selectedElems.size() >= 2 && !isGrouped) || isGrouped)
+            menu.addSeparator();
         menu.addAction("Bring to Front",       this, &SlideEditor2D::bringToFront);
         menu.addAction("Move One Layer Up",    this, &SlideEditor2D::bringForward);
         menu.addAction("Move One Layer Down",  this, &SlideEditor2D::sendBackward);
         menu.addAction("Send to Back",         this, &SlideEditor2D::sendToBack);
         menu.addSeparator();
-        menu.addAction("Delete Element",       this, &SlideEditor2D::deleteSelectedElement);
+        menu.addAction(isGrouped || m_selectedElems.size() > 1 ? "Delete Group" : "Delete Element",
+                       this, &SlideEditor2D::deleteSelectedElement);
         menu.addSeparator();
     }
     auto* pasteAct = menu.addAction("Paste (Ctrl+V)", this, &SlideEditor2D::pasteElement);
@@ -1788,7 +2042,7 @@ void SlideEditor2D::addTextElement() {
     e.type = SlideElement::Text; e.content = "Enter text";
     e.x = 200; e.y = 200; e.width = 700; e.height = 90; e.fontSize = 36;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1809,7 +2063,7 @@ void SlideEditor2D::pasteTextAsNewElement(const QString& text) {
         e.fontFamily = "Consolas";
     }
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1824,7 +2078,7 @@ void SlideEditor2D::addShapeElement(const QString& shapeType) {
     e.backgroundColor = QColor(100, 149, 237);
     e.borderWidth     = 0.f;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1838,7 +2092,7 @@ void SlideEditor2D::addIconElement(const QString& iconId) {
     e.x = 400; e.y = 400; e.width = 160; e.height = 160;
     e.color = QColor(55, 65, 81);
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1864,7 +2118,7 @@ void SlideEditor2D::addImageFromPath(const QString& path, QPointF widgetPos) {
         e.x = 200.f; e.y = 150.f;
     }
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1878,7 +2132,7 @@ void SlideEditor2D::addTableElement(int rows, int cols) {
     e.x = 260.f; e.y = 340.f;
     e.width = 1400.f; e.height = float(rows) * 60.f;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     m_tableEditMode = false;
     m_selTableRow = m_selTableCol = -1;
     m_tableCellEditing = false;
@@ -1896,7 +2150,7 @@ void SlideEditor2D::addChartElement(const QString& chartType) {
     e.x = 160.f; e.y = 160.f;
     e.width = 900.f; e.height = 560.f;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1924,7 +2178,7 @@ void SlideEditor2D::addFormulaElement(const QString& latex) {
     e.content = latex;
     e.x = 300.f; e.y = 300.f; e.width = 500.f; e.height = 120.f; e.fontSize = 40;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1952,7 +2206,7 @@ void SlideEditor2D::addIFrameElement(const QString& url) {
     e.content = url;
     e.x = 300.f; e.y = 300.f; e.width = 800.f; e.height = 450.f;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -1992,7 +2246,7 @@ void SlideEditor2D::addButtonElement(const ButtonConfig& cfg) {
     e.cornerRadius    = 8.f;
     e.bold            = true;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -2041,7 +2295,7 @@ void SlideEditor2D::addCheckboxElement(const CheckboxConfig& cfg) {
     e.fontSize = 24;
     e.color    = Qt::black;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -2080,7 +2334,7 @@ void SlideEditor2D::addSliderElement(const SliderConfig& cfg) {
     e.fontSize = 20;
     e.color    = Qt::black;
     s->elements.append(e);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
@@ -2126,12 +2380,42 @@ void SlideEditor2D::deleteSelectedElement() {
     // commits it against the still-consistent pre-edit array.
     if (m_keyframeEditActive) emit keyframeEditDone();
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
-    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
-    s->elements.removeAt(m_selectedElem);
+    if (!s || m_selectedElems.isEmpty()) return;
+    QVector<int> sorted = m_selectedElems;
+    std::sort(sorted.begin(), sorted.end());
+    for (int k = sorted.size() - 1; k >= 0; --k) {
+        int idx = sorted[k];
+        if (idx >= 0 && idx < s->elements.size()) s->elements.removeAt(idx);
+    }
     m_selectedElem = -1;
+    m_selectedElems.clear();
     update();
     emit presentationModified();
     emit elementSelected(-1);
+    emit elementsSelected(m_selectedElems);
+}
+
+// ── Grouping ──────────────────────────────────────────────────────────────────
+
+void SlideEditor2D::groupSelectedElements() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElems.size() < 2) return;
+    QString gid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    for (int idx : m_selectedElems)
+        if (idx >= 0 && idx < s->elements.size()) s->elements[idx].groupId = gid;
+    update();
+    emit presentationModified();
+}
+
+void SlideEditor2D::ungroupSelectedElements() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    const QString gid = s->elements[m_selectedElem].groupId;
+    if (gid.isEmpty()) return;
+    for (SlideElement& el : s->elements)
+        if (el.groupId == gid) el.groupId.clear();
+    update();
+    emit presentationModified();
 }
 
 // ── Layer / z-order ───────────────────────────────────────────────────────────
@@ -2143,7 +2427,7 @@ void SlideEditor2D::bringToFront() {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size() - 1) return;
     s->elements.move(m_selectedElem, s->elements.size() - 1);
-    m_selectedElem = s->elements.size() - 1;
+    setSingleSelection(s->elements.size() - 1);
     update(); emit presentationModified(); emit elementSelected(m_selectedElem);
 }
 
@@ -2152,7 +2436,7 @@ void SlideEditor2D::bringForward() {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size() - 1) return;
     s->elements.swapItemsAt(m_selectedElem, m_selectedElem + 1);
-    m_selectedElem++;
+    setSingleSelection(m_selectedElem + 1);
     update(); emit presentationModified(); emit elementSelected(m_selectedElem);
 }
 
@@ -2161,7 +2445,7 @@ void SlideEditor2D::sendBackward() {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem <= 0) return;
     s->elements.swapItemsAt(m_selectedElem, m_selectedElem - 1);
-    m_selectedElem--;
+    setSingleSelection(m_selectedElem - 1);
     update(); emit presentationModified(); emit elementSelected(m_selectedElem);
 }
 
@@ -2170,7 +2454,7 @@ void SlideEditor2D::sendToBack() {
     Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
     if (!s || m_selectedElem <= 0) return;
     s->elements.move(m_selectedElem, 0);
-    m_selectedElem = 0;
+    setSingleSelection(0);
     update(); emit presentationModified(); emit elementSelected(m_selectedElem);
 }
 

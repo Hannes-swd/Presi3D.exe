@@ -34,6 +34,7 @@ struct SlideElement {
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
+    QString groupId; // empty = not part of a group; shared value links elements into one group
     Type    type = Text;
     QString content; // text string | shape type ("rect","circle","line") | image path | LaTeX (Formula) | button label (Button) | icon id (Icon)
     int     listStyle = NoList;

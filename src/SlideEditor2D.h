@@ -36,11 +36,16 @@ public:
 
     // Programmatically select an element (e.g. when MainWindow starts a
     // keyframe edit session) — mirrors what a mouse click on the canvas does.
+    // Auto-expands to the element's whole group, same as a canvas click.
     void selectElement(int index);
 
 signals:
     void presentationModified();
-    void elementSelected(int elemIndex); // -1 = none
+    // Primary selected index; -1 both when nothing is selected AND when a
+    // multi/group selection is active (single-element-only consumers like
+    // FormatBar should treat "a group is selected" the same as "nothing").
+    void elementSelected(int elemIndex);
+    void elementsSelected(const QVector<int>& indices); // full selection, any size
     void tableCellSelected(int row, int col); // -1/-1 = none
     void zoomChanged(float zoom); // 1.0 = 100%
     void keyframeEditDone(); // user pressed Escape or clicked the keyframe-edit banner
@@ -71,6 +76,10 @@ public slots:
     void copySelectedElement();
     void pasteElement();
     void activateFormatPainter(const SlideElement& source);
+
+    // Grouping (see FEATURES_TODO.md "Gruppenbildung")
+    void groupSelectedElements();   // needs >= 2 selected elements
+    void ungroupSelectedElements(); // clears groupId on the primary element's whole group
 
     // Layer / z-order
     void bringToFront();
@@ -105,6 +114,14 @@ private:
     QRectF  elemToWidget(const SlideElement&) const;
     QPointF widgetToSlide(const QPointF&) const;
     int     hitTest(const QPointF& widgetPos) const;
+
+    // Multi-selection / grouping helpers
+    QVector<int> groupMembers(int elemIndex) const; // elements sharing elemIndex's groupId, or just {elemIndex}
+    void    setSingleSelection(int index);          // select exactly one element, no group expansion
+    void    selectWithGroupExpansion(int hitIndex);  // select hitIndex's whole group (used by canvas clicks)
+    QRectF  selectionWidgetRect() const; // bbox of m_selectedElems, in widget coords, unrotated
+    QRectF  selectionSlideRect() const;  // bbox of m_selectedElems, in slide coords, unrotated
+    void    drawGroupHandles(QPainter&, const QRectF&) const; // rounded bbox outline + resize handles, no rotation handle
 
     // Zoom helper: change zoom while keeping the slide point under
     // anchorWidgetPos fixed on screen.
@@ -166,7 +183,13 @@ private:
 
     Presentation* m_pres         = nullptr;
     int           m_slideIndex   = -1;
-    int           m_selectedElem = -1;
+    int           m_selectedElem = -1; // primary/anchor index; -1 = none
+    QVector<int>  m_selectedElems;     // full selection (size 0/1/N); size==1 mirrors m_selectedElem
+
+    // Rubber-band marquee selection (drag on empty canvas)
+    bool    m_marqueeActive = false;
+    QPointF m_marqueeStart;
+    QRectF  m_marqueeRect; // widget coords
 
     // Zoom / pan (2D canvas)
     float   m_zoom          = 1.0f;   // 1.0 = fit-to-widget (100%)
@@ -177,13 +200,17 @@ private:
 
     // Move drag
     bool    m_dragging   = false;
-    QPointF m_dragStartSlide; // drag origin in slide coords (for move & resize)
-    QPointF m_dragOrigin;     // original element (x,y)
+    QPointF m_dragStartSlide;       // drag origin in slide coords (for move & resize)
+    QPointF m_dragOrigin;           // original element (x,y) — primary element, single-selection path
+    QVector<QPointF> m_dragOrigins; // original (x,y) per element in m_selectedElems, parallel array
 
-    // Resize drag
+    // Resize drag — origin values are the bounding box of the whole selection
+    // (single-selection: that box is just the one element's own rect, so the
+    // math collapses to the previous single-element behavior unchanged).
     int   m_resizingHandle = -1; // -1 = not resizing
     float m_resizeOrigX = 0, m_resizeOrigY = 0;
     float m_resizeOrigW = 0, m_resizeOrigH = 0;
+    QVector<QRectF> m_resizeOrigMembers; // original (x,y,w,h) per element in m_selectedElems
 
     // Rotation drag
     bool  m_rotatingHandle   = false;
@@ -194,9 +221,9 @@ private:
     bool         m_formatPainterMode = false;
     SlideElement m_formatTemplate;
 
-    // Clipboard (shared across all editor instances)
-    static SlideElement s_clipboard;
-    static bool         s_hasClipboard;
+    // Clipboard (shared across all editor instances) — holds every copied element
+    static QVector<SlideElement> s_clipboard;
+    static bool                  s_hasClipboard;
 
     // Inline text editing state
     int     m_editingElem      = -1;

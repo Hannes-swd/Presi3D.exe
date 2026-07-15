@@ -347,6 +347,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
             m_editor3D, &SlideEditor3D::markAllDirty);
     connect(m_editor2D, &SlideEditor2D::elementSelected,
             this, &EditorArea::elementSelected);
+    connect(m_editor2D, &SlideEditor2D::elementsSelected,
+            this, &EditorArea::elementsSelected);
     connect(m_editor2D, &SlideEditor2D::tableCellSelected,
             this, &EditorArea::tableCellSelected);
     connect(m_editor2D, &SlideEditor2D::textSelectionChanged,
@@ -379,7 +381,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         m_editor2D->setPreviewTime(t);
     });
     connect(m_timelinePanel, &TimelinePanel::elementActivated, this, &EditorArea::selectElement);
-    connect(m_editor2D, &SlideEditor2D::elementSelected, m_timelinePanel, &TimelinePanel::setSelectedElement);
+    connect(m_editor2D, &SlideEditor2D::elementsSelected, m_timelinePanel, &TimelinePanel::setSelectedElements);
     connect(m_editor2D, &SlideEditor2D::keyframeEditDone, this, &EditorArea::keyframeEditDone);
 }
 
@@ -422,6 +424,14 @@ void EditorArea::ensure2DMode() {
 
 void EditorArea::selectElement(int index) {
     m_editor2D->selectElement(index);
+}
+
+void EditorArea::groupSelectedElements() {
+    m_editor2D->groupSelectedElements();
+}
+
+void EditorArea::ungroupSelectedElements() {
+    m_editor2D->ungroupSelectedElements();
 }
 
 void EditorArea::switchTo2D() {

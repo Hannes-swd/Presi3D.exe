@@ -26,9 +26,14 @@ public:
     void ensure2DMode();
     void selectElement(int index);
 
+    // Grouping (see FEATURES_TODO.md "Gruppenbildung") — relayed to the 2D editor
+    void groupSelectedElements();
+    void ungroupSelectedElements();
+
 signals:
     void presentationModified();
     void elementSelected(int elemIndex);
+    void elementsSelected(const QVector<int>& indices);
     void tableCellSelected(int row, int col);
     void worldObjectSelected(int index);
     void keyframeEditRequested(int elemIndex, bool isEntry);

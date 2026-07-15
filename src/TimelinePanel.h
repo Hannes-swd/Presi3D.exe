@@ -94,6 +94,10 @@ public:
 
     void setSlide(Presentation* pres, int slideIndex);
     void setSelectedElement(int elemIndex);
+    // Grouped elements (SlideElement::groupId) collapse into a single row ("beam")
+    // in rebuildRows(); this highlights that row whenever any of its members is
+    // among the selected indices. size()<=1 behaves like setSelectedElement().
+    void setSelectedElements(const QVector<int>& indices);
     void refresh(); // rebuild rows after external data changes (undo/redo, drag in canvas, ...)
 
 signals:
@@ -110,12 +114,15 @@ private slots:
 
 private:
     void rebuildRows();
-    void openDetailDialog(int elemIndex);
+    // members.size() > 1 => a grouped row; the dialog applies the resulting
+    // TimelineTrack settings to every member instead of just one element.
+    void openDetailDialog(const QVector<int>& members);
     void setActiveTool(TimelineBarWidget::Tool t); // broadcasts to all current bar rows
 
     Presentation* m_pres       = nullptr;
     int           m_slideIdx   = -1;
-    int           m_selectedElem = -1;
+    int           m_selectedElem  = -1; // primary/anchor, for the single-element back-compat path
+    QVector<int>  m_selectedElems;      // full selection, used to highlight a group's one row
 
     // Toolbar at the top of the panel: lets the user pick which drag
     // behaviour clicking-and-dragging a bar's entry/exit segment performs,

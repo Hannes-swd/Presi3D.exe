@@ -42,6 +42,7 @@ private slots:
     void onSlideMoved(int from, int to);
     void onPresentationModified();
     void onElementSelected(int elemIndex);
+    void onElementsSelected(const QVector<int>& indices);
     void onWorldObjectSelected(int index);
     void onFormatPainterRequested();
 

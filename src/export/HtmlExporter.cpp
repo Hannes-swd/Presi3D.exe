@@ -1138,6 +1138,14 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         timelineAttr = QString(" data-timeline=\"%1\"").arg(QString::fromLatin1(tlJson.toBase64()));
     }
 
+    // Editor-only grouping metadata (see FEATURES_TODO.md "Gruppenbildung") —
+    // no visual/CSS effect, purely round-tripped so HtmlImporter can
+    // reconstruct which elements were grouped together in the editor.
+    // Appended to timelineAttr since every type branch below already splices
+    // that string into its returned tag's attribute list.
+    if (!e.groupId.isEmpty())
+        timelineAttr += QString(" data-group=\"%1\"").arg(e.groupId.toHtmlEscaped());
+
     if (e.type == SlideElement::Text) {
         QString justifyContent = "flex-start";
         if (e.verticalAlignment == "middle") justifyContent = "center";

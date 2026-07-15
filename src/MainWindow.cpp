@@ -109,6 +109,9 @@ void MainWindow::setupMenuBar() {
     m_undoAction = editMenu->addAction("&Undo", this, &MainWindow::undo, QKeySequence::Undo);
     m_redoAction = editMenu->addAction("&Redo", this, &MainWindow::redo, QKeySequence::Redo);
     editMenu->addSeparator();
+    editMenu->addAction("&Group", this, [this]() { m_editorArea->groupSelectedElements(); }, QKeySequence("Ctrl+G"));
+    editMenu->addAction("&Ungroup", this, [this]() { m_editorArea->ungroupSelectedElements(); }, QKeySequence("Ctrl+Shift+G"));
+    editMenu->addSeparator();
     editMenu->addAction("Manage Icon Package...", this, [this]() {
         auto& mgr = IconPackManager::instance();
         if (mgr.isInstalled()) mgr.uninstallInteractive(this);
@@ -277,6 +280,7 @@ void MainWindow::connectSignals() {
 
     connect(m_editorArea, &EditorArea::presentationModified, this, &MainWindow::onPresentationModified);
     connect(m_editorArea, &EditorArea::elementSelected,      this, &MainWindow::onElementSelected);
+    connect(m_editorArea, &EditorArea::elementsSelected,     this, &MainWindow::onElementsSelected);
     connect(m_editorArea, &EditorArea::worldObjectSelected,  this, &MainWindow::onWorldObjectSelected);
 
     connect(m_propPanel,  &PropertiesPanel::slideModified,               this, &MainWindow::onPresentationModified);
@@ -502,6 +506,17 @@ void MainWindow::onElementSelected(int elemIndex) {
     }
     m_propPanel->setSelectedElement(elemIndex);
     m_formatBar->setContext(m_presentation, m_selectedSlide, elemIndex);
+}
+
+// Only needs to act on an actual multi/group selection — a size<=1 selection
+// is already fully handled by the elementSelected(int) signal emitted
+// alongside it (see SlideEditor2D), which onElementSelected() above processes.
+void MainWindow::onElementsSelected(const QVector<int>& indices) {
+    if (indices.size() > 1) {
+        m_selectedWorldObj = -1;
+        m_propPanel->setSelectedWorldObject(-1);
+        m_propPanel->setSelectedElements(indices);
+    }
 }
 
 void MainWindow::onWorldObjectSelected(int index) {

@@ -553,6 +553,7 @@ void PropertiesPanel::setSlide(Presentation* pres, int slideIndex) {
 }
 
 void PropertiesPanel::setSelectedElement(int elemIndex) {
+    m_multiElemIndices.clear();
     m_elemIdx  = elemIndex;
     m_cellRow  = -1;
     m_cellCol  = -1;
@@ -571,6 +572,29 @@ void PropertiesPanel::setSelectedElement(int elemIndex) {
     if (isTable)       refreshTable();
     else if (isChart)  refreshChart();
     else               refreshElement();
+}
+
+void PropertiesPanel::setSelectedElements(const QVector<int>& indices) {
+    if (indices.size() <= 1) {
+        setSelectedElement(indices.isEmpty() ? -1 : indices.first());
+        return;
+    }
+    m_multiElemIndices = indices;
+    m_elemIdx = indices.first();
+    m_cellRow = -1;
+    m_cellCol = -1;
+    m_tableGroup->setEnabled(false);
+    m_tableGroup->setVisible(false);
+    m_chartGroup->setEnabled(false);
+    m_chartGroup->setVisible(false);
+    m_cellSection->setVisible(false);
+    m_elemGroup->setEnabled(true);
+    m_elemGroup->setVisible(true);
+    refreshElement();
+}
+
+QVector<int> PropertiesPanel::targetElemIndices() const {
+    return m_multiElemIndices.isEmpty() ? QVector<int>{m_elemIdx} : m_multiElemIndices;
 }
 
 void PropertiesPanel::setSelectedTableCell(int row, int col) {
@@ -720,15 +744,22 @@ void PropertiesPanel::refreshElement() {
     const Slide* s = m_pres ? m_pres->slideAt(m_slideIdx) : nullptr;
     if (!s || m_elemIdx < 0 || m_elemIdx >= s->elements.size()) return;
     const SlideElement& e = s->elements[m_elemIdx];
+    const bool multi = m_multiElemIndices.size() > 1;
 
     m_updating = true;
 
     static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button", "Checkbox", "Slider", "Icon"};
-    m_elemType->setText(typeNames[e.type]);
+    m_elemType->setText(multi ? QString("Gruppe (%1 Elemente)").arg(m_multiElemIndices.size())
+                              : typeNames[e.type]);
 
-    m_elemContent->setEnabled(e.type != SlideElement::Shape && e.type != SlideElement::Icon);
-    m_elemContent->setText(e.content);
+    // Per-instance fields (content, position/size, font, alignment) only make
+    // sense for one element — a group's members can differ in all of these,
+    // and its position/size is already edited by dragging on the canvas.
+    m_elemContent->setEnabled(!multi && e.type != SlideElement::Shape && e.type != SlideElement::Icon);
+    m_elemContent->setText(multi ? QString() : e.content);
 
+    m_eX->setEnabled(!multi); m_eY->setEnabled(!multi);
+    m_eW->setEnabled(!multi); m_eH->setEnabled(!multi);
     m_eX->setValue(e.x);
     m_eY->setValue(e.y);
     m_eW->setValue(e.width);
@@ -738,26 +769,30 @@ void PropertiesPanel::refreshElement() {
     updateColorButton(m_eBgColorBtn, e.backgroundColor == Qt::transparent
                                          ? Qt::white : e.backgroundColor);
 
-    m_eFontSize->setEnabled(e.type == SlideElement::Text || e.type == SlideElement::Formula
+    m_eFontSize->setEnabled(!multi && (e.type == SlideElement::Text || e.type == SlideElement::Formula
                              || e.type == SlideElement::Button || e.type == SlideElement::Checkbox
-                             || e.type == SlideElement::Slider);
+                             || e.type == SlideElement::Slider));
     m_eFontSize->setValue(e.fontSize);
 
-    m_eAlign->setEnabled(e.type == SlideElement::Text);
+    m_eAlign->setEnabled(!multi && e.type == SlideElement::Text);
     int alignIdx = (e.textAlignment == "center") ? 1
                  : (e.textAlignment == "right")  ? 2 : 0;
     m_eAlign->setCurrentIndex(alignIdx);
 
+    // Fill/border/corner-radius/opacity below all exist on every SlideElement
+    // regardless of type, so — unlike the fields above — they stay available
+    // and apply to every member when a group/multi-selection is active (this
+    // is the "abrunden stylen usw." group-styling behavior).
     bool isShape = (e.type == SlideElement::Shape);
-    m_elemFormSection->setVisible(isShape);
-    if (isShape) {
+    m_elemFormSection->setVisible(isShape || multi);
+    if (isShape || multi) {
         m_eBorderW->setValue(e.borderWidth);
         updateColorButton(m_eBorderColorBtn, e.borderColor.isValid()
                           ? e.borderColor : Qt::darkGray);
         m_eCornerRadius->setValue(e.cornerRadius);
     }
 
-    m_elemIconSection->setVisible(e.type == SlideElement::Icon);
+    m_elemIconSection->setVisible(!multi && e.type == SlideElement::Icon);
 
     m_eOpacity->setValue(e.opacity);
 
@@ -900,27 +935,27 @@ void PropertiesPanel::onElemContentChanged(const QString& text) {
 }
 
 void PropertiesPanel::onElemColorClicked() {
-    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
-    if (!e) return;
-    QColor c = QColorDialog::getColor(e->color, this, "Text Color");
-    if (c.isValid()) {
-        e->color = c;
-        updateColorButton(m_eColorBtn, c);
-        emit elementModified();
-    }
+    auto* primary = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!primary) return;
+    QColor c = QColorDialog::getColor(primary->color, this, "Text Color");
+    if (!c.isValid()) return;
+    for (int idx : targetElemIndices())
+        if (auto* e = getElem(m_pres, m_slideIdx, idx)) e->color = c;
+    updateColorButton(m_eColorBtn, c);
+    emit elementModified();
 }
 
 void PropertiesPanel::onElemBgColorClicked() {
-    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
-    if (!e) return;
+    auto* primary = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!primary) return;
     QColor c = QColorDialog::getColor(
-        e->backgroundColor == Qt::transparent ? Qt::white : e->backgroundColor,
+        primary->backgroundColor == Qt::transparent ? Qt::white : primary->backgroundColor,
         this, "Background Color");
-    if (c.isValid()) {
-        e->backgroundColor = c;
-        updateColorButton(m_eBgColorBtn, c);
-        emit elementModified();
-    }
+    if (!c.isValid()) return;
+    for (int idx : targetElemIndices())
+        if (auto* e = getElem(m_pres, m_slideIdx, idx)) e->backgroundColor = c;
+    updateColorButton(m_eBgColorBtn, c);
+    emit elementModified();
 }
 
 void PropertiesPanel::onElemPosChanged() {
@@ -959,22 +994,23 @@ void PropertiesPanel::onElemAlignChanged(int idx) {
 
 void PropertiesPanel::onElemBorderChanged() {
     if (m_updating) return;
-    if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
-        e->borderWidth = float(m_eBorderW->value());
-        emit elementModified();
-    }
+    float w = float(m_eBorderW->value());
+    bool any = false;
+    for (int idx : targetElemIndices())
+        if (auto* e = getElem(m_pres, m_slideIdx, idx)) { e->borderWidth = w; any = true; }
+    if (any) emit elementModified();
 }
 
 void PropertiesPanel::onElemBorderColorClicked() {
-    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
-    if (!e) return;
-    QColor init = e->borderColor.isValid() ? e->borderColor : Qt::darkGray;
+    auto* primary = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!primary) return;
+    QColor init = primary->borderColor.isValid() ? primary->borderColor : Qt::darkGray;
     QColor c = QColorDialog::getColor(init, this, "Border Color");
-    if (c.isValid()) {
-        e->borderColor = c;
-        updateColorButton(m_eBorderColorBtn, c);
-        emit elementModified();
-    }
+    if (!c.isValid()) return;
+    for (int idx : targetElemIndices())
+        if (auto* e = getElem(m_pres, m_slideIdx, idx)) e->borderColor = c;
+    updateColorButton(m_eBorderColorBtn, c);
+    emit elementModified();
 }
 
 void PropertiesPanel::onElemChangeIconClicked() {
@@ -989,18 +1025,20 @@ void PropertiesPanel::onElemChangeIconClicked() {
 
 void PropertiesPanel::onElemCornerRadiusChanged() {
     if (m_updating) return;
-    if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
-        e->cornerRadius = float(m_eCornerRadius->value());
-        emit elementModified();
-    }
+    float r = float(m_eCornerRadius->value());
+    bool any = false;
+    for (int idx : targetElemIndices())
+        if (auto* e = getElem(m_pres, m_slideIdx, idx)) { e->cornerRadius = r; any = true; }
+    if (any) emit elementModified();
 }
 
 void PropertiesPanel::onElemOpacityChanged(double v) {
     if (m_updating) return;
-    if (auto* e = getElem(m_pres, m_slideIdx, m_elemIdx)) {
-        e->opacity = float(v);
-        emit elementModified();
-    }
+    float op = float(v);
+    bool any = false;
+    for (int idx : targetElemIndices())
+        if (auto* e = getElem(m_pres, m_slideIdx, idx)) { e->opacity = op; any = true; }
+    if (any) emit elementModified();
 }
 
 // ── Table refresh ─────────────────────────────────────────────────────────────

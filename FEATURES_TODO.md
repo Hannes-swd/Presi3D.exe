@@ -3,8 +3,6 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Mehrfachauswahl** | Mehrere Elemente gleichzeitig markieren, verschieben, löschen (aktuell nur Einzelauswahl `m_selectedElem`) |
-| **Gruppenbildung** | Elemente zu Gruppen zusammenfassen und gemeinsam bearbeiten |
 | **Lineale und Führungslinien** | Einblendbare Lineale, ziehbare Hilfslinien (aktuell nur temporäre Snap-Ausrichtungslinien beim Ziehen, keine Lineale, keine dauerhaften Guides) |
 
 ---
@@ -13,8 +11,6 @@
 
 | Feature | Beschreibung |
 |---|---|
-| **Code-Block** | Monospace-Box mit Syntax-Highlighting (C++, Python, JS usw.) |
-| **Icons** | Eingebaute Icon-Bibliothek (z. B. Material Icons, Font Awesome), SVG-Import |
 | **SVG-Dateien** | SVG direkt importieren und als Vektorgrafik auf der Folie platzieren |
 | **Videos** | Lokale Videodateien einbetten, Autoplay-/Loop-Optionen |
 | **GIFs** | Animierte GIFs auf Folien platzieren |

@@ -63,6 +63,14 @@ static void parseTimelineAndOpacity(const QString& tag, const QString& style, Sl
     QString opa = cssProp(style, "opacity");
     if (!opa.isEmpty()) e.opacity = opa.toFloat();
 
+    // Editor-only grouping metadata (see FEATURES_TODO.md "Gruppenbildung" and
+    // HtmlExporter::elementToHtml's data-group) — no rendering effect, purely
+    // round-tripped so elements dragged/deleted/styled together in the editor
+    // stay grouped across a save+reopen. Element ids regenerate on every
+    // import (see below), but matching data-group strings among siblings is
+    // enough to reconstruct membership.
+    e.groupId = attrVal(tag, "data-group");
+
     QString tlB64 = attrVal(tag, "data-timeline");
     if (tlB64.isEmpty()) return;
     QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromBase64(tlB64.toLatin1()));

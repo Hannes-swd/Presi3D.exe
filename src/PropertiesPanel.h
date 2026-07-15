@@ -21,6 +21,11 @@ public:
 
     void setSlide(Presentation* pres, int slideIndex);
     void setSelectedElement(int elemIndex);
+    // Multi/group selection (see FEATURES_TODO.md "Gruppenbildung"): shows a
+    // shared-properties view (fill/border/corner-radius/opacity) that applies
+    // edits to every listed element at once. size()<=1 delegates to
+    // setSelectedElement() and behaves exactly as before.
+    void setSelectedElements(const QVector<int>& indices);
     void setSelectedTableCell(int row, int col);
     void setSelectedWorldObject(int index);
 
@@ -95,10 +100,12 @@ private:
     void refreshChart();
     void refreshWorldObj();
     void updateColorButton(QPushButton*, const QColor&);
+    QVector<int> targetElemIndices() const; // m_multiElemIndices, or just {m_elemIdx} outside multi-select
 
     Presentation* m_pres       = nullptr;
     int           m_slideIdx   = -1;
     int           m_elemIdx    = -1;
+    QVector<int>  m_multiElemIndices; // >1 entries while a multi/group selection is active
     int           m_cellRow    = -1;
     int           m_cellCol    = -1;
     int           m_worldObjIdx = -1;
