@@ -1,5 +1,6 @@
 #include "SlideEditor2D.h"
 #include "ShapeUtils.h"
+#include "MeshGradientRenderer.h"
 #include "IconUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "rendering/LatexRenderer.h"
@@ -918,11 +919,20 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         p.setPen(e.borderWidth > 0
                  ? QPen(e.borderColor.isValid() ? e.borderColor : Qt::darkGray, e.borderWidth)
                  : Qt::NoPen);
-        p.setBrush(e.backgroundColor == Qt::transparent ? Qt::NoBrush : QBrush(e.backgroundColor));
         {
             QRectF sr2 = slideRect();
             float rx = e.cornerRadius * sr2.width()  / SLIDE_W_DEFAULT;
             float ry = e.cornerRadius * sr2.height() / SLIDE_H_DEFAULT;
+
+            if (e.useMeshGradient && e.meshGradient.isUsable() && e.content != "line") {
+                QImage meshImg = MeshGradientRenderer::renderMeshGradient(
+                    e.content, wr.size().toSize(), e.meshGradient, QSizeF(rx, ry));
+                p.drawImage(wr.topLeft(), meshImg);
+                p.setBrush(Qt::NoBrush);
+            } else {
+                p.setBrush(e.backgroundColor == Qt::transparent ? Qt::NoBrush : QBrush(e.backgroundColor));
+            }
+
             if (e.content == "line") {
                 p.drawLine(wr.topLeft(), wr.bottomRight());
             } else if (e.content == "rect") {

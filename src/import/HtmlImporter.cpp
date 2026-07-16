@@ -956,6 +956,15 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     QString brad = cssProp(style, "border-radius");
                     if (!brad.isEmpty() && brad != "50%")
                         e.cornerRadius = brad.remove("px").toFloat();
+                    // Mesh gradient points (see HtmlExporter's data-mesh, mirrors data-chart)
+                    QString meshB64 = attrVal(dTag, "data-mesh");
+                    if (!meshB64.isEmpty()) {
+                        QJsonDocument mdoc = QJsonDocument::fromJson(QByteArray::fromBase64(meshB64.toLatin1()));
+                        if (mdoc.isObject()) {
+                            e.meshGradient    = MeshGradientData::fromJson(mdoc.object());
+                            e.useMeshGradient = e.meshGradient.isUsable();
+                        }
+                    }
                     // Shape text from inner <span>
                     if (!elemTxt.isEmpty()) {
                         QRegularExpression spanRe(

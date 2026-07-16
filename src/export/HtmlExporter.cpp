@@ -492,6 +492,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "    el.style.display = (v && v.boolValue) ? '' : 'none';\n"
         << "  });\n"
         << "  renderAllCharts();\n"
+        << "  renderAllMeshGradients();\n"
         << "}\n"
         << "function onSliderInput(input) {\n"
         << "  var v = findVarById(input.dataset.varId);\n"
@@ -801,6 +802,118 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  document.querySelectorAll('.chart-canvas').forEach(renderChartCanvas);\n"
         << "}\n"
         << "window.addEventListener('resize', renderAllCharts);\n"
+        << "\n"
+        << "// ── Live mesh-gradient rendering (per-vertex-color triangle mesh) ─────────\n"
+        << "// Ported from src/MeshGradientRenderer.cpp — keep the two in sync.\n"
+        << "function meshTriArea2(a, b, c) { return (b.x-a.x)*(c.y-a.y) - (c.x-a.x)*(b.y-a.y); }\n"
+        << "function meshCircumcircleContains(a, b, c, p) {\n"
+        << "  var ax=a.x-p.x, ay=a.y-p.y, bx=b.x-p.x, by=b.y-p.y, cx=c.x-p.x, cy=c.y-p.y;\n"
+        << "  var det = (ax*ax+ay*ay)*(bx*cy-cx*by) - (bx*bx+by*by)*(ax*cy-cx*ay) + (cx*cx+cy*cy)*(ax*by-bx*ay);\n"
+        << "  return meshTriArea2(a,b,c) > 0 ? det > 0 : det < 0;\n"
+        << "}\n"
+        << "function meshTriangulate(ptsIn) {\n"
+        << "  if (ptsIn.length < 3) return [];\n"
+        << "  var minX=ptsIn[0].x, maxX=ptsIn[0].x, minY=ptsIn[0].y, maxY=ptsIn[0].y;\n"
+        << "  ptsIn.forEach(function(p){ minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x); minY=Math.min(minY,p.y); maxY=Math.max(maxY,p.y); });\n"
+        << "  var eps = Math.max(Math.hypot(maxX-minX, maxY-minY) * 1e-4, 1e-6);\n"
+        << "  var pts = [];\n"
+        << "  ptsIn.forEach(function(p) {\n"
+        << "    for (var i=0;i<pts.length;i++) if (Math.hypot(p.x-pts[i].x, p.y-pts[i].y) < eps) return;\n"
+        << "    pts.push(p);\n"
+        << "  });\n"
+        << "  if (pts.length < 3) return [];\n"
+        << "  minX=pts[0].x; maxX=pts[0].x; minY=pts[0].y; maxY=pts[0].y;\n"
+        << "  pts.forEach(function(p){ minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x); minY=Math.min(minY,p.y); maxY=Math.max(maxY,p.y); });\n"
+        << "  var deltaMax = Math.max(maxX-minX, maxY-minY)*10 + 10;\n"
+        << "  var midX=(minX+maxX)/2, midY=(minY+maxY)/2;\n"
+        << "  var stA=pts.length, stB=stA+1, stC=stA+2;\n"
+        << "  var work = pts.slice();\n"
+        << "  work.push({x: midX-2*deltaMax, y: midY-deltaMax});\n"
+        << "  work.push({x: midX, y: midY+2*deltaMax});\n"
+        << "  work.push({x: midX+2*deltaMax, y: midY-deltaMax});\n"
+        << "  var tris = [{a:stA,b:stB,c:stC}];\n"
+        << "  function edgeEq(e1,e2){ return (e1.a===e2.a&&e1.b===e2.b)||(e1.a===e2.b&&e1.b===e2.a); }\n"
+        << "  for (var pi=0; pi<pts.length; pi++) {\n"
+        << "    var p = work[pi];\n"
+        << "    var bad = tris.filter(function(t){ return meshCircumcircleContains(work[t.a],work[t.b],work[t.c],p); });\n"
+        << "    var polygon = [];\n"
+        << "    for (var i=0;i<bad.length;i++) {\n"
+        << "      var edges = [{a:bad[i].a,b:bad[i].b},{a:bad[i].b,b:bad[i].c},{a:bad[i].c,b:bad[i].a}];\n"
+        << "      edges.forEach(function(e) {\n"
+        << "        var shared = 0;\n"
+        << "        for (var j=0;j<bad.length;j++) {\n"
+        << "          if (j===i) continue;\n"
+        << "          var e2s = [{a:bad[j].a,b:bad[j].b},{a:bad[j].b,b:bad[j].c},{a:bad[j].c,b:bad[j].a}];\n"
+        << "          for (var k=0;k<e2s.length;k++) if (edgeEq(e,e2s[k])) { shared++; break; }\n"
+        << "        }\n"
+        << "        if (shared===0) polygon.push(e);\n"
+        << "      });\n"
+        << "    }\n"
+        << "    tris = tris.filter(function(t) { return !bad.some(function(b){ return b.a===t.a&&b.b===t.b&&b.c===t.c; }); });\n"
+        << "    polygon.forEach(function(e){ tris.push({a:e.a, b:e.b, c:pi}); });\n"
+        << "  }\n"
+        << "  var result = [];\n"
+        << "  tris.forEach(function(t) {\n"
+        << "    if (t.a>=stA || t.b>=stA || t.c>=stA) return;\n"
+        << "    if (Math.abs(meshTriArea2(pts[t.a],pts[t.b],pts[t.c])) < 1e-9) return;\n"
+        << "    result.push(t);\n"
+        << "  });\n"
+        << "  return result;\n"
+        << "}\n"
+        << "function meshFillTriangle(data, width, height, p0, p1, p2) {\n"
+        << "  var minX = Math.max(0, Math.floor(Math.min(p0.x,p1.x,p2.x)));\n"
+        << "  var maxX = Math.min(width-1, Math.ceil(Math.max(p0.x,p1.x,p2.x)));\n"
+        << "  var minY = Math.max(0, Math.floor(Math.min(p0.y,p1.y,p2.y)));\n"
+        << "  var maxY = Math.min(height-1, Math.ceil(Math.max(p0.y,p1.y,p2.y)));\n"
+        << "  if (minX > maxX || minY > maxY) return;\n"
+        << "  var denom = (p1.y-p2.y)*(p0.x-p2.x) + (p2.x-p1.x)*(p0.y-p2.y);\n"
+        << "  if (Math.abs(denom) < 1e-9) return;\n"
+        << "  for (var y=minY; y<=maxY; y++) {\n"
+        << "    var py = y + 0.5;\n"
+        << "    for (var x=minX; x<=maxX; x++) {\n"
+        << "      var px = x + 0.5;\n"
+        << "      var w0 = ((p1.y-p2.y)*(px-p2.x) + (p2.x-p1.x)*(py-p2.y)) / denom;\n"
+        << "      var w1 = ((p2.y-p0.y)*(px-p2.x) + (p0.x-p2.x)*(py-p2.y)) / denom;\n"
+        << "      var w2 = 1 - w0 - w1;\n"
+        << "      if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;\n"
+        << "      var r = w0*p0.r + w1*p1.r + w2*p2.r;\n"
+        << "      var g = w0*p0.g + w1*p1.g + w2*p2.g;\n"
+        << "      var b = w0*p0.b + w1*p1.b + w2*p2.b;\n"
+        << "      var a = Math.max(0, Math.min(1, w0*p0.a + w1*p1.a + w2*p2.a));\n"
+        << "      var idx = (y*width + x) * 4;\n"
+        << "      data[idx]   = Math.max(0, Math.min(255, r));\n"
+        << "      data[idx+1] = Math.max(0, Math.min(255, g));\n"
+        << "      data[idx+2] = Math.max(0, Math.min(255, b));\n"
+        << "      data[idx+3] = Math.round(a*255);\n"
+        << "    }\n"
+        << "  }\n"
+        << "}\n"
+        << "function renderMeshCanvas(canvas) {\n"
+        << "  var wrap = canvas.parentElement;\n"
+        << "  var cssW = wrap.clientWidth, cssH = wrap.clientHeight;\n"
+        << "  if (cssW < 4 || cssH < 4) return;\n"
+        << "  var dpr = window.devicePixelRatio || 1;\n"
+        << "  canvas.width = Math.max(1, Math.round(cssW*dpr));\n"
+        << "  canvas.height = Math.max(1, Math.round(cssH*dpr));\n"
+        << "  var ctx = canvas.getContext('2d');\n"
+        << "  ctx.clearRect(0, 0, canvas.width, canvas.height);\n"
+        << "  if (!wrap._meshPts) {\n"
+        << "    try { wrap._meshPts = JSON.parse(b64DecodeUtf8(wrap.dataset.mesh)).points; }\n"
+        << "    catch (e) { return; }\n"
+        << "  }\n"
+        << "  var raw = wrap._meshPts;\n"
+        << "  if (!raw || raw.length < 3) return;\n"
+        << "  var pts = raw.map(function(p) { return {x: p.x*canvas.width, y: p.y*canvas.height, r:p.r, g:p.g, b:p.b, a:p.a}; });\n"
+        << "  var tris = meshTriangulate(pts);\n"
+        << "  if (!tris.length) return;\n"
+        << "  var img = ctx.createImageData(canvas.width, canvas.height);\n"
+        << "  tris.forEach(function(t) { meshFillTriangle(img.data, canvas.width, canvas.height, pts[t.a], pts[t.b], pts[t.c]); });\n"
+        << "  ctx.putImageData(img, 0, 0);\n"
+        << "}\n"
+        << "function renderAllMeshGradients() {\n"
+        << "  document.querySelectorAll('.mesh-canvas').forEach(renderMeshCanvas);\n"
+        << "}\n"
+        << "window.addEventListener('resize', renderAllMeshGradients);\n"
         << "\n"
         << "// Build per-slide visibility map from data-vis-overrides attributes\n"
         << "var slideVisibility = {};\n"
@@ -1233,6 +1346,22 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             else if (e.cornerRadius > 0)
                 style += QString("border-radius:%1px;").arg(int(e.cornerRadius));
         }
+
+        // Mesh gradient: embed points as base64 JSON (mirrors data-chart) —
+        // this blob is also the sole persistence of the mesh points across
+        // save/reopen, since the exported HTML *is* the project file. The
+        // live <canvas> is clipped by the exact same CSS (clip-path above,
+        // or overflow:hidden+border-radius) that clips the plain-color
+        // fallback, so the two can never visually drift apart.
+        QString meshAttr, meshCanvas;
+        if (e.useMeshGradient && e.meshGradient.isUsable()) {
+            QByteArray meshJson = QJsonDocument(e.meshGradient.toJson()).toJson(QJsonDocument::Compact);
+            meshAttr = QString(" data-mesh=\"%1\"").arg(QString::fromLatin1(meshJson.toBase64()));
+            style += "overflow:hidden;";
+            meshCanvas = "<canvas class=\"mesh-canvas\" style=\"position:absolute;inset:0;"
+                         "width:100%;height:100%;display:block;pointer-events:none;\"></canvas>";
+        }
+
         // Inner text overlay
         QString innerText;
         if (!e.shapeText.isEmpty()) {
@@ -1250,8 +1379,8 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             innerText = QString("<span%1 style=\"%2\">%3</span>")
                             .arg(varAttr, textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
         }
-        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2 style=\"%3\">%4</div>")
-                   .arg(e.content, timelineAttr, style, innerText);
+        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2%3 style=\"%4\">%5%6</div>")
+                   .arg(e.content, timelineAttr, meshAttr, style, meshCanvas, innerText);
 
     } else if (e.type == SlideElement::Icon) {
         int iw = qMax(4, int(e.width));

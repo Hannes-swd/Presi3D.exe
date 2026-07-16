@@ -7,6 +7,7 @@
 #include "models/ChartData.h"
 #include "models/VariableModel.h"
 #include "models/TimelineTrack.h"
+#include "models/MeshGradientData.h"
 
 struct TableCell {
     QString text;
@@ -106,6 +107,10 @@ struct SlideElement {
 
     float   rotation  = 0.f;    // degrees clockwise; applied around element center
     QString shapeText;           // text overlaid inside shape (type==Shape only)
+
+    // ── Mesh gradient fill (Shape elements only) ──────────────────────────────
+    bool             useMeshGradient = false; // false → backgroundColor is the fill (unchanged path)
+    MeshGradientData meshGradient;             // ignored unless useMeshGradient && isUsable()
 
     // ── Chart (only when type == Chart) ──────────────────────────────────────
     ChartData chartData;

@@ -2,6 +2,7 @@
 #include "rendering/ChartRenderer.h"
 #include "dialogs/ChartEditorDialog.h"
 #include "dialogs/IconPickerDialog.h"
+#include "dialogs/MeshGradientDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -366,6 +367,11 @@ void PropertiesPanel::buildElementGroup() {
     m_eCornerRadius->setToolTip("Corner rounding in slide pixels (0 = no rounding)");
     formForm->addRow("Corner Radius:", m_eCornerRadius);
 
+    m_eMeshGradientChk = new QCheckBox("Mehrfarbig (Farbverlauf)", secForm.content);
+    formForm->addRow(m_eMeshGradientChk);
+    m_eMeshGradientEditBtn = new QPushButton("Farbverlauf bearbeiten\xE2\x80\xA6", secForm.content);
+    formForm->addRow(m_eMeshGradientEditBtn);
+
     m_elemFormSection = secForm.outer;
     gvbox->addWidget(secForm.outer);
 
@@ -394,6 +400,8 @@ void PropertiesPanel::buildElementGroup() {
     connect(m_eBorderW,        &QDoubleSpinBox::valueChanged, this, [this](double) { onElemBorderChanged(); });
     connect(m_eBorderColorBtn, &QPushButton::clicked,         this, &PropertiesPanel::onElemBorderColorClicked);
     connect(m_eCornerRadius,   &QDoubleSpinBox::valueChanged, this, [this](double) { onElemCornerRadiusChanged(); });
+    connect(m_eMeshGradientChk, &QCheckBox::toggled, this, &PropertiesPanel::onElemMeshGradientToggled);
+    connect(m_eMeshGradientEditBtn, &QPushButton::clicked, this, &PropertiesPanel::onElemMeshGradientEditClicked);
     connect(m_eOpacity, &QDoubleSpinBox::valueChanged, this, &PropertiesPanel::onElemOpacityChanged);
     connect(m_iconChangeBtn, &QPushButton::clicked, this, &PropertiesPanel::onElemChangeIconClicked);
 
@@ -791,6 +799,12 @@ void PropertiesPanel::refreshElement() {
                           ? e.borderColor : Qt::darkGray);
         m_eCornerRadius->setValue(e.cornerRadius);
     }
+    // A shared mesh-gradient dialog across a multi-selection of differently
+    // shaped/sized elements has no sane single-edit UX, unlike solid
+    // fill/border/corner-radius above — disable during multi-select.
+    m_eMeshGradientChk->setEnabled(isShape && !multi);
+    m_eMeshGradientChk->setChecked(!multi && e.useMeshGradient);
+    m_eMeshGradientEditBtn->setEnabled(isShape && !multi && e.useMeshGradient);
 
     m_elemIconSection->setVisible(!multi && e.type == SlideElement::Icon);
 
@@ -956,6 +970,35 @@ void PropertiesPanel::onElemBgColorClicked() {
         if (auto* e = getElem(m_pres, m_slideIdx, idx)) e->backgroundColor = c;
     updateColorButton(m_eBgColorBtn, c);
     emit elementModified();
+}
+
+void PropertiesPanel::onElemMeshGradientToggled(bool on) {
+    if (m_updating) return;
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    e->useMeshGradient = on;
+    if (on && !e->meshGradient.isUsable()) {
+        // Seed 3 default points so "Farbverlauf bearbeiten…" never opens empty.
+        e->meshGradient.points = {
+            MeshGradientPoint::fromQColor(0.5, 0.08, e->backgroundColor.isValid() && e->backgroundColor != Qt::transparent
+                                                          ? e->backgroundColor : Qt::white),
+            MeshGradientPoint::fromQColor(0.9, 0.9,  Qt::white),
+            MeshGradientPoint::fromQColor(0.1, 0.9,  Qt::white),
+        };
+    }
+    m_eMeshGradientEditBtn->setEnabled(on);
+    emit elementModified();
+}
+
+void PropertiesPanel::onElemMeshGradientEditClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    MeshGradientDialog dlg(e->content, e->meshGradient, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        e->meshGradient    = dlg.meshGradient();
+        e->useMeshGradient = true;
+        emit elementModified();
+    }
 }
 
 void PropertiesPanel::onElemPosChanged() {

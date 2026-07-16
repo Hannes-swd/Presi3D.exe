@@ -73,6 +73,8 @@ private slots:
     void onElemAlignChanged(int);
     void onElemBorderColorClicked();
     void onElemBorderChanged();
+    void onElemMeshGradientToggled(bool);
+    void onElemMeshGradientEditClicked();
     void onElemCornerRadiusChanged();
     void onElemOpacityChanged(double);
     void onElemChangeIconClicked();
@@ -164,6 +166,8 @@ private:
     QDoubleSpinBox* m_eBorderW        = nullptr;
     QPushButton*    m_eBorderColorBtn = nullptr;
     QDoubleSpinBox* m_eCornerRadius   = nullptr;
+    QCheckBox*      m_eMeshGradientChk    = nullptr;
+    QPushButton*    m_eMeshGradientEditBtn = nullptr;
 
     // Icon-only section (hidden when a non-icon element is selected)
     QWidget*        m_elemIconSection = nullptr;

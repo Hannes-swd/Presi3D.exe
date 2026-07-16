@@ -1,5 +1,6 @@
 #include "SlideEditor3D.h"
 #include "ShapeUtils.h"
+#include "MeshGradientRenderer.h"
 #include "IconUtils.h"
 #include "models/WorldObjectMesh.h"
 #include "rendering/ChartRenderer.h"
@@ -572,14 +573,23 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
             p.restore();
 
         } else if (elem.type == SlideElement::Shape) {
-            QBrush brush = (elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent)
-                ? QBrush(elem.backgroundColor) : Qt::NoBrush;
             p.setPen(elem.borderWidth > 0
                      ? QPen(elem.borderColor.isValid() ? elem.borderColor : Qt::darkGray,
                             elem.borderWidth * sx)
                      : Qt::NoPen);
-            p.setBrush(brush);
             float rx = elem.cornerRadius * sx, ry = elem.cornerRadius * sy;
+
+            if (elem.useMeshGradient && elem.meshGradient.isUsable() && elem.content != "line") {
+                QImage meshImg = MeshGradientRenderer::renderMeshGradient(
+                    elem.content, r.size().toSize(), elem.meshGradient, QSizeF(rx, ry));
+                p.drawImage(r.topLeft(), meshImg);
+                p.setBrush(Qt::NoBrush);
+            } else {
+                QBrush brush = (elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent)
+                    ? QBrush(elem.backgroundColor) : Qt::NoBrush;
+                p.setBrush(brush);
+            }
+
             if (elem.content == "line") {
                 p.drawLine(r.topLeft(), r.bottomRight());
             } else if (elem.content == "rect") {

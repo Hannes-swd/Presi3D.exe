@@ -21,6 +21,8 @@ set(SOURCES
     src/PropertiesPanel.cpp
     src/models/Presentation.cpp
     src/models/ChartData.cpp
+    src/models/MeshGradientData.cpp
+    src/MeshGradientRenderer.cpp
     src/models/VariableModel.cpp
     src/models/VariableEngine.cpp
     src/models/TimelineTrack.cpp
@@ -42,6 +44,7 @@ set(SOURCES
     src/dialogs/InsertCheckboxDialog.cpp
     src/dialogs/InsertSliderDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
+    src/dialogs/MeshGradientDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
     src/dialogs/IconPickerDialog.cpp
     src/IconUtils.cpp
