@@ -35,5 +35,7 @@ private:
     static bool    copyModels(const Presentation& pres,
                               const QString& assetsDir,
                               QStringList& errors);
+    static void    cleanupOrphanedAssets(const Presentation& pres,
+                                         const QString& assetsDir);
     static QString worldObjectToHtml(const WorldObject& w);
 };

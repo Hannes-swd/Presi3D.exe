@@ -96,11 +96,3 @@
 | **Dark Mode / Light Mode** | Umschaltbares UI-Theme |
 | **Mehrsprachigkeit (i18n)** | UI in Deutsch, Englisch usw. |
 | **Barrierefreiheit** | Alt-Texte für Bilder, Tab-Navigation, Screenreader-Unterstützung |
-
----
-
-## Zusammenfassung: Die wichtigsten noch fehlenden Features
-
-1. **Mehrfachauswahl** – wichtig für effizientes Layout-Bearbeiten
-3. **Gruppenbildung** – baut auf Mehrfachauswahl auf
-4. **Lineale, Führungslinien & Zoom im 2D-Editor** – grundlegende Editier-Komfortfunktionen

@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QUrl>
+#include <QSet>
 #include <algorithm>
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include "tiny_gltf.h"
@@ -42,6 +43,7 @@ HtmlExporter::Result HtmlExporter::exportTo(const Presentation& pres,
     QStringList imgErrors;
     copyImages(pres, assetsPath, imgErrors);
     copyModels(pres, assetsPath, imgErrors);
+    cleanupOrphanedAssets(pres, assetsPath);
 
     // styles.css
     {
@@ -1609,6 +1611,37 @@ bool HtmlExporter::copyModels(const Presentation& pres,
         for (const auto& img : model.images)  copyUri(img.uri);
     }
     return ok;
+}
+
+// Removes files under assets/ that no longer correspond to any image or
+// world-object model in the presentation. Re-exporting to the same output
+// folder only ever adds files (copyImages/copyModels skip existing
+// destinations), so without this pass, images deleted in the editor would
+// linger in assets/ forever across re-exports.
+void HtmlExporter::cleanupOrphanedAssets(const Presentation& pres,
+                                          const QString& assetsDir) {
+    QSet<QString> liveImageNames;
+    for (const auto& slide : pres.slides)
+        for (const auto& elem : slide.elements)
+            if (elem.type == SlideElement::Image && !elem.content.isEmpty())
+                liveImageNames.insert(QFileInfo(elem.content).fileName());
+
+    QSet<QString> liveModelIds;
+    for (const auto& w : pres.worldObjects)
+        if (!w.modelPath.isEmpty())
+            liveModelIds.insert(w.id);
+
+    QDir dir(assetsDir);
+    for (const QFileInfo& fi : dir.entryInfoList(QDir::Files))
+        if (!liveImageNames.contains(fi.fileName()))
+            QFile::remove(fi.absoluteFilePath());
+
+    QDir modelsDir(dir.filePath("models"));
+    if (modelsDir.exists()) {
+        for (const QFileInfo& fi : modelsDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+            if (!liveModelIds.contains(fi.fileName()))
+                QDir(fi.absoluteFilePath()).removeRecursively();
+    }
 }
 
 // WorldObjects are emitted as plain (non-.step) sibling divs inside #impress
