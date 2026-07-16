@@ -59,6 +59,8 @@ static constexpr float SNAP_PX   = 10.f;  // snap threshold in screen pixels
 static constexpr float MIN_ZOOM  = 0.25f; // 25%
 static constexpr float MAX_ZOOM  = 6.0f;  // 600%
 static constexpr float ZOOM_STEP = 1.15f; // per wheel notch / toolbar click
+static constexpr float RULER_THICKNESS = 20.f; // matches slideRect()'s fit-margin, so the ruler bars exactly cover it
+static const QColor GUIDE_COLOR(41, 121, 255);  // persistent guides / circle / measure overlays
 
 // ── Handle index layout ───────────────────────────────────────────────────────
 // 0=TL  4=TC  1=TR
@@ -422,6 +424,10 @@ void SlideEditor2D::applySnapAndGuides(SlideElement& e) {
         xCands << o.x << (o.x + o.width  * 0.5f) << (o.x + o.width);
         yCands << o.y << (o.y + o.height * 0.5f) << (o.y + o.height);
     }
+    // Persistent ruler guides are snap targets too, same as slide bounds/elements.
+    for (const GuideLine& g : s->guides) {
+        if (g.vertical) xCands << g.pos; else yCands << g.pos;
+    }
 
     // Find the globally closest anchor×candidate pair for X
     struct XSnap { float pt; float offset; };
@@ -462,6 +468,156 @@ void SlideEditor2D::applySnapAndGuides(SlideElement& e) {
     if (snapY) { e.y = bestYNewY; m_snapGuides.append({false, bestYGuide}); }
 }
 
+float SlideEditor2D::snapGuidePos(bool vertical, float pos) const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return pos;
+
+    QRectF sr = slideRect();
+    float thresh = vertical ? SNAP_PX * SLIDE_W_DEFAULT / float(sr.width())
+                             : SNAP_PX * SLIDE_H_DEFAULT / float(sr.height());
+    float sw = (m_pres->slideWidth  > 0) ? m_pres->slideWidth  : SLIDE_W_DEFAULT;
+    float sh = (m_pres->slideHeight > 0) ? m_pres->slideHeight : SLIDE_H_DEFAULT;
+
+    QVector<float> cands = vertical ? QVector<float>{0.f, sw * 0.5f, sw}
+                                     : QVector<float>{0.f, sh * 0.5f, sh};
+    for (const SlideElement& o : s->elements) {
+        if (vertical) cands << o.x << (o.x + o.width  * 0.5f) << (o.x + o.width);
+        else          cands << o.y << (o.y + o.height * 0.5f) << (o.y + o.height);
+    }
+
+    float best = pos, bestD = thresh;
+    for (float c : cands) {
+        float d = qAbs(c - pos);
+        if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+}
+
+// ── Rulers & persistent guides ────────────────────────────────────────────────
+
+void SlideEditor2D::setRulersVisible(bool visible) {
+    m_showRulers = visible;
+    update();
+}
+
+bool SlideEditor2D::inTopRulerBand(const QPointF& wp) const {
+    return m_showRulers && wp.y() >= 0 && wp.y() < RULER_THICKNESS && wp.x() >= 0 && wp.x() < width();
+}
+
+bool SlideEditor2D::inLeftRulerBand(const QPointF& wp) const {
+    return m_showRulers && wp.x() >= 0 && wp.x() < RULER_THICKNESS && wp.y() >= 0 && wp.y() < height();
+}
+
+int SlideEditor2D::hitGuide(const QPointF& wp, bool& vertical) const {
+    const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || s->guides.isEmpty()) return -1;
+
+    QRectF sr = slideRect();
+    const float thresh = 5.f;
+    for (int i = 0; i < s->guides.size(); ++i) {
+        const GuideLine& g = s->guides[i];
+        if (g.vertical) {
+            float wx = float(sr.x() + g.pos * sr.width() / SLIDE_W_DEFAULT);
+            if (qAbs(wp.x() - wx) <= thresh && wp.y() >= sr.top() - 2 && wp.y() <= sr.bottom() + 2) {
+                vertical = true;
+                return i;
+            }
+        } else {
+            float wy = float(sr.y() + g.pos * sr.height() / SLIDE_H_DEFAULT);
+            if (qAbs(wp.y() - wy) <= thresh && wp.x() >= sr.left() - 2 && wp.x() <= sr.right() + 2) {
+                vertical = false;
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+void SlideEditor2D::finalizeGuideDrag() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    m_draggingGuide = false;
+    if (!s) return;
+
+    // Dropped back onto the ruler band it came from → delete (or, for a
+    // brand-new drag that never left the band, simply never create it).
+    bool droppedOnRuler = m_guideVertical ? inLeftRulerBand(m_guideDragPos)
+                                           : inTopRulerBand(m_guideDragPos);
+    if (droppedOnRuler) {
+        if (!m_newGuide && m_guideIndex >= 0 && m_guideIndex < s->guides.size())
+            s->guides.remove(m_guideIndex);
+        return;
+    }
+
+    QPointF slidePt = widgetToSlide(m_guideDragPos);
+    float newPos = m_guideVertical ? float(slidePt.x()) : float(slidePt.y());
+    if (m_snapNewGuideToObjects)
+        newPos = snapGuidePos(m_guideVertical, newPos);
+
+    if (m_newGuide) {
+        GuideLine g; g.vertical = m_guideVertical; g.pos = newPos;
+        s->guides.append(g);
+    } else if (m_guideIndex >= 0 && m_guideIndex < s->guides.size()) {
+        s->guides[m_guideIndex].pos = newPos;
+    }
+}
+
+// Picks a "nice" tick spacing (in slide-space units) so labels stay >= ~60px apart on screen.
+static float pickNiceRulerStep(float pxPerUnit) {
+    static const float steps[] = {5.f, 10.f, 20.f, 25.f, 50.f, 100.f, 200.f, 250.f, 500.f, 1000.f, 2000.f};
+    for (float s : steps)
+        if (s * pxPerUnit >= 60.f) return s;
+    return 2000.f;
+}
+
+void SlideEditor2D::drawRulers(QPainter& p) const {
+    if (!m_showRulers) return;
+
+    QRectF sr = slideRect();
+    const float T = RULER_THICKNESS;
+
+    p.fillRect(QRectF(0, 0, width(), T), QColor(250, 250, 250));
+    p.fillRect(QRectF(0, 0, T, height()), QColor(250, 250, 250));
+    p.fillRect(QRectF(0, 0, T, T), QColor(235, 235, 235));
+
+    p.setPen(QPen(QColor(150, 150, 150), 1));
+    p.drawLine(QPointF(0, T), QPointF(width(), T));
+    p.drawLine(QPointF(T, 0), QPointF(T, height()));
+
+    QFont f = p.font();
+    f.setPointSize(7);
+    p.setFont(f);
+    p.setPen(QColor(70, 70, 70));
+
+    float scaleX = float(sr.width())  / SLIDE_W_DEFAULT;
+    float scaleY = float(sr.height()) / SLIDE_H_DEFAULT;
+
+    // Horizontal (top) ruler — slide-space X ticks
+    if (scaleX > 0.0001f) {
+        float step = pickNiceRulerStep(scaleX);
+        float firstX = std::floor((T - sr.x()) / scaleX / step) * step;
+        for (float sx = firstX; ; sx += step) {
+            float wx = float(sr.x() + sx * scaleX);
+            if (wx > width()) break;
+            if (wx < T) continue;
+            p.drawLine(QPointF(wx, T - 6), QPointF(wx, T));
+            p.drawText(QPointF(wx + 2, T - 8), QString::number(int(sx)));
+        }
+    }
+
+    // Vertical (left) ruler — slide-space Y ticks
+    if (scaleY > 0.0001f) {
+        float step = pickNiceRulerStep(scaleY);
+        float firstY = std::floor((T - sr.y()) / scaleY / step) * step;
+        for (float sy = firstY; ; sy += step) {
+            float wy = float(sr.y() + sy * scaleY);
+            if (wy > height()) break;
+            if (wy < T) continue;
+            p.drawLine(QPointF(T - 6, wy), QPointF(T, wy));
+            p.drawText(QRectF(0, wy - 7, T - 7, 14), Qt::AlignRight | Qt::AlignVCenter, QString::number(int(sy)));
+        }
+    }
+}
+
 // ── Painting ─────────────────────────────────────────────────────────────────
 
 static void drawCheckerboard(QPainter& p, const QRectF& r) {
@@ -488,6 +644,8 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
     if (!slide) return;
 
     QRectF sr = slideRect();
+    float scaleX = float(sr.width())  / SLIDE_W_DEFAULT;
+    float scaleY = float(sr.height()) / SLIDE_H_DEFAULT;
 
     // Drop shadow
     p.fillRect(sr.adjusted(4, 4, 4, 4), QColor(0, 0, 0, 100));
@@ -538,6 +696,68 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
         }
     }
 
+    // Persistent ruler guides (solid — distinct from the dashed temporary snap guides above)
+    if (!slide->guides.isEmpty() || m_draggingGuide) {
+        p.setPen(QPen(GUIDE_COLOR, 1, Qt::SolidLine));
+        for (int i = 0; i < slide->guides.size(); ++i) {
+            if (m_draggingGuide && !m_newGuide && i == m_guideIndex) continue; // drawn live below instead
+            const GuideLine& g = slide->guides[i];
+            if (g.vertical) {
+                float wx = float(sr.x() + g.pos * sr.width() / SLIDE_W_DEFAULT);
+                p.drawLine(QPointF(wx, sr.top()), QPointF(wx, sr.bottom()));
+            } else {
+                float wy = float(sr.y() + g.pos * sr.height() / SLIDE_H_DEFAULT);
+                p.drawLine(QPointF(sr.left(), wy), QPointF(sr.right(), wy));
+            }
+        }
+        if (m_draggingGuide) {
+            // Red = will be deleted on release (dragged back onto the ruler it came from)
+            bool willDelete = m_guideVertical ? inLeftRulerBand(m_guideDragPos) : inTopRulerBand(m_guideDragPos);
+            p.setPen(QPen(willDelete ? QColor(220, 50, 50) : GUIDE_COLOR, 1, Qt::SolidLine));
+            if (m_guideVertical)
+                p.drawLine(QPointF(m_guideDragPos.x(), sr.top()), QPointF(m_guideDragPos.x(), sr.bottom()));
+            else
+                p.drawLine(QPointF(sr.left(), m_guideDragPos.y()), QPointF(sr.right(), m_guideDragPos.y()));
+        }
+    }
+
+    // Circle guides ("Kreis/Zirkel" tool)
+    if (!slide->guideCircles.isEmpty() || m_drawingCircle) {
+        p.setPen(QPen(GUIDE_COLOR, 1, Qt::SolidLine));
+        p.setBrush(Qt::NoBrush);
+        for (const GuideCircle& c : slide->guideCircles) {
+            QPointF centerW(sr.x() + c.cx * scaleX, sr.y() + c.cy * scaleY);
+            p.drawEllipse(centerW, c.radius * scaleX, c.radius * scaleY);
+        }
+        if (m_drawingCircle) {
+            p.setPen(QPen(GUIDE_COLOR, 1, Qt::DashLine));
+            p.drawEllipse(m_circleCenterWidget, m_circleRadiusWidget, m_circleRadiusWidget);
+            QString label = QString("r = %1").arg(int(m_circleRadiusWidget / qMax(0.0001f, scaleX)));
+            p.setPen(GUIDE_COLOR);
+            p.drawText(m_circleCenterWidget + QPointF(6, -6), label);
+        }
+    }
+
+    // Measure tool ("Messgerät") — ad-hoc two-point distance/angle readout
+    if (m_measuring || m_hasMeasureResult) {
+        QPointF a = m_measureStartWidget, b = m_measureEndWidget;
+        p.setPen(QPen(QColor(255, 140, 0), 2));
+        p.drawLine(a, b);
+        QPointF sa = widgetToSlide(a), sb = widgetToSlide(b);
+        float dx = float(sb.x() - sa.x()), dy = float(sb.y() - sa.y());
+        float dist = std::sqrt(dx * dx + dy * dy);
+        float angle = float(qRadiansToDegrees(std::atan2(dy, dx)));
+        QString label = QString("%1 px, %2°").arg(int(dist)).arg(int(angle));
+        QPointF mid = (a + b) / 2.0;
+        QFontMetrics fm(p.font());
+        QRectF labelRect(mid.x() + 6, mid.y() - fm.height() - 4, fm.horizontalAdvance(label) + 8, fm.height() + 4);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 160));
+        p.drawRoundedRect(labelRect, 3, 3);
+        p.setPen(Qt::white);
+        p.drawText(labelRect, Qt::AlignCenter, label);
+    }
+
     // Selection handles (drawn outside clip so they extend beyond slide edge)
     if (m_selectedElems.size() == 1) {
         int idx = m_selectedElems.first();
@@ -568,6 +788,8 @@ void SlideEditor2D::paintEvent(QPaintEvent*) {
         p.setPen(Qt::white);
         p.drawText(badge, Qt::AlignCenter, label);
     }
+
+    drawRulers(p);
 
     if (m_keyframeEditActive) {
         QRectF banner(0, 0, width(), 30);
@@ -1332,6 +1554,33 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     }
     if (e->button() != Qt::LeftButton) return;
 
+    // Rulers & guides — always take priority over content underneath, same as in real apps.
+    if (m_showRulers) {
+        bool vert;
+        int gi = hitGuide(e->position(), vert);
+        if (gi >= 0) {
+            m_draggingGuide = true;
+            m_newGuide      = false;
+            m_guideVertical = vert;
+            m_guideIndex    = gi;
+            m_guideDragPos  = e->position();
+            update();
+            return;
+        }
+        bool inTop  = inTopRulerBand(e->position());
+        bool inLeft = inLeftRulerBand(e->position());
+        if (inTop || inLeft) {
+            if (m_rulerTool == RulerTool::Standard) {
+                m_draggingGuide = true;
+                m_newGuide      = true;
+                m_guideVertical = inLeft; // dragging out of the left ruler → vertical guide; top → horizontal
+                m_guideDragPos  = e->position();
+                update();
+            }
+            return; // ruler-band clicks never fall through to element/marquee handling
+        }
+    }
+
     // Format painter mode
     if (m_formatPainterMode) {
         int hit = hitTest(e->position());
@@ -1477,6 +1726,21 @@ void SlideEditor2D::mousePressEvent(QMouseEvent* e) {
     const bool toggleMod = (e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier));
 
     if (hit < 0) {
+        if (m_rulerTool == RulerTool::Circle) {
+            m_drawingCircle      = true;
+            m_circleCenterWidget = e->position();
+            m_circleRadiusWidget = 0.f;
+            update();
+            return;
+        }
+        if (m_rulerTool == RulerTool::Measure) {
+            m_measuring         = true;
+            m_hasMeasureResult  = false;
+            m_measureStartWidget = e->position();
+            m_measureEndWidget   = e->position();
+            update();
+            return;
+        }
         if (!toggleMod) {
             // Empty space: start a rubber-band marquee drag. A plain click with
             // no movement clears the selection on release (mouseReleaseEvent).
@@ -1530,6 +1794,28 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
     // Canvas panning (middle-mouse-button drag)
     if (m_panning) {
         m_panOffset = m_panStartOffset + (e->position() - m_panStartMouse);
+        update();
+        return;
+    }
+
+    // Ruler guide being created/repositioned
+    if (m_draggingGuide) {
+        m_guideDragPos = e->position();
+        update();
+        return;
+    }
+
+    // Circle tool ("Kreis/Zirkel") drag
+    if (m_drawingCircle) {
+        QPointF d = e->position() - m_circleCenterWidget;
+        m_circleRadiusWidget = float(std::sqrt(d.x() * d.x() + d.y() * d.y()));
+        update();
+        return;
+    }
+
+    // Measure tool ("Messgerät") drag
+    if (m_measuring) {
+        m_measureEndWidget = e->position();
         update();
         return;
     }
@@ -1676,6 +1962,20 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
     }
 
     // Cursor hints when hovering
+    if (m_showRulers) {
+        bool vert;
+        if (hitGuide(e->position(), vert) >= 0) {
+            setCursor(vert ? Qt::SplitHCursor : Qt::SplitVCursor);
+            return;
+        }
+        if (inTopRulerBand(e->position()) || inLeftRulerBand(e->position())) {
+            if (m_rulerTool == RulerTool::Standard)
+                setCursor(inLeftRulerBand(e->position()) ? Qt::SplitHCursor : Qt::SplitVCursor);
+            else
+                setCursor(Qt::CrossCursor);
+            return;
+        }
+    }
     if (m_selectedElem >= 0) {
         DividerHit dh = hitTableDivider(m_selectedElem, e->position());
         if (dh.valid) {
@@ -1708,6 +2008,37 @@ void SlideEditor2D::mouseReleaseEvent(QMouseEvent* e) {
         return;
     }
     if (e->button() == Qt::LeftButton) {
+        if (m_draggingGuide) {
+            m_guideDragPos = e->position();
+            finalizeGuideDrag();
+            update();
+            emit presentationModified();
+            return;
+        }
+        if (m_drawingCircle) {
+            m_drawingCircle = false;
+            Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+            if (s && m_circleRadiusWidget > 3.f) {
+                QRectF sr = slideRect();
+                float scaleX = float(sr.width())  / SLIDE_W_DEFAULT;
+                float scaleY = float(sr.height()) / SLIDE_H_DEFAULT;
+                QPointF centerSlide = widgetToSlide(m_circleCenterWidget);
+                GuideCircle c;
+                c.cx     = float(centerSlide.x());
+                c.cy     = float(centerSlide.y());
+                c.radius = m_circleRadiusWidget / qMax(0.0001f, (scaleX + scaleY) * 0.5f);
+                s->guideCircles.append(c);
+                emit presentationModified();
+            }
+            update();
+            return;
+        }
+        if (m_measuring) {
+            m_measuring        = false;
+            m_hasMeasureResult = true;
+            update();
+            return;
+        }
         if (m_marqueeActive) {
             m_marqueeActive = false;
             // Only treat it as a real marquee if the user actually dragged a
@@ -1881,6 +2212,11 @@ void SlideEditor2D::keyPressEvent(QKeyEvent* e) {
         pasteElement();
     } else if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) {
         deleteSelectedElement();
+    } else if (e->key() == Qt::Key_Escape && (m_measuring || m_hasMeasureResult || m_drawingCircle)) {
+        m_measuring        = false;
+        m_hasMeasureResult = false;
+        m_drawingCircle    = false;
+        update();
     } else if (e->key() == Qt::Key_Escape) {
         m_selectedElem = -1;
         m_selectedElems.clear();
@@ -1972,6 +2308,52 @@ void SlideEditor2D::dropEvent(QDropEvent* e) {
 }
 
 void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
+    // Right-click on an existing guide: quick delete
+    if (m_showRulers) {
+        bool vert;
+        int gi = hitGuide(e->pos(), vert);
+        if (gi >= 0) {
+            Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+            QMenu menu(this);
+            QAction* aDel = menu.addAction("Führungslinie löschen");
+            if (menu.exec(e->globalPos()) == aDel && s && gi < s->guides.size()) {
+                s->guides.remove(gi);
+                emit presentationModified();
+                update();
+            }
+            return;
+        }
+        // Right-click on the ruler band itself: switch tool / toggle guide-to-object snapping
+        if (inTopRulerBand(e->pos()) || inLeftRulerBand(e->pos())) {
+            QMenu menu(this);
+            QAction* aStd     = menu.addAction("Standard-Lineal (Führungslinien)");
+            QAction* aCircle  = menu.addAction("Kreis / Zirkel");
+            QAction* aMeasure = menu.addAction(QString::fromUtf8("Messger\xC3\xA4t (Abstand && Winkel)"));
+            for (QAction* a : {aStd, aCircle, aMeasure}) a->setCheckable(true);
+            aStd->setChecked(m_rulerTool == RulerTool::Standard);
+            aCircle->setChecked(m_rulerTool == RulerTool::Circle);
+            aMeasure->setChecked(m_rulerTool == RulerTool::Measure);
+            menu.addSeparator();
+            QAction* aSnap = menu.addAction("Neue Führungslinie an Objekte einrasten");
+            aSnap->setCheckable(true);
+            aSnap->setChecked(m_snapNewGuideToObjects);
+            menu.addSeparator();
+            QAction* aClear = menu.addAction("Alle Führungslinien/Kreise entfernen");
+
+            QAction* chosen = menu.exec(e->globalPos());
+            if (chosen == aStd)          m_rulerTool = RulerTool::Standard;
+            else if (chosen == aCircle)  m_rulerTool = RulerTool::Circle;
+            else if (chosen == aMeasure) { m_rulerTool = RulerTool::Measure; m_hasMeasureResult = false; }
+            else if (chosen == aSnap)    m_snapNewGuideToObjects = aSnap->isChecked();
+            else if (chosen == aClear) {
+                Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+                if (s) { s->guides.clear(); s->guideCircles.clear(); emit presentationModified(); }
+            }
+            update();
+            return;
+        }
+    }
+
     // Table edit mode: show table-specific context menu
     if (m_tableEditMode && m_selectedElem >= 0 && m_pres) {
         const Slide* s = m_pres->slideAt(m_slideIndex);

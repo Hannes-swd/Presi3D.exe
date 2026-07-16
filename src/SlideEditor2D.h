@@ -94,6 +94,10 @@ public slots:
     void  zoomReset();       // back to 100% / fit, pan reset
     void  setZoomPercent(int percent); // e.g. 150 = 150%
 
+    // Rulers & guides (see FEATURES_TODO.md "Lineale und Führungslinien")
+    bool  rulersVisible() const { return m_showRulers; }
+    void  setRulersVisible(bool visible);
+
 protected:
     void paintEvent(QPaintEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
@@ -166,6 +170,39 @@ private:
     struct SnapGuide { bool vertical; float pos; }; // vertical=X guide, else Y guide
     QVector<SnapGuide> m_snapGuides;
     void applySnapAndGuides(SlideElement& e);
+    // Nearest slide-bound/element-edge candidate to `pos` (same axis rules as
+    // applySnapAndGuides), used when dragging a new/existing ruler guide.
+    float snapGuidePos(bool vertical, float pos) const;
+
+    // ── Rulers & persistent guides ────────────────────────────────────────────
+    enum class RulerTool { Standard, Circle, Measure };
+    bool      m_showRulers            = true;
+    RulerTool m_rulerTool             = RulerTool::Standard;
+    bool      m_snapNewGuideToObjects = true;
+
+    bool inTopRulerBand(const QPointF& widgetPos) const;
+    bool inLeftRulerBand(const QPointF& widgetPos) const;
+    int  hitGuide(const QPointF& widgetPos, bool& vertical) const; // index into slide->guides, -1 if none
+    void drawRulers(QPainter&) const;
+    void finalizeGuideDrag(); // commit/move/delete on mouse release
+
+    // Guide currently being dragged out of a ruler (new) or repositioned (existing)
+    bool    m_draggingGuide  = false;
+    bool    m_newGuide       = false; // true = not yet in slide->guides
+    bool    m_guideVertical  = true;
+    int     m_guideIndex     = -1;    // valid slide->guides index when !m_newGuide
+    QPointF m_guideDragPos;           // live widget-space mouse position
+
+    // Circle tool ("Kreis/Zirkel") — drag on empty canvas: press = center, release = radius
+    bool    m_drawingCircle      = false;
+    QPointF m_circleCenterWidget;
+    float   m_circleRadiusWidget = 0.f;
+
+    // Measure tool ("Messgerät") — ad-hoc two-point distance/angle readout, not persisted
+    bool    m_measuring             = false;
+    bool    m_hasMeasureResult      = false;
+    QPointF m_measureStartWidget;
+    QPointF m_measureEndWidget;
 
     // Inline text editing (direct WYSIWYG — no overlay widget)
     void startTextEdit(int elemIndex, QPointF clickPos = {-1,-1});

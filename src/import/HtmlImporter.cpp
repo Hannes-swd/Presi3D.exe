@@ -582,6 +582,26 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
             }
         }
 
+        // Editor-only ruler guides: "v:960.00,h:540.00,c:500.00:400.00:150.00"
+        QString guidesRaw = attrVal(tag, "data-guides");
+        if (!guidesRaw.isEmpty()) {
+            for (const QString& tok : guidesRaw.split(',')) {
+                QStringList parts = tok.split(':');
+                if (parts.size() == 2 && (parts[0] == "v" || parts[0] == "h")) {
+                    GuideLine g;
+                    g.vertical = (parts[0] == "v");
+                    g.pos      = parts[1].toFloat();
+                    slide.guides.append(g);
+                } else if (parts.size() == 4 && parts[0] == "c") {
+                    GuideCircle c;
+                    c.cx     = parts[1].toFloat();
+                    c.cy     = parts[2].toFloat();
+                    c.radius = parts[3].toFloat();
+                    slide.guideCircles.append(c);
+                }
+            }
+        }
+
         // ── Child elements ────────────────────────────────────────────────────
         // CRITICAL FIX: Validate closing tag exists and calculate safe length
         int closingPos = stepBlock.lastIndexOf("</div>");

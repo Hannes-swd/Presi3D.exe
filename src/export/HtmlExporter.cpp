@@ -1092,6 +1092,19 @@ QString HtmlExporter::slideToHtml(const Slide& s, int index, int slideCount,
     if (uuidToVisString.contains(s.id))
         out << "       data-vis-overrides=\"" << uuidToVisString[s.id] << "\"\n";
 
+    // Editor-only ruler guides — no visual/CSS effect, purely round-tripped so
+    // HtmlImporter can restore them. "v:<x>"/"h:<y>" for lines, "c:<cx>:<cy>:<r>" for circles.
+    if (!s.guides.isEmpty() || !s.guideCircles.isEmpty()) {
+        QStringList tokens;
+        for (const GuideLine& g : s.guides)
+            tokens << QString("%1:%2").arg(g.vertical ? "v" : "h").arg(double(g.pos), 0, 'f', 2);
+        for (const GuideCircle& c : s.guideCircles)
+            tokens << QString("c:%1:%2:%3").arg(double(c.cx), 0, 'f', 2)
+                                            .arg(double(c.cy), 0, 'f', 2)
+                                            .arg(double(c.radius), 0, 'f', 2);
+        out << "       data-guides=\"" << tokens.join(',') << "\"\n";
+    }
+
     out << "       style=\""          << stepStyle << "\">\n";
 
     for (const auto& elem : s.elements)

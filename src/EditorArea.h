@@ -25,6 +25,7 @@ public:
     void setKeyframeEditActive(bool active, const QString& label = {});
     void ensure2DMode();
     void selectElement(int index);
+    SlideEditor2D* slideEditor2D() const { return m_editor2D; }
 
     // Grouping (see FEATURES_TODO.md "Gruppenbildung") — relayed to the 2D editor
     void groupSelectedElements();
@@ -78,6 +79,7 @@ private:
     QPushButton*     m_btnZoomIn    = nullptr;
     QPushButton*     m_btnZoomReset = nullptr;
     QSpinBox*        m_zoomSpin     = nullptr;
+    QPushButton*     m_btnRulers    = nullptr;
     QWidget*         m_elemToolbar  = nullptr;
 
     // 3D gizmo toolbar

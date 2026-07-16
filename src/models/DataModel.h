@@ -122,11 +122,29 @@ struct SlideElement {
     SlideElement() : id(QUuid::createUuid().toString(QUuid::WithoutBraces)) {}
 };
 
+// Persistent ruler guide — a full-slide-height/width line, created by dragging
+// out of the horizontal/vertical ruler in the 2D editor. Elements snap to it
+// while dragging, same as they snap to slide bounds/other elements.
+struct GuideLine {
+    bool  vertical = true; // true = vertical line at a given X; false = horizontal line at a given Y
+    float pos      = 0.f;  // slide-space coordinate (X if vertical, Y otherwise)
+};
+
+// Persistent circular guide ("Zirkel"/compass mode) — center + radius, for
+// aligning elements around a circle or reading off radii/distances.
+struct GuideCircle {
+    float cx     = 0.f;
+    float cy     = 0.f;
+    float radius = 0.f;
+};
+
 struct Slide {
     QString              id;
     QString              name;
     QVector<SlideElement> elements;
     QColor               backgroundColor = Qt::transparent; // transparent = no background
+    QVector<GuideLine>   guides;
+    QVector<GuideCircle> guideCircles;
 
     // 3D transform in impress.js coordinate units
     float posX  = 0.f;

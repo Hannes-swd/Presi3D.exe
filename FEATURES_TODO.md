@@ -1,11 +1,4 @@
 
-## Priorität 1 – Grundlagen (ohne diese ist die App nicht nutzbar)
-
-| Feature | Beschreibung |
-|---|---|
-| **Lineale und Führungslinien** | Einblendbare Lineale, ziehbare Hilfslinien (aktuell nur temporäre Snap-Ausrichtungslinien beim Ziehen, keine Lineale, keine dauerhaften Guides) |
-
----
 
 ## Priorität 2 – Inhaltselemente
 

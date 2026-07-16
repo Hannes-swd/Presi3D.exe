@@ -25,6 +25,8 @@
 #include <QLabel>
 #include <QFrame>
 #include <QIcon>
+#include <QSettings>
+#include <QShortcut>
 
 // Any widget with its own stylesheet stops inheriting the app-wide dark
 // QToolTip style, so every local stylesheet below re-declares it explicitly
@@ -156,6 +158,18 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnZoomReset->setFixedWidth(36);
     m_btnZoomReset->setStyleSheet(LAYER_BTN_SS);
     tbRow->addWidget(m_btnZoomReset);
+
+    // Rulers & guides toggle (see FEATURES_TODO.md "Lineale und Führungslinien").
+    // Persisted across sessions via QSettings; right-click the ruler itself to
+    // switch tools (Standard/Kreis/Messgerät) or toggle guide-to-object snapping.
+    bool rulersOn = QSettings().value("rulersVisible", true).toBool();
+    m_btnRulers = new QPushButton(QString::fromUtf8("Lineal"), m_elemToolbar);
+    m_btnRulers->setCheckable(true);
+    m_btnRulers->setChecked(rulersOn);
+    m_btnRulers->setToolTip("Lineale & Führungslinien ein-/ausblenden (Ctrl+R)");
+    m_btnRulers->setFixedWidth(48);
+    m_btnRulers->setStyleSheet(LAYER_BTN_SS);
+    tbRow->addWidget(m_btnRulers);
 
     m_btnTimelineToggle = new QPushButton("Timeline", m_elemToolbar);
     m_btnTimelineToggle->setCheckable(true);
@@ -314,6 +328,17 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     connect(m_editor2D, &SlideEditor2D::zoomChanged, this, [this](float z) {
         QSignalBlocker blk(m_zoomSpin);
         m_zoomSpin->setValue(qRound(z * 100.f));
+    });
+
+    // Rulers & guides toggle
+    m_editor2D->setRulersVisible(m_btnRulers->isChecked());
+    connect(m_btnRulers, &QPushButton::toggled, this, [this](bool checked) {
+        m_editor2D->setRulersVisible(checked);
+        QSettings().setValue("rulersVisible", checked);
+    });
+    auto* rulerShortcut = new QShortcut(QKeySequence("Ctrl+R"), this);
+    connect(rulerShortcut, &QShortcut::activated, this, [this]() {
+        m_btnRulers->toggle();
     });
 
     // Gizmo mode buttons
