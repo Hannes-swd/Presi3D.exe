@@ -61,20 +61,23 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     topRow->addStretch();
     mainLayout->addWidget(topBar);
 
-    // ── Element toolbar (2D only) ─────────────────────────────────────
-    m_elemToolbar = new QWidget(this);
-    m_elemToolbar->setFixedHeight(36);
-    m_elemToolbar->setStyleSheet(QString("background:#f9fafb; border-bottom:1px solid #e5e7eb;") + kToolTipSS);
-    auto* tbRow = new QHBoxLayout(m_elemToolbar);
-    tbRow->setContentsMargins(8, 3, 8, 3);
-    tbRow->setSpacing(6);
+    // ── Insert toolbar (2D only) ───────────────────────────────────────
+    // Not added to mainLayout here: MainWindow reparents this widget into
+    // its ribbon's "Einfügen" tab via insertToolbarWidget(). It stays a
+    // child of EditorArea only until that reparenting happens.
+    m_insertToolbar = new QWidget(this);
+    m_insertToolbar->setFixedHeight(36);
+    m_insertToolbar->setStyleSheet(QString("background:#f9fafb;") + kToolTipSS);
+    auto* insRow = new QHBoxLayout(m_insertToolbar);
+    insRow->setContentsMargins(8, 3, 8, 3);
+    insRow->setSpacing(6);
 
     auto mkBtn = [&](const QString& icon, const QString& text, const QString& tip) {
-        auto* b = new QPushButton(QIcon(":/icons/" + icon + ".svg"), text, m_elemToolbar);
+        auto* b = new QPushButton(QIcon(":/icons/" + icon + ".svg"), text, m_insertToolbar);
         b->setIconSize(QSize(16, 16));
         b->setToolTip(tip);
         b->setMinimumWidth(80);
-        tbRow->addWidget(b);
+        insRow->addWidget(b);
         return b;
     };
     m_btnText   = mkBtn("title",        "Text",    "Add text box");
@@ -86,7 +89,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnFormula = mkBtn("functions",    "Formula", "Insert formula (LaTeX)");
     m_btnIFrame  = mkBtn("language",     "iFrame", "Embed website/link");
 
-    m_btnInteractive = new QToolButton(m_elemToolbar);
+    m_btnInteractive = new QToolButton(m_insertToolbar);
     m_btnInteractive->setIcon(QIcon(":/icons/tune.svg"));
     m_btnInteractive->setText("Interactive");
     m_btnInteractive->setIconSize(QSize(16, 16));
@@ -99,12 +102,16 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     QAction* actInsertCheckbox = interactiveMenu->addAction(QIcon(":/icons/check_circle.svg"), "Checkbox");
     QAction* actInsertSlider   = interactiveMenu->addAction(QIcon(":/icons/tune.svg"), "Slider");
     m_btnInteractive->setMenu(interactiveMenu);
-    tbRow->addWidget(m_btnInteractive);
+    insRow->addWidget(m_btnInteractive);
+    insRow->addStretch();
 
-    // Separator
-    auto* sep = new QFrame(m_elemToolbar);
-    sep->setFrameShape(QFrame::VLine);
-    tbRow->addWidget(sep);
+    // ── Element toolbar (2D only): layer order, zoom, rulers, timeline, delete ──
+    m_elemToolbar = new QWidget(this);
+    m_elemToolbar->setFixedHeight(36);
+    m_elemToolbar->setStyleSheet(QString("background:#f9fafb; border-bottom:1px solid #e5e7eb;") + kToolTipSS);
+    auto* tbRow = new QHBoxLayout(m_elemToolbar);
+    tbRow->setContentsMargins(8, 3, 8, 3);
+    tbRow->setSpacing(6);
 
     // Layer buttons (smaller)
     static const char* LAYER_BTN_SS =
@@ -179,7 +186,11 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     tbRow->addWidget(m_btnTimelineToggle);
 
     tbRow->addStretch();
-    m_btnDelete = mkBtn("delete", "Delete", "Delete selected element");
+    m_btnDelete = new QPushButton(QIcon(":/icons/delete.svg"), "Delete", m_elemToolbar);
+    m_btnDelete->setIconSize(QSize(16, 16));
+    m_btnDelete->setToolTip("Delete selected element");
+    m_btnDelete->setMinimumWidth(80);
+    tbRow->addWidget(m_btnDelete);
     m_btnDelete->setStyleSheet(
         "QPushButton { background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:3px; border-radius:4px; }"
         "QPushButton:hover { background:#fee2e2; border-color:#f87171; }"
@@ -465,6 +476,7 @@ void EditorArea::switchTo2D() {
     m_stack->setCurrentIndex(0);
     m_elemToolbar->setVisible(true);
     m_gizmoToolbar->setVisible(false);
+    m_insertToolbar->setEnabled(true); // insert buttons target the 2D editor only
 }
 
 void EditorArea::switchTo3D() {
@@ -473,6 +485,7 @@ void EditorArea::switchTo3D() {
     m_stack->setCurrentIndex(1);
     m_elemToolbar->setVisible(false);
     m_gizmoToolbar->setVisible(true);
+    m_insertToolbar->setEnabled(false); // insert buttons target the 2D editor only
     m_editor3D->setFocus();
     m_editor3D->update();
 }

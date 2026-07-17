@@ -31,6 +31,10 @@ public:
     void groupSelectedElements();
     void ungroupSelectedElements();
 
+    // Insert-element toolbar (Text/Shapes/Image/Table/...), hosted by
+    // MainWindow's ribbon "Einfügen" tab rather than by EditorArea itself.
+    QWidget* insertToolbarWidget() const { return m_insertToolbar; }
+
 signals:
     void presentationModified();
     void elementSelected(int elemIndex);
@@ -81,6 +85,7 @@ private:
     QSpinBox*        m_zoomSpin     = nullptr;
     QPushButton*     m_btnRulers    = nullptr;
     QWidget*         m_elemToolbar  = nullptr;
+    QWidget*         m_insertToolbar = nullptr;
 
     // 3D gizmo toolbar
     QPushButton*     m_btnGizmoMove      = nullptr;

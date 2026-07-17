@@ -1,5 +1,7 @@
 #include "FormatBar.h"
 #include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QGridLayout>
 #include <QFontComboBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
@@ -34,6 +36,24 @@ static QLabel* lbl(const QString& t, QWidget* p) {
     return l;
 }
 
+// Wraps a cluster of controls (contentLayout) with a small caption label
+// underneath, Office-ribbon-style — turns one long flat row of buttons into
+// scannable, named groups (e.g. "Schrift", "Ausrichtung", "Liste").
+static QWidget* makeGroup(QWidget* parent, const QString& caption, QLayout* contentLayout) {
+    auto* group = new QWidget(parent);
+    auto* v = new QVBoxLayout(group);
+    v->setContentsMargins(2, 1, 2, 1);
+    v->setSpacing(1);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    v->addLayout(contentLayout);
+    v->addStretch();
+    auto* capLbl = new QLabel(caption, group);
+    capLbl->setAlignment(Qt::AlignHCenter);
+    capLbl->setStyleSheet("color:#9ca3af; font-size:9px;");
+    v->addWidget(capLbl);
+    return group;
+}
+
 FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
@@ -42,178 +62,235 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     row->setSpacing(4);
 
     // ── Text formatting group ──────────────────────────────────────────────
+    // Organized into small, captioned clusters (Office-ribbon style) instead
+    // of one long flat row — each cluster stacks its controls over 1-2 rows
+    // so the whole bar stays scannable instead of scrolling off-screen.
     m_textGroup = new QWidget(this);
     auto* tr = new QHBoxLayout(m_textGroup);
     tr->setContentsMargins(0, 0, 0, 0);
-    tr->setSpacing(4);
+    tr->setSpacing(2);
 
-    m_fontCombo = new QFontComboBox(m_textGroup);
-    m_fontCombo->setFixedWidth(180);
-    m_fontCombo->setFocusPolicy(Qt::StrongFocus);
-    tr->addWidget(m_fontCombo);
+    // Schrift: font name on top, size + text/background color below
+    {
+        auto* top = new QHBoxLayout();
+        m_fontCombo = new QFontComboBox(m_textGroup);
+        m_fontCombo->setFixedWidth(150);
+        m_fontCombo->setFocusPolicy(Qt::StrongFocus);
+        top->addWidget(m_fontCombo);
 
-    tr->addWidget(lbl("Sz:", m_textGroup));
-    m_fontSize = new QSpinBox(m_textGroup);
-    m_fontSize->setRange(6, 400);
-    m_fontSize->setValue(32);
-    m_fontSize->setFixedWidth(58);
-    m_fontSize->setSuffix("pt");
-    m_fontSize->setToolTip("Font size – mouse wheel = change size live");
-    tr->addWidget(m_fontSize);
+        auto* bottom = new QHBoxLayout();
+        bottom->addWidget(lbl("Sz:", m_textGroup));
+        m_fontSize = new QSpinBox(m_textGroup);
+        m_fontSize->setRange(6, 400);
+        m_fontSize->setValue(32);
+        m_fontSize->setFixedWidth(52);
+        m_fontSize->setSuffix("pt");
+        m_fontSize->setToolTip("Font size – mouse wheel = change size live");
+        bottom->addWidget(m_fontSize);
 
-    tr->addWidget(makeSep(m_textGroup));
+        m_colorBtn = new QPushButton("A", m_textGroup);
+        m_colorBtn->setToolTip("Text color");
+        m_colorBtn->setFixedWidth(28);
+        bottom->addWidget(m_colorBtn);
 
-    // Color buttons — their style is set dynamically by updateColorSwatch
-    m_colorBtn = new QPushButton("A", m_textGroup);
-    m_colorBtn->setToolTip("Text color");
-    m_colorBtn->setFixedWidth(32);
-    tr->addWidget(m_colorBtn);
+        m_bgColorBtn = new QPushButton("Bg", m_textGroup);
+        m_bgColorBtn->setToolTip("Background color");
+        m_bgColorBtn->setFixedWidth(28);
+        bottom->addWidget(m_bgColorBtn);
 
-    m_bgColorBtn = new QPushButton("Bg", m_textGroup);
-    m_bgColorBtn->setToolTip("Background color");
-    m_bgColorBtn->setFixedWidth(32);
-    tr->addWidget(m_bgColorBtn);
-
-    tr->addWidget(makeSep(m_textGroup));
-
-    m_alignLeft   = new QPushButton(QIcon(":/icons/format_align_left.svg"),   "", m_textGroup);
-    m_alignCenter = new QPushButton(QIcon(":/icons/format_align_center.svg"), "", m_textGroup);
-    m_alignRight  = new QPushButton(QIcon(":/icons/format_align_right.svg"),  "", m_textGroup);
-    for (auto* b : {m_alignLeft, m_alignCenter, m_alignRight}) {
-        b->setCheckable(true);
-        b->setIconSize(QSize(16, 16));
-        b->setFixedWidth(30);
-        b->setStyleSheet(ALIGN_BTN);
-        tr->addWidget(b);
+        auto* v = new QVBoxLayout();
+        v->setSpacing(2);
+        v->addLayout(top);
+        v->addLayout(bottom);
+        tr->addWidget(makeGroup(m_textGroup, "Schrift", v));
     }
-    m_alignLeft->setToolTip("Align Left");
-    m_alignCenter->setToolTip("Center");
-    m_alignRight->setToolTip("Align Right");
+    tr->addWidget(makeSep(m_textGroup));
 
-    m_vAlignTop    = new QPushButton(QIcon(":/icons/vertical_align_top.svg"),    "", m_textGroup);
-    m_vAlignMiddle = new QPushButton(QIcon(":/icons/vertical_align_center.svg"), "", m_textGroup);
-    m_vAlignBottom = new QPushButton(QIcon(":/icons/vertical_align_bottom.svg"), "", m_textGroup);
-    for (auto* b : {m_vAlignTop, m_vAlignMiddle, m_vAlignBottom}) {
-        b->setCheckable(true);
-        b->setIconSize(QSize(16, 16));
-        b->setFixedWidth(30);
-        b->setStyleSheet(ALIGN_BTN);
-        tr->addWidget(b);
+    // Schriftschnitt: Bold/Italic/Underline/Strike (2x2), underline color+style below
+    {
+        m_boldBtn      = new QPushButton("B",  m_textGroup);
+        m_italicBtn    = new QPushButton("I",  m_textGroup);
+        m_underlineBtn = new QPushButton("U",  m_textGroup);
+        m_strikeBtn    = new QPushButton("S̶", m_textGroup);
+        for (auto* b : {m_boldBtn, m_italicBtn, m_underlineBtn, m_strikeBtn}) {
+            b->setCheckable(true);
+            b->setFixedWidth(26);
+            b->setStyleSheet(ALIGN_BTN);
+        }
+        m_boldBtn->setStyleSheet(ALIGN_BTN + "QPushButton { font-weight:bold; }");
+        m_italicBtn->setStyleSheet(ALIGN_BTN + "QPushButton { font-style:italic; }");
+        m_boldBtn->setToolTip("Bold (B)");
+        m_italicBtn->setToolTip("Italic (I)");
+        m_underlineBtn->setToolTip("Underline (U)");
+        m_strikeBtn->setToolTip("Strikethrough");
+
+        auto* top = new QHBoxLayout();
+        top->addWidget(m_boldBtn);
+        top->addWidget(m_italicBtn);
+        top->addWidget(m_underlineBtn);
+        top->addWidget(m_strikeBtn);
+
+        // Underline color + style (only meaningful when underline is on)
+        m_ulColorBtn = new QPushButton("U", m_textGroup);
+        m_ulColorBtn->setToolTip("Choose underline color");
+        m_ulColorBtn->setFixedWidth(26);
+
+        m_ulStyleCombo = new QComboBox(m_textGroup);
+        m_ulStyleCombo->addItem("─── Solid");
+        m_ulStyleCombo->addItem("─ ─ Dashed");
+        m_ulStyleCombo->addItem("··· Dotted");
+        m_ulStyleCombo->addItem("~~~ Wavy");
+        m_ulStyleCombo->setFixedWidth(90);
+        m_ulStyleCombo->setToolTip("Underline style");
+
+        auto* bottom = new QHBoxLayout();
+        bottom->addWidget(m_ulColorBtn);
+        bottom->addWidget(m_ulStyleCombo);
+
+        auto* v = new QVBoxLayout();
+        v->setSpacing(2);
+        v->addLayout(top);
+        v->addLayout(bottom);
+        tr->addWidget(makeGroup(m_textGroup, "Schriftschnitt", v));
     }
-    m_vAlignTop->setToolTip("Align Top");
-    m_vAlignMiddle->setToolTip("Align Middle");
-    m_vAlignBottom->setToolTip("Align Bottom");
-
     tr->addWidget(makeSep(m_textGroup));
 
-    m_listBullet   = new QPushButton(QIcon(":/icons/format_list_bulleted.svg"), "", m_textGroup);
-    m_listNumbered = new QPushButton(QIcon(":/icons/format_list_numbered.svg"), "", m_textGroup);
-    for (auto* b : {m_listBullet, m_listNumbered}) {
-        b->setCheckable(true);
-        b->setIconSize(QSize(16, 16));
-        b->setFixedWidth(30);
-        b->setStyleSheet(ALIGN_BTN);
-        tr->addWidget(b);
+    // Ausrichtung: horizontal align row, vertical align row below
+    {
+        m_alignLeft   = new QPushButton(QIcon(":/icons/format_align_left.svg"),   "", m_textGroup);
+        m_alignCenter = new QPushButton(QIcon(":/icons/format_align_center.svg"), "", m_textGroup);
+        m_alignRight  = new QPushButton(QIcon(":/icons/format_align_right.svg"),  "", m_textGroup);
+        auto* top = new QHBoxLayout();
+        for (auto* b : {m_alignLeft, m_alignCenter, m_alignRight}) {
+            b->setCheckable(true);
+            b->setIconSize(QSize(16, 16));
+            b->setFixedWidth(28);
+            b->setStyleSheet(ALIGN_BTN);
+            top->addWidget(b);
+        }
+        m_alignLeft->setToolTip("Align Left");
+        m_alignCenter->setToolTip("Center");
+        m_alignRight->setToolTip("Align Right");
+
+        m_vAlignTop    = new QPushButton(QIcon(":/icons/vertical_align_top.svg"),    "", m_textGroup);
+        m_vAlignMiddle = new QPushButton(QIcon(":/icons/vertical_align_center.svg"), "", m_textGroup);
+        m_vAlignBottom = new QPushButton(QIcon(":/icons/vertical_align_bottom.svg"), "", m_textGroup);
+        auto* bottom = new QHBoxLayout();
+        for (auto* b : {m_vAlignTop, m_vAlignMiddle, m_vAlignBottom}) {
+            b->setCheckable(true);
+            b->setIconSize(QSize(16, 16));
+            b->setFixedWidth(28);
+            b->setStyleSheet(ALIGN_BTN);
+            bottom->addWidget(b);
+        }
+        m_vAlignTop->setToolTip("Align Top");
+        m_vAlignMiddle->setToolTip("Align Middle");
+        m_vAlignBottom->setToolTip("Align Bottom");
+
+        auto* v = new QVBoxLayout();
+        v->setSpacing(2);
+        v->addLayout(top);
+        v->addLayout(bottom);
+        tr->addWidget(makeGroup(m_textGroup, "Ausrichtung", v));
     }
-    m_listBullet->setToolTip("Bulleted list");
-    m_listNumbered->setToolTip("Numbered list");
-
     tr->addWidget(makeSep(m_textGroup));
 
-    // B / I / U / S̶
-    m_boldBtn      = new QPushButton("B",  m_textGroup);
-    m_italicBtn    = new QPushButton("I",  m_textGroup);
-    m_underlineBtn = new QPushButton("U",  m_textGroup);
-    m_strikeBtn    = new QPushButton("S̶", m_textGroup);
-    for (auto* b : {m_boldBtn, m_italicBtn, m_underlineBtn, m_strikeBtn}) {
-        b->setCheckable(true);
-        b->setFixedWidth(28);
-        b->setStyleSheet(ALIGN_BTN);
-        tr->addWidget(b);
+    // Liste: bullet + numbered
+    {
+        m_listBullet   = new QPushButton(QIcon(":/icons/format_list_bulleted.svg"), "", m_textGroup);
+        m_listNumbered = new QPushButton(QIcon(":/icons/format_list_numbered.svg"), "", m_textGroup);
+        auto* top = new QHBoxLayout();
+        for (auto* b : {m_listBullet, m_listNumbered}) {
+            b->setCheckable(true);
+            b->setIconSize(QSize(16, 16));
+            b->setFixedWidth(28);
+            b->setStyleSheet(ALIGN_BTN);
+            top->addWidget(b);
+        }
+        m_listBullet->setToolTip("Bulleted list");
+        m_listNumbered->setToolTip("Numbered list");
+
+        auto* v = new QVBoxLayout();
+        v->addLayout(top);
+        tr->addWidget(makeGroup(m_textGroup, "Liste", v));
     }
-    m_boldBtn->setStyleSheet(ALIGN_BTN + "QPushButton { font-weight:bold; }");
-    m_italicBtn->setStyleSheet(ALIGN_BTN + "QPushButton { font-style:italic; }");
-    m_boldBtn->setToolTip("Bold (B)");
-    m_italicBtn->setToolTip("Italic (I)");
-    m_underlineBtn->setToolTip("Underline (U)");
-    m_strikeBtn->setToolTip("Strikethrough");
-
     tr->addWidget(makeSep(m_textGroup));
 
-    // Underline color + style (only meaningful when underline is on)
-    m_ulColorBtn = new QPushButton("U", m_textGroup);
-    m_ulColorBtn->setToolTip("Choose underline color");
-    m_ulColorBtn->setFixedWidth(28);
-    tr->addWidget(m_ulColorBtn);
+    // Erweitert: link (top), code-language + format painter (bottom)
+    {
+        m_linkBtn = new QPushButton(QIcon(":/icons/link.svg"), "Link", m_textGroup);
+        m_linkBtn->setIconSize(QSize(14, 14));
+        m_linkBtn->setCheckable(true);
+        m_linkBtn->setStyleSheet(ALIGN_BTN + "QPushButton { min-width:70px; }");
+        m_linkBtn->setToolTip("Set/remove hyperlink for this text");
 
-    m_ulStyleCombo = new QComboBox(m_textGroup);
-    m_ulStyleCombo->addItem("─── Solid");
-    m_ulStyleCombo->addItem("─ ─ Dashed");
-    m_ulStyleCombo->addItem("··· Dotted");
-    m_ulStyleCombo->addItem("~~~ Wavy");
-    m_ulStyleCombo->setFixedWidth(130);
-    m_ulStyleCombo->setToolTip("Underline style");
-    tr->addWidget(m_ulStyleCombo);
+        m_fmtPainterBtn = new QPushButton(QIcon(":/icons/format_paint.svg"), "Format", m_textGroup);
+        m_fmtPainterBtn->setIconSize(QSize(14, 14));
+        m_fmtPainterBtn->setToolTip("Apply format to another element");
+        m_fmtPainterBtn->setStyleSheet(ALIGN_BTN + "QPushButton { min-width:70px; }");
 
-    tr->addWidget(makeSep(m_textGroup));
+        auto* top = new QHBoxLayout();
+        top->addWidget(m_linkBtn);
+        top->addWidget(m_fmtPainterBtn);
 
-    m_linkBtn = new QPushButton(QIcon(":/icons/link.svg"), "Link", m_textGroup);
-    m_linkBtn->setIconSize(QSize(14, 14));
-    m_linkBtn->setCheckable(true);
-    m_linkBtn->setStyleSheet(ALIGN_BTN + "QPushButton { min-width:78px; }");
-    m_linkBtn->setToolTip("Set/remove hyperlink for this text");
-    tr->addWidget(m_linkBtn);
+        // Single compact combo instead of a separate toggle button: first
+        // entry turns code formatting off, any language entry turns it on
+        // with that language (spans are normally created automatically on
+        // paste — see SlideEditor2D::handleTextEditKey/pasteTextAsNewElement
+        // — this combo is for overriding/correcting the guessed language, or
+        // for the rare manual case where auto-detection didn't trigger).
+        m_codeLangCombo = new QComboBox(m_textGroup);
+        m_codeLangCombo->addItem("Code: off", QString());
+        for (const char* langPair : {"plaintext:Plain code", "javascript:JavaScript", "python:Python",
+                                      "cpp:C++", "csharp:C#", "java:Java", "html:HTML", "css:CSS",
+                                      "json:JSON", "bash:Bash", "sql:SQL", "php:PHP", "xml:XML"}) {
+            QString s = QString::fromLatin1(langPair);
+            m_codeLangCombo->addItem(s.section(':', 1), s.section(':', 0, 0));
+        }
+        m_codeLangCombo->setToolTip("Mark the selected text as a code block / choose its language");
+        auto* bottom = new QHBoxLayout();
+        bottom->addWidget(m_codeLangCombo);
 
-    tr->addWidget(makeSep(m_textGroup));
-
-    // Single compact combo instead of a separate toggle button: first entry
-    // turns code formatting off, any language entry turns it on with that
-    // language (spans are normally created automatically on paste — see
-    // SlideEditor2D::handleTextEditKey/pasteTextAsNewElement — this combo is
-    // for overriding/correcting the guessed language, or for the rare manual
-    // case where auto-detection didn't trigger).
-    m_codeLangCombo = new QComboBox(m_textGroup);
-    m_codeLangCombo->addItem("Code: off", QString());
-    for (const char* langPair : {"plaintext:Plain code", "javascript:JavaScript", "python:Python",
-                                  "cpp:C++", "csharp:C#", "java:Java", "html:HTML", "css:CSS",
-                                  "json:JSON", "bash:Bash", "sql:SQL", "php:PHP", "xml:XML"}) {
-        QString s = QString::fromLatin1(langPair);
-        m_codeLangCombo->addItem(s.section(':', 1), s.section(':', 0, 0));
+        auto* v = new QVBoxLayout();
+        v->setSpacing(2);
+        v->addLayout(top);
+        v->addLayout(bottom);
+        tr->addWidget(makeGroup(m_textGroup, "Erweitert", v));
     }
-    m_codeLangCombo->setFixedWidth(100);
-    m_codeLangCombo->setToolTip("Mark the selected text as a code block / choose its language");
-    tr->addWidget(m_codeLangCombo);
-
-    tr->addWidget(makeSep(m_textGroup));
-
-    m_fmtPainterBtn = new QPushButton(QIcon(":/icons/format_paint.svg"), "Format", m_textGroup);
-    m_fmtPainterBtn->setIconSize(QSize(14, 14));
-    m_fmtPainterBtn->setToolTip("Apply format to another element");
-    m_fmtPainterBtn->setStyleSheet(ALIGN_BTN + "QPushButton { min-width:92px; }");
-    tr->addWidget(m_fmtPainterBtn);
 
     row->addWidget(m_textGroup);
     row->addWidget(makeSep(this));
 
-    // ── Geometry group ─────────────────────────────────────────────────────
+    // ── Geometry group: Position (X/Y) on top, Size (W/H) below ─────────────
     m_geomGroup = new QWidget(this);
-    auto* gr = new QHBoxLayout(m_geomGroup);
-    gr->setContentsMargins(0, 0, 0, 0);
-    gr->setSpacing(4);
+    {
+        auto* v = new QVBoxLayout(m_geomGroup);
+        v->setContentsMargins(2, 1, 2, 1);
+        v->setSpacing(1);
 
-    auto mkDSpin = [&](const QString& label) -> QDoubleSpinBox* {
-        gr->addWidget(lbl(label, m_geomGroup));
-        auto* sb = new QDoubleSpinBox(m_geomGroup);
-        sb->setRange(-99999, 99999);
-        sb->setDecimals(0);
-        sb->setFixedWidth(70);
-        gr->addWidget(sb);
-        return sb;
-    };
-    m_posX  = mkDSpin("X:");  m_posX->setToolTip("Position X");
-    m_posY  = mkDSpin("Y:");  m_posY->setToolTip("Position Y");
-    m_sizeW = mkDSpin("W:");  m_sizeW->setToolTip("Width (mouse wheel = live)");
-    m_sizeH = mkDSpin("H:");  m_sizeH->setToolTip("Height (mouse wheel = live)");
+        auto mkDSpin = [&](QHBoxLayout* into, const QString& label) -> QDoubleSpinBox* {
+            into->addWidget(lbl(label, m_geomGroup));
+            auto* sb = new QDoubleSpinBox(m_geomGroup);
+            sb->setRange(-99999, 99999);
+            sb->setDecimals(0);
+            sb->setFixedWidth(62);
+            into->addWidget(sb);
+            return sb;
+        };
+        auto* top = new QHBoxLayout();
+        m_posX  = mkDSpin(top, "X:");  m_posX->setToolTip("Position X");
+        m_posY  = mkDSpin(top, "Y:");  m_posY->setToolTip("Position Y");
+        auto* bottom = new QHBoxLayout();
+        m_sizeW = mkDSpin(bottom, "W:");  m_sizeW->setToolTip("Width (mouse wheel = live)");
+        m_sizeH = mkDSpin(bottom, "H:");  m_sizeH->setToolTip("Height (mouse wheel = live)");
+
+        v->addLayout(top);
+        v->addLayout(bottom);
+        auto* capLbl = new QLabel("Position && Größe", m_geomGroup);
+        capLbl->setAlignment(Qt::AlignHCenter);
+        capLbl->setStyleSheet("color:#9ca3af; font-size:9px;");
+        v->addWidget(capLbl);
+    }
 
     row->addWidget(m_geomGroup);
     row->addStretch();

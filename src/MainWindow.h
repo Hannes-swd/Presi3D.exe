@@ -12,6 +12,7 @@ class QTimer;
 class LocalHttpServer;
 class UpdateChecker;
 class QToolButton;
+class QTabWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -65,7 +66,7 @@ private slots:
 private:
     void setupUI();
     void setupMenuBar();
-    void setupToolBar();
+    void setupRibbon();
     void connectSignals();
     void updateTitle();
     void updateAutosaveAction();
@@ -94,6 +95,7 @@ private:
     int              m_selectedSlide = -1;
     QAction*         m_browserAction = nullptr;
     LocalHttpServer* m_previewServer = nullptr;
+    QTabWidget*      m_ribbon        = nullptr;
 
     UpdateChecker*   m_updateChecker      = nullptr;
     QToolButton*     m_updateButton       = nullptr;

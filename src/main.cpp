@@ -27,6 +27,13 @@ QToolButton           { background: transparent; border: 1px solid transparent; 
 QToolButton:hover     { background: #f3f4f6; border-color: #e5e7eb; }
 QToolButton:pressed   { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
 
+QTabWidget::pane        { border: none; border-top: 1px solid #e5e7eb; background: #f9fafb; }
+QTabBar                 { background: #ffffff; border-bottom: 1px solid #e5e7eb; }
+QTabBar::tab             { background: transparent; padding: 5px 16px; margin: 0; border: none;
+                            border-bottom: 2px solid transparent; color: #4b5563; }
+QTabBar::tab:hover:!selected { color: #111827; background: #f3f4f6; }
+QTabBar::tab:selected    { color: #2563eb; border-bottom: 2px solid #2563eb; font-weight: 600; }
+
 QSplitter::handle:horizontal { width: 1px;  background: #e5e7eb; }
 QSplitter::handle:vertical   { height: 1px; background: #e5e7eb; }
 

@@ -18,9 +18,12 @@
 #include <QMenu>
 #include <QToolBar>
 #include <QToolButton>
+#include <QTabWidget>
+#include <QTabBar>
 #include <QScrollArea>
 #include <QFrame>
 #include <QSplitter>
+#include <QVBoxLayout>
 #include <QStatusBar>
 #include <QCloseEvent>
 #include <QFileDialog>
@@ -40,7 +43,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     setupUI();
     setupMenuBar();
-    setupToolBar();
+    setupRibbon();
     setupUpdateButton();
     connectSignals();
 
@@ -89,7 +92,21 @@ void MainWindow::setupUI() {
     splitter->setStretchFactor(2, 0);
     splitter->setSizes({220, 920, 260});
 
-    setCentralWidget(splitter);
+    // ── Ribbon container: tab bar + one active tab's tools above the
+    //    slide/editor/properties splitter. Populated by setupRibbon(), which
+    //    runs after this so it can reach m_editorArea's insert toolbar.
+    auto* central = new QWidget(this);
+    auto* centralLayout = new QVBoxLayout(central);
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->setSpacing(0);
+
+    m_ribbon = new QTabWidget(central);
+    m_ribbon->setDocumentMode(true);
+    m_ribbon->tabBar()->setExpanding(false);
+    centralLayout->addWidget(m_ribbon);
+    centralLayout->addWidget(splitter, 1);
+
+    setCentralWidget(central);
     statusBar()->showMessage("Ready");
 }
 
@@ -127,11 +144,19 @@ void MainWindow::setupMenuBar() {
     });
 }
 
-void MainWindow::setupToolBar() {
-    // ── File toolbar ──
-    QToolBar* tb = addToolBar("File");
+void MainWindow::setupRibbon() {
+    // ── "Start" tab: quick-access actions (was the "File" toolbar) ──
+    // The ribbon area is sized to the tallest tab page (the multi-row
+    // "Bearbeiten" groups) — plain small toolbar buttons would float in
+    // that extra height looking tiny, so this toolbar uses bigger icons
+    // and generous padding to fill the space like Office's ribbon does.
+    QToolBar* tb = new QToolBar(m_ribbon);
     tb->setMovable(false);
     tb->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    tb->setIconSize(QSize(26, 26));
+    tb->setStyleSheet(
+        "QToolButton { padding:8px 12px; font-size:12px; }"
+        "QToolBar::separator { margin:4px 6px; }");
     tb->addAction(m_undoAction);
     m_undoAction->setIcon(QIcon(":/icons/undo.svg"));
     m_undoAction->setToolTip("Undo (Ctrl+Z)");
@@ -157,18 +182,15 @@ void MainWindow::setupToolBar() {
     tb->addSeparator();
     QAction* varsAction = tb->addAction("Variables", this, &MainWindow::openVariableManager);
     varsAction->setToolTip("Create variables and use them as {name} in any text");
+    m_ribbon->addTab(tb, "Start");
 
-    // ── Format toolbar (second row) ──
+    // ── "Bearbeiten" tab: text/geometry formatting (FormatBar) ──
     // Wrapped in a QScrollArea: FormatBar's content can get wider than the
     // window (many buttons/combos across text + geometry groups), and a
-    // QToolBar does not offer any overflow/scroll mechanism for a single
-    // custom widget added via addWidget() — without this, controls past the
-    // visible edge are simply inaccessible.
-    addToolBarBreak();
-    QToolBar* ftb = addToolBar("Format");
-    ftb->setMovable(false);
-    m_formatBar = new FormatBar(ftb);
-    auto* formatScroll = new QScrollArea(ftb);
+    // plain widget offers no overflow/scroll mechanism on its own — without
+    // this, controls past the visible edge would simply be inaccessible.
+    m_formatBar = new FormatBar();
+    auto* formatScroll = new QScrollArea(m_ribbon);
     formatScroll->setWidget(m_formatBar);
     formatScroll->setWidgetResizable(true);
     formatScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -178,7 +200,12 @@ void MainWindow::setupToolBar() {
     formatScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     formatScroll->setFrameShape(QFrame::NoFrame);
     formatScroll->setMinimumHeight(m_formatBar->sizeHint().height() + 8);
-    ftb->addWidget(formatScroll);
+    m_ribbon->addTab(formatScroll, "Bearbeiten");
+
+    // ── "Einfügen" tab: insert-element toolbar, reparented from EditorArea ──
+    m_ribbon->addTab(m_editorArea->insertToolbarWidget(), "Einfügen");
+
+    m_ribbon->setCurrentIndex(0);
 }
 
 void MainWindow::setupUpdateButton() {
