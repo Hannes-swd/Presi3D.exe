@@ -147,7 +147,7 @@ void MainWindow::setupMenuBar() {
 void MainWindow::setupRibbon() {
     // ── "Start" tab: quick-access actions (was the "File" toolbar) ──
     // The ribbon area is sized to the tallest tab page (the multi-row
-    // "Bearbeiten" groups) — plain small toolbar buttons would float in
+    // "Edit" groups) — plain small toolbar buttons would float in
     // that extra height looking tiny, so this toolbar uses bigger icons
     // and generous padding to fill the space like Office's ribbon does.
     QToolBar* tb = new QToolBar(m_ribbon);
@@ -184,7 +184,7 @@ void MainWindow::setupRibbon() {
     varsAction->setToolTip("Create variables and use them as {name} in any text");
     m_ribbon->addTab(tb, "Start");
 
-    // ── "Bearbeiten" tab: text/geometry formatting (FormatBar) ──
+    // ── "Edit" tab: text/geometry formatting (FormatBar) ──
     // Wrapped in a QScrollArea: FormatBar's content can get wider than the
     // window (many buttons/combos across text + geometry groups), and a
     // plain widget offers no overflow/scroll mechanism on its own — without
@@ -200,10 +200,10 @@ void MainWindow::setupRibbon() {
     formatScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     formatScroll->setFrameShape(QFrame::NoFrame);
     formatScroll->setMinimumHeight(m_formatBar->sizeHint().height() + 8);
-    m_ribbon->addTab(formatScroll, "Bearbeiten");
+    m_ribbon->addTab(formatScroll, "Edit");
 
-    // ── "Einfügen" tab: insert-element toolbar, reparented from EditorArea ──
-    m_ribbon->addTab(m_editorArea->insertToolbarWidget(), "Einfügen");
+    // ── "Insert" tab: insert-element toolbar, reparented from EditorArea ──
+    m_ribbon->addTab(m_editorArea->insertToolbarWidget(), "Insert");
 
     m_ribbon->setCurrentIndex(0);
 }

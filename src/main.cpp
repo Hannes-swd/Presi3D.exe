@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QPalette>
 #include <QColor>
+#include <QIcon>
 #include <QStyleHints>
 #include "MainWindow.h"
 #include "dialogs/StartDialog.h"
@@ -133,6 +134,7 @@ int main(int argc, char* argv[]) {
     app.styleHints()->setColorScheme(Qt::ColorScheme::Light);
 
     app.setApplicationName("Presi 3D");
+    app.setWindowIcon(QIcon(":/branding/app_icon.png"));
     app.setStyleSheet(QString::fromUtf8(DARK_QSS));
     app.setApplicationVersion(QStringLiteral(APP_VERSION));
     app.setOrganizationName("presiEditor");

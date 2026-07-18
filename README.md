@@ -21,6 +21,23 @@ slides in space and picking their path through the presentation. When
 you're done, one click exports a self-contained Impress.js website
 (index.html + styles.css + assets/) that runs anywhere.
 
+Screenshots
+-----------
+![Start dialog](screenshots/StartDialog.png)
+*Start dialog - create a new project or open an existing one.*
+
+![Main editor](screenshots/Main%20Edditor.png)
+*Main editor window with slide list, 2D canvas and properties panel.*
+
+![Editing content](screenshots/Edditing.png)
+*Editing slide content with the format bar.*
+
+![Insert ribbon](screenshots/Insert.png)
+*Insert ribbon - adding text, shapes, images and other elements.*
+
+![3D editor](screenshots/3DEdditor.png)
+*3D view for arranging slides and world objects in space.*
+
 Architecture
 ------------
 ```

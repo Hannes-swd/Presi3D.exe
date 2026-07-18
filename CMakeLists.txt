@@ -10,6 +10,7 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Widgets OpenGL OpenGLWidgets Netwo
 
 set(SOURCES
     resources/icons.qrc
+    resources/app.rc
     src/main.cpp
     src/MainWindow.cpp
     src/LocalHttpServer.cpp

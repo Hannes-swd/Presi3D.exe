@@ -63,7 +63,7 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
 
     // ── Insert toolbar (2D only) ───────────────────────────────────────
     // Not added to mainLayout here: MainWindow reparents this widget into
-    // its ribbon's "Einfügen" tab via insertToolbarWidget(). It stays a
+    // its ribbon's "Insert" tab via insertToolbarWidget(). It stays a
     // child of EditorArea only until that reparenting happens.
     m_insertToolbar = new QWidget(this);
     m_insertToolbar->setFixedHeight(36);

@@ -18,6 +18,7 @@ AppVersion={#MyAppVersion}
 DefaultDirName={autopf}\Presi3D
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=..\resources\app.ico
 ArchiveExtraction=auto
 Compression=lzma2
 SolidCompression=yes
