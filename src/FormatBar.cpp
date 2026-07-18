@@ -102,7 +102,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         v->setSpacing(2);
         v->addLayout(top);
         v->addLayout(bottom);
-        tr->addWidget(makeGroup(m_textGroup, "Schrift", v));
+        tr->addWidget(makeGroup(m_textGroup, "Text", v));
     }
     tr->addWidget(makeSep(m_textGroup));
 
@@ -151,7 +151,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         v->setSpacing(2);
         v->addLayout(top);
         v->addLayout(bottom);
-        tr->addWidget(makeGroup(m_textGroup, "Schriftschnitt", v));
+        tr->addWidget(makeGroup(m_textGroup, "Text Format", v));
     }
     tr->addWidget(makeSep(m_textGroup));
 
@@ -191,7 +191,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         v->setSpacing(2);
         v->addLayout(top);
         v->addLayout(bottom);
-        tr->addWidget(makeGroup(m_textGroup, "Ausrichtung", v));
+        tr->addWidget(makeGroup(m_textGroup, "Orientation", v));
     }
     tr->addWidget(makeSep(m_textGroup));
 
@@ -212,7 +212,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
 
         auto* v = new QVBoxLayout();
         v->addLayout(top);
-        tr->addWidget(makeGroup(m_textGroup, "Liste", v));
+        tr->addWidget(makeGroup(m_textGroup, "List", v));
     }
     tr->addWidget(makeSep(m_textGroup));
 
@@ -255,7 +255,7 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
         v->setSpacing(2);
         v->addLayout(top);
         v->addLayout(bottom);
-        tr->addWidget(makeGroup(m_textGroup, "Erweitert", v));
+        tr->addWidget(makeGroup(m_textGroup, "Advanced", v));
     }
 
     row->addWidget(m_textGroup);
