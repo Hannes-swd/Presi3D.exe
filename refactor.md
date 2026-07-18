@@ -65,7 +65,44 @@ Ein Mod = ein Ordner (z.B. `mods/mein-element/`) mit:
 - `template.html` (+ css/js) – für den Web-Export, wird 1:1 mit ins exportierte
   Presentation-Verzeichnis kopiert bzw. mit Property-Werten befüllt.
 
-## 4. Nötige Kernrefactorings (keine Neuschreibung, aber gezielt invasiv)
+## 4. UI-Registry: Funktionen hinzufügen/entfernen/bearbeiten + Platzierung wählen
+
+Zusätzliche Anforderung: Modder sollen nicht nur neue Elementtypen anbieten,
+sondern auch bestehende Funktionen (Buttons, Menüeinträge) hinzufügen,
+entfernen oder bearbeiten können – und dabei wählen können, WO (welcher
+Ribbon-Tab, welche Position) ein Button erscheint.
+
+**Kernidee: eine zentrale Registry für UI-Aktionen**, in die eingebaute UND
+Mod-Funktionen nach demselben Prinzip eingetragen werden – kein getrenntes
+System für "echte" vs. "Mod"-Buttons.
+
+- **Slots statt Pixel-Koordinaten:** Jede UI-Stelle (Ribbon-Tab `Start`,
+  `Bearbeiten`, `Einfügen`, Kontextmenü, Properties-Panel-Abschnitt) ist ein
+  benannter Container mit stabiler ID. Ein Mod gibt im Manifest an, in
+  welchem Slot sein Eintrag erscheinen soll (z.B. `ribbon.einfuegen`) plus
+  eine relative Position (z.B. "nach ID X" oder eine Sortierzahl) – keine
+  freie Layout-Programmierung nötig.
+- **Hinzufügen:** Mod registriert einen neuen Eintrag mit eigener eindeutiger
+  ID im gewünschten Slot.
+- **Entfernen:** Mod referenziert die ID eines bestehenden Eintrags (egal ob
+  eingebaut oder von einem anderen Mod) und markiert ihn als versteckt.
+- **Bearbeiten:** Mod referenziert eine bestehende ID und überschreibt Label,
+  Icon oder Verhalten (Handler).
+- **Voraussetzung:** Damit Mods auf bestehende Einträge zeigen können, müssen
+  auch die eingebauten Funktionen (Undo, Save, Export, Text-Button, die
+  Ribbon-Tabs selbst usw.) über dieselbe Registry laufen, statt wie aktuell
+  fest in `MainWindow::setupRibbon()` / `EditorArea` verdrahtet zu sein –
+  intern quasi als "System-Mods" behandelt werden.
+- **Konfliktfall:** Wenn mehrere Mods dieselbe ID bearbeiten/entfernen
+  wollen, braucht es eine Regel (z.B. Ladereihenfolge oder Prioritätszahl im
+  Manifest entscheidet).
+
+Das betrifft direkt die frisch gebaute Ribbon-Struktur (Commit "ribbon
+interface"): `MainWindow::setupRibbon()`, `EditorArea::insertToolbarWidget()`
+und die dort mit `addAction`/`mkBtn` fest verdrahteten Buttons müssten auf
+Registry-Einträge umgestellt werden, damit Mods dort mitmischen können.
+
+## 5. Nötige Kernrefactorings (keine Neuschreibung, aber gezielt invasiv)
 
 Betroffene Dateien / Stellen, die von hart-codierten Typen auf ein
 Interface/Registry-Pattern umgestellt werden müssen:
@@ -86,8 +123,13 @@ Interface/Registry-Pattern umgestellt werden müssen:
    Mod → Fehlermeldung statt Crash).
 7. Mod-Loader beim Programmstart: `mods/*/manifest.json` einlesen, Toolbar-
    Buttons + Kontextmenü-Einträge daraus generieren.
+8. `src/MainWindow.cpp` (`setupRibbon`) + `src/EditorArea.h/.cpp`
+   (`insertToolbarWidget`) – bestehende Ribbon-Buttons/Tabs müssen als
+   Registry-Einträge (siehe Abschnitt 4) statt als direkte `addAction`/
+   `mkBtn`-Aufrufe existieren, damit Mods sie referenzieren, verstecken oder
+   überschreiben können.
 
-## 5. Offene Fragen / noch zu klären
+## 6. Offene Fragen / noch zu klären
 
 - Wie wird die Animation im Editor **vorgeschaut** (echte CSS-Animation gibt's
   ja nur im Web-Export)? Optionen: statische Vorschau, oder einfache Keyframe-
@@ -100,12 +142,15 @@ Interface/Registry-Pattern umgestellt werden müssen:
   Updates?).
 - Sicherheits-/Vertrauensmodell: dürfen Mods beliebig aus dem Internet geladen
   werden, oder nur lokal installierte?
+- Konfliktregel für die UI-Registry (Abschnitt 4), wenn mehrere Mods dieselbe
+  ID bearbeiten/entfernen wollen.
 
-## 6. Aufwandseinschätzung
+## 7. Aufwandseinschätzung
 
 Kein Komplett-Rewrite. Der OpenGL-Renderer, die Timeline/Animation-Engine, das
 Variablen-System und die Dialog-Infrastruktur bleiben unverändert. Der Umbau
-betrifft gezielt die ~6-7 oben genannten Dispatch-Stellen. Realistisch: eher
-ein größeres Feature-Projekt als eine Kleinigkeit, aber machbar in Etappen
-(z.B. zuerst nur "neue Elementtypen mit Properties", Rechtsklick-Aktionen und
-Web-Export-Templates als spätere Ausbaustufe).
+betrifft gezielt die ~8 oben genannten Dispatch-Stellen (inkl. der neuen
+Ribbon-Struktur). Realistisch: eher ein größeres Feature-Projekt als eine
+Kleinigkeit, aber machbar in Etappen (z.B. zuerst nur "neue Elementtypen mit
+Properties", dann UI-Registry für Platzierung/Entfernen/Bearbeiten,
+Rechtsklick-Aktionen und Web-Export-Templates als spätere Ausbaustufen).
