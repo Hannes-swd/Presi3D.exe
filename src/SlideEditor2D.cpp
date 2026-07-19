@@ -1067,6 +1067,82 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                    e.content.isEmpty() ? "iFrame – double-click for link" : e.content);
         p.restore();
 
+    } else if (e.type == SlideElement::Video) {
+        bool hasRot = (e.rotation != 0.f);
+        if (hasRot) {
+            p.save();
+            p.translate(wr.center());
+            p.rotate(double(e.rotation));
+            p.translate(-wr.center());
+        }
+        p.fillRect(wr, QColor(20, 20, 24));
+        p.setPen(QColor(70, 70, 78));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(wr);
+
+        QRectF playRect(wr.center().x() - wr.height() * 0.14, wr.center().y() - wr.height() * 0.18,
+                        wr.height() * 0.28, wr.height() * 0.36);
+        QPolygonF tri;
+        tri << playRect.topLeft() << QPointF(playRect.right(), playRect.center().y()) << playRect.bottomLeft();
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(230, 230, 235));
+        p.drawPolygon(tri);
+
+        p.setPen(QColor(200, 200, 210));
+        QFont labelFont("Arial", qMax(6, int(9 * scaleY)));
+        p.setFont(labelFont);
+        QRectF labelRect(wr.x() + 4, wr.bottom() - 20 * scaleY, wr.width() - 8, 18 * scaleY);
+        p.drawText(labelRect, Qt::AlignCenter,
+                   e.content.isEmpty() ? "[Video]" : QFileInfo(e.content).fileName());
+        if (hasRot) p.restore();
+
+    } else if (e.type == SlideElement::Audio) {
+        bool hasRot = (e.rotation != 0.f);
+        if (hasRot) {
+            p.save();
+            p.translate(wr.center());
+            p.rotate(double(e.rotation));
+            p.translate(-wr.center());
+        }
+        float rr = qMin(wr.height() * 0.5f, 18.f * scaleY);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(30, 41, 59));
+        p.drawRoundedRect(wr, rr, rr);
+
+        QRectF iconRect(wr.x() + wr.width() * 0.04, wr.y(), wr.height(), wr.height());
+        QPolygonF tri;
+        tri << QPointF(iconRect.center().x() - iconRect.width() * 0.12, iconRect.center().y() - iconRect.height() * 0.18)
+            << QPointF(iconRect.center().x() + iconRect.width() * 0.16, iconRect.center().y())
+            << QPointF(iconRect.center().x() - iconRect.width() * 0.12, iconRect.center().y() + iconRect.height() * 0.18);
+        p.setBrush(QColor(230, 230, 235));
+        p.drawPolygon(tri);
+
+        QRectF barsRect(iconRect.right(), wr.y() + wr.height() * 0.22,
+                       wr.width() - iconRect.width() - wr.width() * 0.12, wr.height() * 0.56);
+        if (e.audioShowWaveform) {
+            // Deterministic pseudo-waveform (no decoded amplitude data in the
+            // editor) purely so the two display modes look visually distinct
+            // while editing — the real per-sample waveform is drawn client-side
+            // at export time (Web Audio API), see HtmlExporter's audio JS.
+            int bars = qMax(4, int(barsRect.width() / (4 * scaleY)));
+            uint seed = qHash(e.content);
+            for (int i = 0; i < bars; ++i) {
+                seed = seed * 1103515245u + 12345u;
+                float f = float((seed >> 8) & 0xFF) / 255.f;
+                float bh = barsRect.height() * (0.25f + 0.75f * f);
+                float bx = barsRect.x() + i * (barsRect.width() / bars);
+                p.setBrush(QColor(100, 116, 139));
+                p.drawRect(QRectF(bx, barsRect.center().y() - bh / 2, qMax(1.0, barsRect.width() / bars - 2), bh));
+            }
+        } else {
+            p.setPen(QColor(203, 213, 225));
+            QFont labelFont("Arial", qMax(6, int(9 * scaleY)));
+            p.setFont(labelFont);
+            p.drawText(barsRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextWordWrap,
+                       e.content.isEmpty() ? "[Audio]" : QFileInfo(e.content).fileName());
+        }
+        if (hasRot) p.restore();
+
     } else if (e.type == SlideElement::Button) {
         QRectF sr2 = slideRect();
         float rx = e.cornerRadius * sr2.width()  / SLIDE_W_DEFAULT;
@@ -2294,12 +2370,23 @@ void SlideEditor2D::dropEvent(QDropEvent* e) {
     QPointF dropPos = e->position();
 
     if (md->hasUrls()) {
-        static const QStringList exts = {"png","jpg","jpeg","bmp","gif","webp","svg"};
+        static const QStringList imgExts = {"png","jpg","jpeg","bmp","gif","webp","svg"};
         for (const QUrl& url : md->urls()) {
             if (!url.isLocalFile()) continue;
             QString path = url.toLocalFile();
-            if (exts.contains(QFileInfo(path).suffix().toLower())) {
+            QString suffix = QFileInfo(path).suffix().toLower();
+            if (imgExts.contains(suffix)) {
                 addImageFromPath(path, dropPos);
+                e->acceptProposedAction();
+                return;
+            }
+            if (suffix == "mp4") {
+                addMediaFromPath(path, SlideElement::Video, dropPos);
+                e->acceptProposedAction();
+                return;
+            }
+            if (suffix == "mp3") {
+                addMediaFromPath(path, SlideElement::Audio, dropPos);
                 e->acceptProposedAction();
                 return;
             }
@@ -2395,10 +2482,34 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
     }
 
     QMenu menu(this);
+    QAction* aAutoplay    = nullptr;
+    QAction* aWaveformOn  = nullptr;
+    QAction* aWaveformOff = nullptr;
+    bool isMediaSingle = false;
     if (!m_selectedElems.isEmpty()) {
         const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
         bool isGrouped = s && m_selectedElem >= 0 && m_selectedElem < s->elements.size()
                          && !s->elements[m_selectedElem].groupId.isEmpty();
+
+        // Video/Audio playback options — only shown for a single selected media element.
+        if (m_selectedElems.size() == 1 && s && m_selectedElem >= 0 && m_selectedElem < s->elements.size()) {
+            const SlideElement& me = s->elements[m_selectedElem];
+            if (me.type == SlideElement::Video || me.type == SlideElement::Audio) {
+                isMediaSingle = true;
+                aAutoplay = menu.addAction("Autostart (beim Erreichen der Folie)");
+                aAutoplay->setCheckable(true);
+                aAutoplay->setChecked(me.mediaAutoplay);
+                if (me.type == SlideElement::Audio) {
+                    aWaveformOn = menu.addAction("Anzeige: Wellenform");
+                    aWaveformOn->setCheckable(true);
+                    aWaveformOn->setChecked(me.audioShowWaveform);
+                    aWaveformOff = menu.addAction("Anzeige: Kompakt (Symbol + Dauer)");
+                    aWaveformOff->setCheckable(true);
+                    aWaveformOff->setChecked(!me.audioShowWaveform);
+                }
+                menu.addSeparator();
+            }
+        }
 
         menu.addAction("Copy  (Ctrl+C)", this, &SlideEditor2D::copySelectedElement);
         menu.addAction("Cut (Ctrl+X)", this, [this]() {
@@ -2422,7 +2533,27 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
     }
     auto* pasteAct = menu.addAction("Paste (Ctrl+V)", this, &SlideEditor2D::pasteElement);
     pasteAct->setEnabled(s_hasClipboard);
-    menu.exec(e->globalPos());
+    QAction* chosen = menu.exec(e->globalPos());
+
+    if (isMediaSingle) {
+        Slide* ms = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+        if (ms && m_selectedElem >= 0 && m_selectedElem < ms->elements.size()) {
+            SlideElement& me = ms->elements[m_selectedElem];
+            if (chosen == aAutoplay) {
+                me.mediaAutoplay = aAutoplay->isChecked();
+                emit presentationModified();
+                update();
+            } else if (chosen == aWaveformOn) {
+                me.audioShowWaveform = true;
+                emit presentationModified();
+                update();
+            } else if (chosen == aWaveformOff) {
+                me.audioShowWaveform = false;
+                emit presentationModified();
+                update();
+            }
+        }
+    }
 }
 
 // ── Element operations ────────────────────────────────────────────────────────
@@ -2514,6 +2645,42 @@ void SlideEditor2D::addImageFromPath(const QString& path, QPointF widgetPos) {
     update();
     emit presentationModified();
     emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::addMediaFromPath(const QString& path, SlideElement::Type type, QPointF widgetPos) {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s) return;
+    SlideElement e;
+    e.type    = type;
+    e.content = path;
+    if (type == SlideElement::Video) { e.width = 640.f; e.height = 360.f; }
+    else                             { e.width = 400.f; e.height = 100.f; }
+    if (widgetPos.x() >= 0) {
+        QPointF sp = widgetToSlide(widgetPos);
+        e.x = float(sp.x()) - e.width  * 0.5f;
+        e.y = float(sp.y()) - e.height * 0.5f;
+    } else {
+        e.x = 200.f; e.y = 150.f;
+    }
+    s->elements.append(e);
+    setSingleSelection(s->elements.size() - 1);
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
+}
+
+void SlideEditor2D::addVideoElement() {
+    QString path = QFileDialog::getOpenFileName(nullptr, "Open Video", {},
+        "Videos (*.mp4);;All Files (*)");
+    if (path.isEmpty()) return;
+    addMediaFromPath(path, SlideElement::Video);
+}
+
+void SlideEditor2D::addAudioElement() {
+    QString path = QFileDialog::getOpenFileName(nullptr, "Open Audio", {},
+        "Audio (*.mp3);;All Files (*)");
+    if (path.isEmpty()) return;
+    addMediaFromPath(path, SlideElement::Audio);
 }
 
 void SlideEditor2D::addTableElement(int rows, int cols) {

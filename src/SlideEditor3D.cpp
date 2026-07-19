@@ -628,6 +628,29 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                        elem.content.isEmpty() ? QStringLiteral("\U0001F310 iFrame") : elem.content);
             p.restore();
 
+        } else if (elem.type == SlideElement::Video) {
+            p.fillRect(r, QColor(20, 20, 24));
+            p.setPen(QColor(70, 70, 78));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(r);
+            p.save();
+            p.setPen(QColor(200, 200, 210));
+            p.setFont(QFont("Arial", qMax(6, int(20 * sy))));
+            p.drawText(r, int(Qt::AlignCenter | Qt::TextWordWrap),
+                       QStringLiteral("▶ ") + (elem.content.isEmpty() ? "Video" : QFileInfo(elem.content).fileName()));
+            p.restore();
+
+        } else if (elem.type == SlideElement::Audio) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(30, 41, 59));
+            p.drawRoundedRect(r, qMin(r.height() / 2, 18.0), qMin(r.height() / 2, 18.0));
+            p.save();
+            p.setPen(QColor(203, 213, 225));
+            p.setFont(QFont("Arial", qMax(6, int(18 * sy))));
+            p.drawText(r, int(Qt::AlignCenter | Qt::TextWordWrap),
+                       QStringLiteral("\U0001F50A ") + (elem.content.isEmpty() ? "Audio" : QFileInfo(elem.content).fileName()));
+            p.restore();
+
         } else if (elem.type == SlideElement::Table) {
             p.fillRect(r, elem.tableDefaultBg);
             int fontPx = qMax(1, int(elem.tableFontSize * sy));

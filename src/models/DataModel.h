@@ -31,7 +31,7 @@ struct CodeSpan {
 };
 
 struct SlideElement {
-    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button, Checkbox, Slider, Icon };
+    enum Type { Text, Shape, Image, Table, Chart, Formula, IFrame, Button, Checkbox, Slider, Icon, Video, Audio };
     enum ListStyle { NoList = 0, Bullets, Numbered };
 
     QString id;
@@ -114,6 +114,11 @@ struct SlideElement {
 
     // ── Chart (only when type == Chart) ──────────────────────────────────────
     ChartData chartData;
+
+    // ── Media (Video/Audio) ────────────────────────────────────────────────────
+    // content = absolute path to the .mp4/.mp3 file (same convention as Image).
+    bool mediaAutoplay     = false; // true = play() when this element's slide becomes the active step; false = user starts it via the native/waveform play control
+    bool audioShowWaveform = false; // Audio only: false = compact native player (icon + duration); true = full WhatsApp-style waveform
 
     void initTable(int rows, int cols) {
         type      = Table;

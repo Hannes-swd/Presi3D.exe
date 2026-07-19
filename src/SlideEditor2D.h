@@ -66,6 +66,8 @@ public slots:
     void openFormulaEditor(); // open editor for selected formula element
     void addIFrameElement(const QString& url);
     void openIFrameEditor(); // open editor for selected iframe element
+    void addVideoElement();
+    void addAudioElement();
     void addButtonElement(const ButtonConfig& cfg);
     void openButtonEditor(); // open editor for selected button element
     void addCheckboxElement(const CheckboxConfig& cfg);
@@ -152,6 +154,7 @@ private:
                      const QPointF& curSlide, float origX, float origY,
                      float origW, float origH, bool constrain) const;
     void addImageFromPath(const QString& path, QPointF widgetPos = {-1,-1});
+    void addMediaFromPath(const QString& path, SlideElement::Type type, QPointF widgetPos = {-1,-1});
     void pasteTextAsNewElement(const QString& text);
 
     // Drawing

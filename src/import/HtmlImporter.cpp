@@ -639,6 +639,28 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                 parseTimelineAndOpacity(line, style, e);
                 slide.elements.append(e);
 
+            } else if (line.startsWith("<video")) {
+                // ── Video element ───────────────────────────────────────────
+                SlideElement e;
+                e.type    = SlideElement::Video;
+                QString src   = attrVal(line, "src");
+                QString style = attrVal(line, "style");
+                e.content = src.startsWith("assets/")
+                            ? QDir(assetsDir).filePath(src.mid(7)) : src;
+                e.x      = cssProp(style, "left").remove("px").toFloat();
+                e.y      = cssProp(style, "top").remove("px").toFloat();
+                e.width  = cssProp(style, "width").remove("px").toFloat();
+                e.height = cssProp(style, "height").remove("px").toFloat();
+                QString transform = cssProp(style, "transform");
+                if (transform.contains("rotate")) {
+                    QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                    auto rotM = rotRe.match(transform);
+                    if (rotM.hasMatch()) e.rotation = rotM.captured(1).toFloat();
+                }
+                e.mediaAutoplay = attrVal(line, "data-autoplay") == "true";
+                parseTimelineAndOpacity(line, style, e);
+                slide.elements.append(e);
+
             } else if (line.startsWith("<iframe")) {
                 // ── IFrame element ───────────────────────────────────────────
                 SlideElement e;
@@ -744,6 +766,34 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                         ie.content = src;
                         parseTimelineAndOpacity(dTag, style, ie);
                         slide.elements.append(ie);
+                    }
+                    continue;
+                }
+
+                // Audio element: wrapped in a div with a nested <audio src="...">
+                if (dtype == "audio") {
+                    QRegularExpression srcRe("<audio[^>]*\\ssrc=\"([^\"]*)\"");
+                    auto srcM = srcRe.match(line);
+                    if (srcM.hasMatch()) {
+                        SlideElement ae;
+                        ae.type   = SlideElement::Audio;
+                        ae.x      = cssProp(style, "left").remove("px").toFloat();
+                        ae.y      = cssProp(style, "top").remove("px").toFloat();
+                        ae.width  = cssProp(style, "width").remove("px").toFloat();
+                        ae.height = cssProp(style, "height").remove("px").toFloat();
+                        QString transform = cssProp(style, "transform");
+                        if (transform.contains("rotate")) {
+                            QRegularExpression rotRe(R"(rotate\(([-\d.]+)deg\))");
+                            auto rotM = rotRe.match(transform);
+                            if (rotM.hasMatch()) ae.rotation = rotM.captured(1).toFloat();
+                        }
+                        QString src = srcM.captured(1);
+                        ae.content = src.startsWith("assets/")
+                                     ? QDir(assetsDir).filePath(src.mid(7)) : src;
+                        ae.audioShowWaveform = attrVal(dTag, "data-audio-mode") == "waveform";
+                        ae.mediaAutoplay     = attrVal(dTag, "data-autoplay") == "true";
+                        parseTimelineAndOpacity(dTag, style, ae);
+                        slide.elements.append(ae);
                     }
                     continue;
                 }

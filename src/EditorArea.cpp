@@ -88,6 +88,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
     m_btnChart   = mkBtn("bar_chart",    "Chart",  "Insert chart");
     m_btnFormula = mkBtn("functions",    "Formula", "Insert formula (LaTeX)");
     m_btnIFrame  = mkBtn("language",     "iFrame", "Embed website/link");
+    m_btnVideo   = mkBtn("video",        "Video",  "Import video (mp4)");
+    m_btnAudio   = mkBtn("audio",        "Audio",  "Import audio (mp3)");
 
     m_btnInteractive = new QToolButton(m_insertToolbar);
     m_btnInteractive->setIcon(QIcon(":/icons/tune.svg"));
@@ -305,6 +307,8 @@ EditorArea::EditorArea(QWidget* parent) : QWidget(parent) {
         if (dlg.exec() == QDialog::Accepted && !dlg.url().isEmpty())
             m_editor2D->addIFrameElement(dlg.url());
     });
+    connect(m_btnVideo, &QPushButton::clicked, m_editor2D, &SlideEditor2D::addVideoElement);
+    connect(m_btnAudio, &QPushButton::clicked, m_editor2D, &SlideEditor2D::addAudioElement);
     auto currentSlideId = [this]() -> QString {
         const Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
         return s ? s->id : QString();

@@ -127,6 +127,12 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
             if (hasRot) p.restore();
         } else if (elem.type == SlideElement::Image) {
             p.fillRect(r, QColor(200, 200, 220));
+        } else if (elem.type == SlideElement::Video) {
+            p.fillRect(r, QColor(20, 20, 24));
+        } else if (elem.type == SlideElement::Audio) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(30, 41, 59));
+            p.drawRoundedRect(r, qMin(r.height() / 2, 10.0), qMin(r.height() / 2, 10.0));
         } else if (elem.type == SlideElement::Table) {
             p.fillRect(r, elem.tableDefaultBg);
             int fontPx = qMax(1, int(elem.tableFontSize * sy));

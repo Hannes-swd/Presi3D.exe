@@ -113,6 +113,26 @@ body {
    instead of transitioning regardless of the JS-set transition-duration. */
 [data-timeline] { transition-property: opacity, transform, background-color, color, border-color,
     left, top, width, height, border-radius, border-width, font-size; }
+
+.step video, .step audio {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+/* Waveform audio player (see initWaveformAudio in the script below): CSS-only
+   play/pause glyph swap, toggled by the "playing" class the JS adds/removes. */
+.audio-playbtn { position: relative; flex: none; width: 16px; height: 16px; }
+.audio-playbtn .ico-play {
+    position: absolute; inset: 0; width: 0; height: 0;
+    border-style: solid; border-width: 8px 0 8px 13px;
+    border-color: transparent transparent transparent #fff;
+}
+.audio-playbtn .ico-pause { position: absolute; inset: 0; display: none; gap: 3px; }
+.audio-playbtn .ico-pause span { display: block; width: 4px; height: 16px; background: #fff; }
+[data-audio-mode="waveform"].playing .audio-playbtn .ico-play  { display: none; }
+[data-audio-mode="waveform"].playing .audio-playbtn .ico-pause { display: flex; }
+.audio-time { flex: none; color: #cbd5e1; font: 12px sans-serif; min-width: 34px; text-align: right; }
 )css"
     ).arg(bg).arg(sw).arg(sh);
 }
@@ -1152,6 +1172,89 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "});\n"
         << "window.addEventListener('resize', updateActivePortals);\n"
         << "\n"
+        << "// ── Video/Audio playback ──────────────────────────────────────────\n"
+        << "// data-autoplay=\"true\": play() is (re)triggered every time this element's\n"
+        << "// slide becomes the active impress.js step, instead of the native HTML\n"
+        << "// autoplay attribute — by the time any step beyond the first is reached the\n"
+        << "// user has already interacted with the page (click/key to navigate), so\n"
+        << "// browsers' autoplay-blocking policy doesn't apply. Elements without it rely\n"
+        << "// solely on their own native controls / waveform play button.\n"
+        << "document.addEventListener('impress:stepenter', function(e) {\n"
+        << "  var media = e.target.querySelectorAll('video[data-autoplay=\"true\"], [data-type=\"audio\"][data-autoplay=\"true\"] audio');\n"
+        << "  Array.prototype.forEach.call(media, function(m) { m.currentTime = 0; var p = m.play(); if (p && p.catch) p.catch(function(){}); });\n"
+        << "});\n"
+        << "document.addEventListener('impress:stepleave', function(e) {\n"
+        << "  var media = e.target.querySelectorAll('video, [data-type=\"audio\"] audio');\n"
+        << "  Array.prototype.forEach.call(media, function(m) { m.pause(); });\n"
+        << "});\n"
+        << "\n"
+        << "// Waveform-mode audio: decode peaks once via Web Audio API, draw a\n"
+        << "// WhatsApp-style bar waveform, and drive play/pause + progress from clicks\n"
+        << "// on the pill itself (there's no native scrubber in this mode).\n"
+        << "var mediaAudioCtx = null;\n"
+        << "function initWaveformAudio(wrap) {\n"
+        << "  var audio = wrap.querySelector('audio');\n"
+        << "  var canvas = wrap.querySelector('.audio-wave');\n"
+        << "  var timeEl = wrap.querySelector('.audio-time');\n"
+        << "  if (!audio || !canvas) return;\n"
+        << "  var peaks = null;\n"
+        << "  function fmt(s) {\n"
+        << "    if (!isFinite(s) || s < 0) s = 0;\n"
+        << "    var m = Math.floor(s / 60), r = Math.floor(s % 60);\n"
+        << "    return m + ':' + (r < 10 ? '0' : '') + r;\n"
+        << "  }\n"
+        << "  function draw() {\n"
+        << "    if (!peaks || !canvas.width) return;\n"
+        << "    var ctx = canvas.getContext('2d');\n"
+        << "    var w = canvas.width, h = canvas.height;\n"
+        << "    ctx.clearRect(0, 0, w, h);\n"
+        << "    var barW = w / peaks.length;\n"
+        << "    var progress = (audio.duration > 0) ? (audio.currentTime / audio.duration) : 0;\n"
+        << "    for (var i = 0; i < peaks.length; i++) {\n"
+        << "      var bh = Math.max(2, peaks[i] * h);\n"
+        << "      var x = i * barW;\n"
+        << "      ctx.fillStyle = (x / w <= progress) ? '#4ade80' : '#64748b';\n"
+        << "      ctx.fillRect(x, (h - bh) / 2, Math.max(1, barW - 2), bh);\n"
+        << "    }\n"
+        << "  }\n"
+        << "  function resize() {\n"
+        << "    var rect = canvas.getBoundingClientRect();\n"
+        << "    if (rect.width <= 0 || rect.height <= 0) return;\n"
+        << "    canvas.width = Math.max(1, Math.round(rect.width));\n"
+        << "    canvas.height = Math.max(1, Math.round(rect.height));\n"
+        << "    draw();\n"
+        << "  }\n"
+        << "  window.addEventListener('resize', resize);\n"
+        << "  audio.addEventListener('loadedmetadata', function() { timeEl.textContent = fmt(audio.duration); resize(); });\n"
+        << "  audio.addEventListener('timeupdate', function() {\n"
+        << "    timeEl.textContent = fmt(audio.duration - audio.currentTime);\n"
+        << "    draw();\n"
+        << "  });\n"
+        << "  audio.addEventListener('play',  function() { wrap.classList.add('playing'); });\n"
+        << "  audio.addEventListener('pause', function() { wrap.classList.remove('playing'); });\n"
+        << "  audio.addEventListener('ended', function() { wrap.classList.remove('playing'); draw(); });\n"
+        << "  wrap.addEventListener('click', function() {\n"
+        << "    if (audio.paused) { var p = audio.play(); if (p && p.catch) p.catch(function(){}); } else audio.pause();\n"
+        << "  });\n"
+        << "  fetch(audio.currentSrc || audio.src).then(function(r) { return r.arrayBuffer(); }).then(function(buf) {\n"
+        << "    if (!mediaAudioCtx) mediaAudioCtx = new (window.AudioContext || window.webkitAudioContext)();\n"
+        << "    return mediaAudioCtx.decodeAudioData(buf);\n"
+        << "  }).then(function(decoded) {\n"
+        << "    var data = decoded.getChannelData(0);\n"
+        << "    var barCount = 46;\n"
+        << "    var step = Math.max(1, Math.floor(data.length / barCount));\n"
+        << "    peaks = [];\n"
+        << "    for (var i = 0; i < barCount; i++) {\n"
+        << "      var maxAmp = 0;\n"
+        << "      var end = Math.min(data.length, (i + 1) * step);\n"
+        << "      for (var j = i * step; j < end; j++) maxAmp = Math.max(maxAmp, Math.abs(data[j]));\n"
+        << "      peaks.push(maxAmp);\n"
+        << "    }\n"
+        << "    resize();\n"
+        << "  }).catch(function() {});\n"
+        << "}\n"
+        << "Array.prototype.forEach.call(document.querySelectorAll('[data-type=\"audio\"][data-audio-mode=\"waveform\"]'), initWaveformAudio);\n"
+        << "\n"
         << "document.addEventListener('keydown', function(e) {\n"
         << "  if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) {\n"
         << "    if (!document.fullscreenElement) {\n"
@@ -1574,6 +1677,52 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             "</div>")
             .arg(base, url, e.id, timelineAttr);
 
+    } else if (e.type == SlideElement::Video) {
+        if (e.content.trimmed().isEmpty()) return {};
+        QFileInfo fi(e.content);
+        QString src = fi.exists() ? "assets/" + fi.fileName() : e.content;
+        // autoplay is driven by JS on impress:stepenter (see generateHtml), not the
+        // native autoplay attribute — by the time a non-first slide is reached a
+        // user gesture has already happened, so play() isn't blocked, and this
+        // way the video also (re)starts every time its slide is re-entered.
+        QString autoAttr = e.mediaAutoplay ? " data-autoplay=\"true\"" : "";
+        return QString(
+            "<video data-type=\"video\"%1%2 src=\"%3\" controls playsinline "
+            "style=\"%4object-fit:contain;background:#000;\"></video>")
+            .arg(timelineAttr, autoAttr, src, base);
+
+    } else if (e.type == SlideElement::Audio) {
+        if (e.content.trimmed().isEmpty()) return {};
+        QFileInfo fi(e.content);
+        QString src = fi.exists() ? "assets/" + fi.fileName() : e.content;
+        QString autoAttr = e.mediaAutoplay ? " data-autoplay=\"true\"" : "";
+
+        if (!e.audioShowWaveform) {
+            return QString(
+                "<div data-type=\"audio\" data-audio-mode=\"compact\"%1%2 style=\"%3\">"
+                "<audio src=\"%4\" controls style=\"width:100%;height:100%;\"></audio>"
+                "</div>")
+                .arg(timelineAttr, autoAttr, base, src);
+        }
+
+        // WhatsApp-style waveform player: the bars/progress/play-pause icon are
+        // drawn and driven entirely by the JS in generateHtml() (initWaveformAudio) —
+        // amplitude peaks are decoded client-side from the file via Web Audio API,
+        // there's no per-sample data baked in at export time.
+        return QString(
+            "<div data-type=\"audio\" data-audio-mode=\"waveform\"%1%2 style=\"%3"
+            "display:flex;align-items:center;gap:10px;background:#1e293b;border-radius:999px;"
+            "padding:0 14px;cursor:pointer;box-sizing:border-box;overflow:hidden;\">"
+            "<audio src=\"%4\" preload=\"auto\" style=\"display:none;\"></audio>"
+            "<span class=\"audio-playbtn\">"
+            "<span class=\"ico-play\"></span>"
+            "<span class=\"ico-pause\"><span></span><span></span></span>"
+            "</span>"
+            "<canvas class=\"audio-wave\" style=\"flex:1 1 auto;height:60%;display:block;\"></canvas>"
+            "<span class=\"audio-time\">0:00</span>"
+            "</div>")
+            .arg(timelineAttr, autoAttr, base, src);
+
     } else if (e.type == SlideElement::Button) {
         QString style = base
             + QString("display:flex;align-items:center;justify-content:center;"
@@ -1671,12 +1820,18 @@ QString HtmlExporter::colorToCss(const QColor& c) {
                .arg(QString::number(c.alphaF(), 'f', 2));
 }
 
+// Despite the name (kept from when only Image existed), this also copies
+// Video/Audio source files — all three reference their file the same way
+// (elem.content = absolute path, exported as "assets/<filename>").
 bool HtmlExporter::copyImages(const Presentation& pres,
                                const QString& assetsDir, QStringList& errors) {
     bool ok = true;
     for (const auto& slide : pres.slides) {
         for (const auto& elem : slide.elements) {
-            if (elem.type != SlideElement::Image || elem.content.isEmpty()) continue;
+            bool isMediaFile = elem.type == SlideElement::Image
+                             || elem.type == SlideElement::Video
+                             || elem.type == SlideElement::Audio;
+            if (!isMediaFile || elem.content.isEmpty()) continue;
             QFileInfo fi(elem.content);
             if (!fi.exists()) {
                 errors << "Not found: " + elem.content; ok = false; continue;
@@ -1751,9 +1906,13 @@ void HtmlExporter::cleanupOrphanedAssets(const Presentation& pres,
                                           const QString& assetsDir) {
     QSet<QString> liveImageNames;
     for (const auto& slide : pres.slides)
-        for (const auto& elem : slide.elements)
-            if (elem.type == SlideElement::Image && !elem.content.isEmpty())
+        for (const auto& elem : slide.elements) {
+            bool isMediaFile = elem.type == SlideElement::Image
+                             || elem.type == SlideElement::Video
+                             || elem.type == SlideElement::Audio;
+            if (isMediaFile && !elem.content.isEmpty())
                 liveImageNames.insert(QFileInfo(elem.content).fileName());
+        }
 
     QSet<QString> liveModelIds;
     for (const auto& w : pres.worldObjects)

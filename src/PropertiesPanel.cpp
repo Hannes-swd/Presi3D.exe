@@ -756,7 +756,7 @@ void PropertiesPanel::refreshElement() {
 
     m_updating = true;
 
-    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button", "Checkbox", "Slider", "Icon"};
+    static const char* typeNames[] = {"Text", "Shape", "Image", "Table", "Chart", "Formula", "iFrame", "Button", "Checkbox", "Slider", "Icon", "Video", "Audio"};
     m_elemType->setText(multi ? QString("Gruppe (%1 Elemente)").arg(m_multiElemIndices.size())
                               : typeNames[e.type]);
 

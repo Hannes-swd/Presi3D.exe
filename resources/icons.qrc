@@ -7,6 +7,7 @@
         <file>icons/area_chart.svg</file>
         <file>icons/arrow_downward.svg</file>
         <file>icons/arrow_upward.svg</file>
+        <file>icons/audio.svg</file>
         <file>icons/bar_chart.svg</file>
         <file>icons/check_circle.svg</file>
         <file>icons/delete.svg</file>
@@ -46,6 +47,7 @@
         <file>icons/vertical_align_bottom.svg</file>
         <file>icons/vertical_align_center.svg</file>
         <file>icons/vertical_align_top.svg</file>
+        <file>icons/video.svg</file>
         <file>icons/view_module.svg</file>
         <file>icons/view_timeline.svg</file>
         <file>icons/warning.svg</file>

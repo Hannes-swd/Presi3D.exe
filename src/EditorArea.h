@@ -71,6 +71,8 @@ private:
     QPushButton*     m_btnChart    = nullptr;
     QPushButton*     m_btnFormula  = nullptr;
     QPushButton*     m_btnIFrame   = nullptr;
+    QPushButton*     m_btnVideo    = nullptr;
+    QPushButton*     m_btnAudio    = nullptr;
     QToolButton*     m_btnInteractive = nullptr; // dropdown: Button / Checkbox / Slider
     QPushButton*     m_btnDelete   = nullptr;
     // Layer buttons
