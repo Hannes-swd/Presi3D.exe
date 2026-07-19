@@ -529,8 +529,11 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
         if (!sid.isEmpty() && htmlIdToUuid.contains(sid))
             slide.id = htmlIdToUuid[sid];
 
-        // Slide name: prefer data-name, fall back to stripping "slide-" from id
-        QString dname = attrVal(tag, "data-name");
+        // Slide name: prefer data-name, fall back to stripping "slide-" from id.
+        // Exporter writes it via toHtmlEscaped() (data-name="..."), so attrVal's
+        // raw regex capture must be entity-unescaped here — otherwise every
+        // load/save round-trip re-escapes an already-escaped "&" into "&amp;amp;".
+        QString dname = unescapeTextSegment(attrVal(tag, "data-name"));
         if (!dname.isEmpty())
             slide.name = dname;
         else if (!sid.isEmpty())
@@ -792,6 +795,15 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                                      ? QDir(assetsDir).filePath(src.mid(7)) : src;
                         ae.audioShowWaveform = attrVal(dTag, "data-audio-mode") == "waveform";
                         ae.mediaAutoplay     = attrVal(dTag, "data-autoplay") == "true";
+                        // Fall back to the pill's default look (matches
+                        // drawElement()'s Audio branch) rather than
+                        // SlideElement's generic black/transparent defaults —
+                        // both for exports from before this attribute existed,
+                        // and for the never-styled compact mode (no color written).
+                        QString abg = cssProp(style, "background");
+                        ae.backgroundColor = abg.isEmpty() ? QColor(30, 41, 59) : parseCssColor(abg);
+                        QString acol = cssProp(style, "color");
+                        ae.color = acol.isEmpty() ? QColor(203, 213, 225) : parseCssColor(acol);
                         parseTimelineAndOpacity(dTag, style, ae);
                         slide.elements.append(ae);
                     }

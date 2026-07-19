@@ -130,9 +130,11 @@ body {
 }
 .audio-playbtn .ico-pause { position: absolute; inset: 0; display: none; gap: 3px; }
 .audio-playbtn .ico-pause span { display: block; width: 4px; height: 16px; background: #fff; }
-[data-audio-mode="waveform"].playing .audio-playbtn .ico-play  { display: none; }
-[data-audio-mode="waveform"].playing .audio-playbtn .ico-pause { display: flex; }
-.audio-time { flex: none; color: #cbd5e1; font: 12px sans-serif; min-width: 34px; text-align: right; }
+[data-audio-mode].playing .audio-playbtn .ico-play  { display: none; }
+[data-audio-mode].playing .audio-playbtn .ico-pause { display: flex; }
+/* No color here: inherits the per-element color set inline on the wrapper div */
+.audio-time { flex: none; font: 12px sans-serif; min-width: 34px; text-align: right; }
+.audio-label { flex: 1 1 auto; font: 12px sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 )css"
     ).arg(bg).arg(sw).arg(sh);
 }
@@ -1255,6 +1257,21 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "}\n"
         << "Array.prototype.forEach.call(document.querySelectorAll('[data-type=\"audio\"][data-audio-mode=\"waveform\"]'), initWaveformAudio);\n"
         << "\n"
+        << "// Compact-mode audio: same click-to-play/pause icon toggle as the\n"
+        << "// waveform pill, just without amplitude bars (a static filename label\n"
+        << "// takes the canvas's place — see the Audio branch in HtmlExporter).\n"
+        << "function initCompactAudio(wrap) {\n"
+        << "  var audio = wrap.querySelector('audio');\n"
+        << "  if (!audio) return;\n"
+        << "  audio.addEventListener('play',  function() { wrap.classList.add('playing'); });\n"
+        << "  audio.addEventListener('pause', function() { wrap.classList.remove('playing'); });\n"
+        << "  audio.addEventListener('ended', function() { wrap.classList.remove('playing'); });\n"
+        << "  wrap.addEventListener('click', function() {\n"
+        << "    if (audio.paused) { var p = audio.play(); if (p && p.catch) p.catch(function(){}); } else audio.pause();\n"
+        << "  });\n"
+        << "}\n"
+        << "Array.prototype.forEach.call(document.querySelectorAll('[data-type=\"audio\"][data-audio-mode=\"compact\"]'), initCompactAudio);\n"
+        << "\n"
         << "document.addEventListener('keydown', function(e) {\n"
         << "  if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) {\n"
         << "    if (!document.fullscreenElement) {\n"
@@ -1696,22 +1713,42 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         QFileInfo fi(e.content);
         QString src = fi.exists() ? "assets/" + fi.fileName() : e.content;
         QString autoAttr = e.mediaAutoplay ? " data-autoplay=\"true\"" : "";
+        QString audioBg = colorToCss(e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent
+                                      ? e.backgroundColor : QColor(30, 41, 59));
+        QString audioFg = colorToCss(e.color.isValid() ? e.color : QColor(203, 213, 225));
 
         if (!e.audioShowWaveform) {
+            // Same pill shell as the waveform player below (icon + click-to-play,
+            // see initCompactAudio in the script), but with the filename as a
+            // static label instead of a canvas — matches the editor's Audio
+            // branch, which shows the same icon+filename look for this mode.
+            QString label = QFileInfo(src).fileName().toHtmlEscaped();
             return QString(
-                "<div data-type=\"audio\" data-audio-mode=\"compact\"%1%2 style=\"%3\">"
-                "<audio src=\"%4\" controls style=\"width:100%;height:100%;\"></audio>"
+                "<div data-type=\"audio\" data-audio-mode=\"compact\"%1%2 style=\"%3"
+                "display:flex;align-items:center;gap:10px;background:%5;color:%6;border-radius:999px;"
+                "padding:0 14px;cursor:pointer;box-sizing:border-box;overflow:hidden;\">"
+                "<audio src=\"%4\" preload=\"auto\" style=\"display:none;\"></audio>"
+                "<span class=\"audio-playbtn\">"
+                "<span class=\"ico-play\"></span>"
+                "<span class=\"ico-pause\"><span></span><span></span></span>"
+                "</span>"
+                "<span class=\"audio-label\">%7</span>"
                 "</div>")
-                .arg(timelineAttr, autoAttr, base, src);
+                .arg(timelineAttr, autoAttr, base, src, audioBg, audioFg, label);
         }
 
         // WhatsApp-style waveform player: the bars/progress/play-pause icon are
         // drawn and driven entirely by the JS in generateHtml() (initWaveformAudio) —
         // amplitude peaks are decoded client-side from the file via Web Audio API,
-        // there's no per-sample data baked in at export time.
+        // there's no per-sample data baked in at export time. Background/text
+        // color are per-element (matches the editor's Audio rendering); text
+        // color is set on the wrapper div (not the .audio-time span directly)
+        // so it round-trips through the same "style=... left/top/background/
+        // color" attribute the importer already reads for every other type —
+        // .audio-time has no color of its own, so it just inherits it.
         return QString(
             "<div data-type=\"audio\" data-audio-mode=\"waveform\"%1%2 style=\"%3"
-            "display:flex;align-items:center;gap:10px;background:#1e293b;border-radius:999px;"
+            "display:flex;align-items:center;gap:10px;background:%5;color:%6;border-radius:999px;"
             "padding:0 14px;cursor:pointer;box-sizing:border-box;overflow:hidden;\">"
             "<audio src=\"%4\" preload=\"auto\" style=\"display:none;\"></audio>"
             "<span class=\"audio-playbtn\">"
@@ -1721,7 +1758,7 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             "<canvas class=\"audio-wave\" style=\"flex:1 1 auto;height:60%;display:block;\"></canvas>"
             "<span class=\"audio-time\">0:00</span>"
             "</div>")
-            .arg(timelineAttr, autoAttr, base, src);
+            .arg(timelineAttr, autoAttr, base, src, audioBg, audioFg);
 
     } else if (e.type == SlideElement::Button) {
         QString style = base

@@ -50,6 +50,8 @@ body {
 }
 .audio-playbtn .ico-pause { position: absolute; inset: 0; display: none; gap: 3px; }
 .audio-playbtn .ico-pause span { display: block; width: 4px; height: 16px; background: #fff; }
-[data-audio-mode="waveform"].playing .audio-playbtn .ico-play  { display: none; }
-[data-audio-mode="waveform"].playing .audio-playbtn .ico-pause { display: flex; }
-.audio-time { flex: none; color: #cbd5e1; font: 12px sans-serif; min-width: 34px; text-align: right; }
+[data-audio-mode].playing .audio-playbtn .ico-play  { display: none; }
+[data-audio-mode].playing .audio-playbtn .ico-pause { display: flex; }
+/* No color here: inherits the per-element color set inline on the wrapper div */
+.audio-time { flex: none; font: 12px sans-serif; min-width: 34px; text-align: right; }
+.audio-label { flex: 1 1 auto; font: 12px sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

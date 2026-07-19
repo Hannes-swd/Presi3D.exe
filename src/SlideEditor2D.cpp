@@ -50,6 +50,18 @@ static void buildLayout(QTextLayout& layout, const SlideElement& e,
 static QFont elemFont(const SlideElement& e, float scaleY);
 static float textVOff(const QTextLayout& layout, float elemH, const QString& vAlign);
 
+// QTextLayout lays out a single paragraph and does NOT treat '\n' (LF) as a
+// line break — only QChar::LineSeparator (U+2028) forces one. Our model
+// stores plain '\n' (so export's simple "\n" -> "<br>" replace keeps working),
+// so every QTextLayout built from element text must substitute LineSeparator
+// in first, purely for layout/painting/hit-testing. Both characters are a
+// single QChar, so this never shifts any cursor/selection/span offset.
+static QString layoutText(const QString& s) {
+    QString r = s;
+    r.replace(QLatin1Char('\n'), QChar::LineSeparator);
+    return r;
+}
+
 // Defaults — overridden by m_pres->slideWidth/slideHeight when available
 static constexpr float SLIDE_W_DEFAULT = 1920.f;
 static constexpr float SLIDE_H_DEFAULT = 1080.f;
@@ -856,6 +868,13 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         font.setStrikeOut(e.strikethrough);
 
         p.save();
+        // Rotate about the box's own center — same pivot hitTest()/hitHandle()
+        // already use, and the same pattern the Shape/Icon branches below use.
+        if (e.rotation != 0.f) {
+            p.translate(wr.center());
+            p.rotate(double(e.rotation));
+            p.translate(-wr.center());
+        }
         p.setFont(font);
         p.setPen(e.color.isValid() ? e.color : Qt::black);
         p.setClipRect(wr, Qt::IntersectClip);
@@ -866,7 +885,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             // (later entries only override the properties they set), so the
             // span-wide range below supplies font/background and the narrower
             // token ranges on top just add a foreground color.
-            QTextLayout layout(displayText, font);
+            QTextLayout layout(layoutText(displayText), font);
             QVector<QTextLayout::FormatRange> ranges;
             for (const CodeSpan& sp : e.codeSpans) {
                 int start = qBound(0, sp.start, displayText.length());
@@ -900,7 +919,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
             // pixel-identical to textPositionAt()/drawTextCursor()'s hit-testing
             // layout — drawText's own wrapping could disagree by a line or two
             // on long multi-line text, making clicks land on the wrong line.
-            QTextLayout layout(displayText, font);
+            QTextLayout layout(layoutText(displayText), font);
             buildLayout(layout, e, font, float(wr.width()));
             float vOff = textVOff(layout, float(wr.height()), e.verticalAlignment);
             layout.draw(&p, wr.topLeft() + QPointF(0, vOff));
@@ -1106,7 +1125,8 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
         }
         float rr = qMin(wr.height() * 0.5f, 18.f * scaleY);
         p.setPen(Qt::NoPen);
-        p.setBrush(QColor(30, 41, 59));
+        p.setBrush(e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent
+                   ? e.backgroundColor : QColor(30, 41, 59));
         p.drawRoundedRect(wr, rr, rr);
 
         QRectF iconRect(wr.x() + wr.width() * 0.04, wr.y(), wr.height(), wr.height());
@@ -1135,7 +1155,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                 p.drawRect(QRectF(bx, barsRect.center().y() - bh / 2, qMax(1.0, barsRect.width() / bars - 2), bh));
             }
         } else {
-            p.setPen(QColor(203, 213, 225));
+            p.setPen(e.color.isValid() ? e.color : QColor(203, 213, 225));
             QFont labelFont("Arial", qMax(6, int(9 * scaleY)));
             p.setFont(labelFont);
             p.drawText(barsRect, Qt::AlignVCenter | Qt::AlignLeft | Qt::TextWordWrap,
@@ -1996,7 +2016,22 @@ void SlideEditor2D::mouseMoveEvent(QMouseEvent* e) {
             SlideElement bboxElem; // pseudo-element standing in for the selection's bbox
             bboxElem.x = m_resizeOrigX; bboxElem.y = m_resizeOrigY;
             bboxElem.width = m_resizeOrigW; bboxElem.height = m_resizeOrigH;
-            applyResize(bboxElem, m_resizingHandle, curSlide,
+            // applyResize works in the element's local (un-rotated) frame — same
+            // frame hitHandle() used to detect this handle in the first place.
+            // For a single rotated element, un-rotate the cursor around the
+            // bbox center before feeding it in, else the resize math mixes a
+            // rotated screen-space point with an un-rotated rect and warps
+            // the element on every drag.
+            QPointF resizeCur = curSlide;
+            if (m_selectedElems.size() == 1) {
+                float rot = s->elements[m_selectedElems.first()].rotation;
+                if (rot != 0.f) {
+                    QPointF centerSlide(m_resizeOrigX + m_resizeOrigW / 2.f,
+                                        m_resizeOrigY + m_resizeOrigH / 2.f);
+                    resizeCur = unrotatePt(curSlide, centerSlide, rot);
+                }
+            }
+            applyResize(bboxElem, m_resizingHandle, resizeCur,
                         m_resizeOrigX, m_resizeOrigY,
                         m_resizeOrigW, m_resizeOrigH, constrain);
             float scaleX = (m_resizeOrigW > 0.0001f) ? bboxElem.width  / m_resizeOrigW : 1.f;
@@ -2654,7 +2689,18 @@ void SlideEditor2D::addMediaFromPath(const QString& path, SlideElement::Type typ
     e.type    = type;
     e.content = path;
     if (type == SlideElement::Video) { e.width = 640.f; e.height = 360.f; }
-    else                             { e.width = 400.f; e.height = 100.f; }
+    else {
+        e.width = 400.f; e.height = 100.f;
+        if (type == SlideElement::Audio) {
+            // Matches the pill's default look in drawElement()'s Audio branch —
+            // set explicitly (like addButtonElement() does) so a freshly-added
+            // Audio element already has a real, valid color/backgroundColor
+            // instead of relying on the SlideElement defaults (black/
+            // transparent), which would render near-invisible black text.
+            e.color           = QColor(203, 213, 225);
+            e.backgroundColor = QColor(30, 41, 59);
+        }
+    }
     if (widgetPos.x() >= 0) {
         QPointF sp = widgetToSlide(widgetPos);
         e.x = float(sp.x()) - e.width  * 0.5f;
@@ -3262,7 +3308,7 @@ void SlideEditor2D::handleTextEditKey(QKeyEvent* ke) {
         QRectF wr = elemToWidget(elem);
         float sy = slideRect().height() / SLIDE_H_DEFAULT;
         QFont font = elemFont(elem, sy);
-        auto* layout = new QTextLayout(text, font);
+        auto* layout = new QTextLayout(layoutText(text), font);
         buildLayout(*layout, elem, font, float(wr.width()));
         return {layout, float(wr.height())};
     };
@@ -3628,8 +3674,9 @@ void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
     QRectF wr = elemToWidget(e);
     p.save();
 
-    // Apply rotation for shape text editing
-    bool hasRot = (m_editingShapeText && e.rotation != 0.f);
+    // Apply rotation (shape text always centers when editing, drawn elsewhere;
+    // this covers plain Text elements too, matching drawElement()'s rotation)
+    bool hasRot = (e.rotation != 0.f);
     if (hasRot) {
         p.translate(wr.center());
         p.rotate(double(e.rotation));
@@ -3647,7 +3694,7 @@ void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
 
     float sy = slideRect().height() / SLIDE_H_DEFAULT;
     QFont font = elemFont(e, sy);
-    QTextLayout layout(editText, font);
+    QTextLayout layout(layoutText(editText), font);
     buildLayout(layout, e, font, float(wr.width()), alignStr);
 
     float vOff = textVOff(layout, float(wr.height()), vAlignStr);
@@ -3691,9 +3738,9 @@ void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {
 int SlideEditor2D::textPositionAt(const SlideElement& e, QPointF widgetPos) const {
     QRectF wr = elemToWidget(e);
 
-    // Undo rotation applied when drawing shape text (see drawTextCursor)
+    // Undo rotation applied when drawing the text (see drawTextCursor)
     QPointF pos = widgetPos;
-    if (m_editingShapeText && e.rotation != 0.f) {
+    if (e.rotation != 0.f) {
         QPointF center = wr.center();
         QTransform t;
         t.translate(center.x(), center.y());
@@ -3708,7 +3755,7 @@ int SlideEditor2D::textPositionAt(const SlideElement& e, QPointF widgetPos) cons
     const QString& vAlignStr = m_editingShapeText ? QString("middle") : e.verticalAlignment;
     const QString& alignStr  = m_editingShapeText ? QString("center") : QString();
 
-    QTextLayout layout(text, font);
+    QTextLayout layout(layoutText(text), font);
     buildLayout(layout, e, font, float(wr.width()), alignStr);
 
     float vOff = textVOff(layout, float(wr.height()), vAlignStr);

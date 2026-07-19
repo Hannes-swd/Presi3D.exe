@@ -1,13 +1,7 @@
-
+bilder in formen
 
 ## Priorität 2 – Inhaltselemente
 
-| Feature | Beschreibung |
-|---|---|
-| **SVG-Dateien** | SVG direkt importieren und als Vektorgrafik auf der Folie platzieren |
-| **Videos** | Lokale Videodateien einbetten, Autoplay-/Loop-Optionen |
-| **GIFs** | Animierte GIFs auf Folien platzieren |
-| **Audio** | Hintergrundmusik oder Sound-Effekte pro Folie |
 
 ---
 

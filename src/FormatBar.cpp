@@ -365,11 +365,23 @@ void FormatBar::refresh() {
     bool hasElem  = (e != nullptr);
     bool isText   = hasElem && e->type == SlideElement::Text;
     bool isShape  = hasElem && e->type == SlideElement::Shape;
+    bool isAudio  = hasElem && e->type == SlideElement::Audio;
     bool isCell   = (cell != nullptr);
     bool isTable  = hasElem && e->type == SlideElement::Table;
 
-    m_textGroup->setEnabled(isText || isCell || isShape);
+    m_textGroup->setEnabled(isText || isCell || isShape || isAudio);
     m_geomGroup->setEnabled(hasElem);
+
+    // Audio has no font/alignment/list/link concept — only the color swatches
+    // (background pill + label text, see SlideEditor2D::drawElement's Audio
+    // branch) apply, so those are the only controls this type enables.
+    m_fontCombo->setEnabled(isText || isShape || isCell);
+    m_fontSize->setEnabled(isText || isShape || isCell);
+    m_boldBtn->setEnabled(isText || isShape || isCell);
+    m_italicBtn->setEnabled(isText || isShape || isCell);
+    m_alignLeft->setEnabled(isText || isCell);
+    m_alignCenter->setEnabled(isText || isShape || isCell);
+    m_alignRight->setEnabled(isText || isCell);
 
     // Reset underline/list/vAlign (not supported per cell)
     m_ulStyleCombo->setEnabled(false);
@@ -467,6 +479,25 @@ void FormatBar::refresh() {
                 m_codeLangCombo->setCurrentIndex(0); // "Code: off"
             }
         }
+    } else if (isAudio) {
+        // Only the color swatches are meaningful here (see SlideEditor2D::
+        // drawElement's Audio branch: background pill + label text color) —
+        // font/alignment/list/link have no effect on this element type.
+        updateColorSwatch(m_colorBtn,   e->color.isValid() ? e->color : QColor(203, 213, 225));
+        updateColorSwatch(m_bgColorBtn, e->backgroundColor.isValid() && e->backgroundColor != Qt::transparent
+                                             ? e->backgroundColor : QColor(30, 41, 59));
+        m_alignLeft->setChecked(false);
+        m_alignCenter->setChecked(false);
+        m_alignRight->setChecked(false);
+        m_vAlignTop->setChecked(false);
+        m_vAlignMiddle->setChecked(false);
+        m_vAlignBottom->setChecked(false);
+        m_boldBtn->setChecked(false);
+        m_italicBtn->setChecked(false);
+        m_underlineBtn->setChecked(false);
+        m_strikeBtn->setChecked(false);
+        updateColorSwatch(m_ulColorBtn, Qt::black);
+        m_fmtPainterBtn->setEnabled(false);
     } else {
         updateColorSwatch(m_colorBtn,   Qt::black);
         updateColorSwatch(m_bgColorBtn, Qt::transparent);
@@ -545,7 +576,13 @@ void FormatBar::onBgColorClicked() {
         cell->bgColor = c; updateColorSwatch(m_bgColorBtn, c); emit modified(); return;
     }
     auto* e = currentElem(); if (!e) return;
-    QColor init = e->backgroundColor.isValid() ? e->backgroundColor : Qt::white;
+    // Elements default to a transparent background (valid QColor, alpha 0) —
+    // treat that the same as "unset" here, else the alpha-channel dialog opens
+    // with the slider already at 0 and a color pick that doesn't also drag the
+    // slider up silently stays fully transparent (invisible, looks like the
+    // change "didn't save").
+    QColor init = (e->backgroundColor.isValid() && e->backgroundColor != Qt::transparent)
+                      ? e->backgroundColor : Qt::white;
     QColor c = QColorDialog::getColor(init, this, "Background Color",
                                       QColorDialog::ShowAlphaChannel);
     if (!c.isValid()) return;
