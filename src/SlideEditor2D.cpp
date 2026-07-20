@@ -14,6 +14,7 @@
 #include "models/TimelineEngine.h"
 #include <QPainter>
 #include <QPainterPath>
+#include <algorithm>
 #include <QtMath>
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -648,6 +649,7 @@ static void drawCheckerboard(QPainter& p, const QRectF& r) {
 void SlideEditor2D::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
 
     // Scene background (behind slide)
     QColor sceneBg = (m_pres && m_pres->sceneBackground.isValid())
@@ -2669,10 +2671,12 @@ void SlideEditor2D::addImageFromPath(const QString& path, QPointF widgetPos) {
     SlideElement e;
     e.type    = SlideElement::Image;
     e.content = path;
-    // Determine size from the image itself, scale to reasonable default
+    // Determine size from the image itself; only downscale to fit a reasonable
+    // default, never upscale beyond the image's native resolution (avoids blur).
     QSize natSize = QPixmap(path).size();
     float aspect  = (natSize.height() > 0) ? float(natSize.width()) / natSize.height() : 1.f;
-    e.height = 400.f;
+    const float kMaxDefaultHeight = 400.f;
+    e.height = (natSize.height() > 0) ? std::min(float(natSize.height()), kMaxDefaultHeight) : kMaxDefaultHeight;
     e.width  = e.height * aspect;
     // Place at drop position, or centered if no position given
     if (widgetPos.x() >= 0) {
