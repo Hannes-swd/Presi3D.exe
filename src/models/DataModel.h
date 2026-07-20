@@ -112,6 +112,16 @@ struct SlideElement {
     bool             useMeshGradient = false; // false → backgroundColor is the fill (unchanged path)
     MeshGradientData meshGradient;             // ignored unless useMeshGradient && isUsable()
 
+    // ── Image/texture fill (Shape elements only) ──────────────────────────────
+    // Mutually exclusive with useMeshGradient (mesh takes priority if both set).
+    // The image always covers the shape bounds (like CSS background-size:cover);
+    // fillOffsetX/Y pan within the resulting slack, fillScale zooms in further.
+    bool    useImageFill = false;   // false → backgroundColor/meshGradient path unchanged
+    QString fillImagePath;          // absolute path to the source image (Image-element convention)
+    float   fillOffsetX  = 0.f;     // pan, -1..1 (0 = centered)
+    float   fillOffsetY  = 0.f;     // pan, -1..1 (0 = centered)
+    float   fillScale    = 1.f;     // 1.0 = cover with no extra zoom; >1 = zoomed in
+
     // ── Chart (only when type == Chart) ──────────────────────────────────────
     ChartData chartData;
 

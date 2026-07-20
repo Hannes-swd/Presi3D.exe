@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QTextStream>
 #include <QImage>
+#include <QImageReader>
 #include <QPainter>
 #include <QBuffer>
 #include <QJsonDocument>
@@ -1473,13 +1474,45 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         // live <canvas> is clipped by the exact same CSS (clip-path above,
         // or overflow:hidden+border-radius) that clips the plain-color
         // fallback, so the two can never visually drift apart.
-        QString meshAttr, meshCanvas;
+        QString meshAttr, meshCanvas, fillAttr;
         if (e.useMeshGradient && e.meshGradient.isUsable()) {
             QByteArray meshJson = QJsonDocument(e.meshGradient.toJson()).toJson(QJsonDocument::Compact);
             meshAttr = QString(" data-mesh=\"%1\"").arg(QString::fromLatin1(meshJson.toBase64()));
             style += "overflow:hidden;";
             meshCanvas = "<canvas class=\"mesh-canvas\" style=\"position:absolute;inset:0;"
                          "width:100%;height:100%;display:block;pointer-events:none;\"></canvas>";
+        } else if (e.useImageFill && !e.fillImagePath.isEmpty() && e.width > 0 && e.height > 0) {
+            // Image/texture fill: pure CSS (no JS needed, unlike the mesh
+            // gradient) — background-position/-size are pre-computed here to
+            // the exact same "always covers, offset/scale pan-and-zoom"
+            // geometry as ImageFillRenderer::renderImageFill, and the
+            // existing clip-path/border-radius (above) clips it to the
+            // shape's outline exactly like the plain-color fallback.
+            QFileInfo fi(e.fillImagePath);
+            QString src = fi.exists() ? "assets/" + fi.fileName() : e.fillImagePath;
+            QSize imgSize = QImageReader(e.fillImagePath).size();
+            if (imgSize.isValid() && imgSize.width() > 0 && imgSize.height() > 0) {
+                double coverScale = std::max(double(e.width) / imgSize.width(),
+                                              double(e.height) / imgSize.height());
+                double effScale = coverScale * std::max(0.01, double(e.fillScale));
+                double scaledW = imgSize.width()  * effScale;
+                double scaledH = imgSize.height() * effScale;
+                double slackX = std::max(0.0, scaledW - e.width);
+                double slackY = std::max(0.0, scaledH - e.height);
+                double ox = std::clamp(double(e.fillOffsetX), -1.0, 1.0);
+                double oy = std::clamp(double(e.fillOffsetY), -1.0, 1.0);
+                double left = (e.width  - scaledW) / 2.0 + ox * (slackX / 2.0);
+                double top  = (e.height - scaledH) / 2.0 + oy * (slackY / 2.0);
+                style += QString("background-image:url('%1');background-repeat:no-repeat;"
+                                  "background-position:%2px %3px;background-size:%4px %5px;overflow:hidden;")
+                             .arg(src).arg(int(left)).arg(int(top)).arg(int(scaledW)).arg(int(scaledH));
+            }
+            // Raw offset/scale round-trip for re-import (the CSS above is
+            // derived from these but re-deriving them back from px position/
+            // size on import would lose precision across repeated saves).
+            fillAttr = QString(" data-fill-src=\"%1\" data-fill-ox=\"%2\" data-fill-oy=\"%3\" data-fill-scale=\"%4\"")
+                           .arg(src).arg(double(e.fillOffsetX), 0, 'f', 4)
+                           .arg(double(e.fillOffsetY), 0, 'f', 4).arg(double(e.fillScale), 0, 'f', 4);
         }
 
         // Inner text overlay
@@ -1499,8 +1532,8 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             innerText = QString("<span%1 style=\"%2\">%3</span>")
                             .arg(varAttr, textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
         }
-        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2%3 style=\"%4\">%5%6</div>")
-                   .arg(e.content, timelineAttr, meshAttr, style, meshCanvas, innerText);
+        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2%3%7 style=\"%4\">%5%6</div>")
+                   .arg(e.content, timelineAttr, meshAttr, style, meshCanvas, innerText, fillAttr);
 
     } else if (e.type == SlideElement::Icon) {
         int iw = qMax(4, int(e.width));
@@ -1858,8 +1891,8 @@ QString HtmlExporter::colorToCss(const QColor& c) {
 }
 
 // Despite the name (kept from when only Image existed), this also copies
-// Video/Audio source files — all three reference their file the same way
-// (elem.content = absolute path, exported as "assets/<filename>").
+// Video/Audio source files and a Shape's texture-fill image — all reference
+// their file the same way (absolute path, exported as "assets/<filename>").
 bool HtmlExporter::copyImages(const Presentation& pres,
                                const QString& assetsDir, QStringList& errors) {
     bool ok = true;
@@ -1868,14 +1901,17 @@ bool HtmlExporter::copyImages(const Presentation& pres,
             bool isMediaFile = elem.type == SlideElement::Image
                              || elem.type == SlideElement::Video
                              || elem.type == SlideElement::Audio;
-            if (!isMediaFile || elem.content.isEmpty()) continue;
-            QFileInfo fi(elem.content);
+            QString path = isMediaFile ? elem.content
+                          : (elem.type == SlideElement::Shape && elem.useImageFill) ? elem.fillImagePath
+                          : QString();
+            if (path.isEmpty()) continue;
+            QFileInfo fi(path);
             if (!fi.exists()) {
-                errors << "Not found: " + elem.content; ok = false; continue;
+                errors << "Not found: " + path; ok = false; continue;
             }
             QString dest = QDir(assetsDir).filePath(fi.fileName());
-            if (!QFile::exists(dest) && !QFile::copy(elem.content, dest)) {
-                errors << "Copy failed: " + elem.content; ok = false;
+            if (!QFile::exists(dest) && !QFile::copy(path, dest)) {
+                errors << "Copy failed: " + path; ok = false;
             }
         }
     }
@@ -1949,6 +1985,8 @@ void HtmlExporter::cleanupOrphanedAssets(const Presentation& pres,
                              || elem.type == SlideElement::Audio;
             if (isMediaFile && !elem.content.isEmpty())
                 liveImageNames.insert(QFileInfo(elem.content).fileName());
+            if (elem.type == SlideElement::Shape && elem.useImageFill && !elem.fillImagePath.isEmpty())
+                liveImageNames.insert(QFileInfo(elem.fillImagePath).fileName());
         }
 
     QSet<QString> liveModelIds;

@@ -28,7 +28,6 @@ bilder in formen
 
 | Feature | Beschreibung |
 |---|---|
-| **Folienübergänge (UI)** | Impress.js-Übergänge konfigurieren (bereits im HTML, UI fehlt) |
 | **3D-Kamerafahrten** | Animierter Pfad durch den 3D-Raum zwischen Folien |
 
 ---

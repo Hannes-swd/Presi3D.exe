@@ -24,6 +24,7 @@ set(SOURCES
     src/models/ChartData.cpp
     src/models/MeshGradientData.cpp
     src/MeshGradientRenderer.cpp
+    src/ImageFillRenderer.cpp
     src/models/VariableModel.cpp
     src/models/VariableEngine.cpp
     src/models/TimelineTrack.cpp
@@ -46,6 +47,7 @@ set(SOURCES
     src/dialogs/InsertSliderDialog.cpp
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/MeshGradientDialog.cpp
+    src/dialogs/ImageFillDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
     src/dialogs/IconPickerDialog.cpp
     src/IconUtils.cpp

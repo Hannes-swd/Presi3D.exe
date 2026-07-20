@@ -1,6 +1,7 @@
 #include "SlideEditor2D.h"
 #include "ShapeUtils.h"
 #include "MeshGradientRenderer.h"
+#include "ImageFillRenderer.h"
 #include "IconUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "rendering/LatexRenderer.h"
@@ -947,6 +948,12 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                 QImage meshImg = MeshGradientRenderer::renderMeshGradient(
                     e.content, wr.size().toSize(), e.meshGradient, QSizeF(rx, ry));
                 p.drawImage(wr.topLeft(), meshImg);
+                p.setBrush(Qt::NoBrush);
+            } else if (e.useImageFill && !e.fillImagePath.isEmpty() && e.content != "line") {
+                QImage fillImg = ImageFillRenderer::renderImageFill(
+                    e.content, wr.size().toSize(), e.fillImagePath,
+                    e.fillOffsetX, e.fillOffsetY, e.fillScale, QSizeF(rx, ry));
+                p.drawImage(wr.topLeft(), fillImg);
                 p.setBrush(Qt::NoBrush);
             } else {
                 p.setBrush(e.backgroundColor == Qt::transparent ? Qt::NoBrush : QBrush(e.backgroundColor));

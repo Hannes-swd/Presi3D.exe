@@ -1,6 +1,7 @@
 #include "SlideEditor3D.h"
 #include "ShapeUtils.h"
 #include "MeshGradientRenderer.h"
+#include "ImageFillRenderer.h"
 #include "IconUtils.h"
 #include "models/WorldObjectMesh.h"
 #include "rendering/ChartRenderer.h"
@@ -583,6 +584,12 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                 QImage meshImg = MeshGradientRenderer::renderMeshGradient(
                     elem.content, r.size().toSize(), elem.meshGradient, QSizeF(rx, ry));
                 p.drawImage(r.topLeft(), meshImg);
+                p.setBrush(Qt::NoBrush);
+            } else if (elem.useImageFill && !elem.fillImagePath.isEmpty() && elem.content != "line") {
+                QImage fillImg = ImageFillRenderer::renderImageFill(
+                    elem.content, r.size().toSize(), elem.fillImagePath,
+                    elem.fillOffsetX, elem.fillOffsetY, elem.fillScale, QSizeF(rx, ry));
+                p.drawImage(r.topLeft(), fillImg);
                 p.setBrush(Qt::NoBrush);
             } else {
                 QBrush brush = (elem.backgroundColor.isValid() && elem.backgroundColor != Qt::transparent)

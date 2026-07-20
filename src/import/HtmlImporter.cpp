@@ -1027,6 +1027,19 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                             e.useMeshGradient = e.meshGradient.isUsable();
                         }
                     }
+                    // Image/texture fill (see HtmlExporter's data-fill-* attributes;
+                    // the raw offset/scale are stored separately from the derived
+                    // background-position/-size CSS so re-import is lossless).
+                    QString fillSrc = attrVal(dTag, "data-fill-src");
+                    if (!fillSrc.isEmpty()) {
+                        e.fillImagePath = fillSrc.startsWith("assets/")
+                                              ? QDir(assetsDir).filePath(fillSrc.mid(7)) : fillSrc;
+                        e.fillOffsetX  = attrVal(dTag, "data-fill-ox").toFloat();
+                        e.fillOffsetY  = attrVal(dTag, "data-fill-oy").toFloat();
+                        QString scaleStr = attrVal(dTag, "data-fill-scale");
+                        e.fillScale    = scaleStr.isEmpty() ? 1.f : scaleStr.toFloat();
+                        e.useImageFill = !e.useMeshGradient;
+                    }
                     // Shape text from inner <span>
                     if (!elemTxt.isEmpty()) {
                         QRegularExpression spanRe(

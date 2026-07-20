@@ -3,6 +3,7 @@
 #include "dialogs/ChartEditorDialog.h"
 #include "dialogs/IconPickerDialog.h"
 #include "dialogs/MeshGradientDialog.h"
+#include "dialogs/ImageFillDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -20,6 +21,7 @@
 #include <QInputDialog>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QSignalBlocker>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -372,6 +374,11 @@ void PropertiesPanel::buildElementGroup() {
     m_eMeshGradientEditBtn = new QPushButton("Farbverlauf bearbeiten\xE2\x80\xA6", secForm.content);
     formForm->addRow(m_eMeshGradientEditBtn);
 
+    m_eImageFillChk = new QCheckBox("Bild als Textur", secForm.content);
+    formForm->addRow(m_eImageFillChk);
+    m_eImageFillEditBtn = new QPushButton("Textur bearbeiten\xE2\x80\xA6", secForm.content);
+    formForm->addRow(m_eImageFillEditBtn);
+
     m_elemFormSection = secForm.outer;
     gvbox->addWidget(secForm.outer);
 
@@ -402,6 +409,8 @@ void PropertiesPanel::buildElementGroup() {
     connect(m_eCornerRadius,   &QDoubleSpinBox::valueChanged, this, [this](double) { onElemCornerRadiusChanged(); });
     connect(m_eMeshGradientChk, &QCheckBox::toggled, this, &PropertiesPanel::onElemMeshGradientToggled);
     connect(m_eMeshGradientEditBtn, &QPushButton::clicked, this, &PropertiesPanel::onElemMeshGradientEditClicked);
+    connect(m_eImageFillChk, &QCheckBox::toggled, this, &PropertiesPanel::onElemImageFillToggled);
+    connect(m_eImageFillEditBtn, &QPushButton::clicked, this, &PropertiesPanel::onElemImageFillEditClicked);
     connect(m_eOpacity, &QDoubleSpinBox::valueChanged, this, &PropertiesPanel::onElemOpacityChanged);
     connect(m_iconChangeBtn, &QPushButton::clicked, this, &PropertiesPanel::onElemChangeIconClicked);
 
@@ -806,6 +815,12 @@ void PropertiesPanel::refreshElement() {
     m_eMeshGradientChk->setChecked(!multi && e.useMeshGradient);
     m_eMeshGradientEditBtn->setEnabled(isShape && !multi && e.useMeshGradient);
 
+    // Same reasoning as the mesh-gradient dialog above: no sane shared-edit
+    // UX for a texture pan/zoom across a multi-selection.
+    m_eImageFillChk->setEnabled(isShape && !multi);
+    m_eImageFillChk->setChecked(!multi && e.useImageFill);
+    m_eImageFillEditBtn->setEnabled(isShape && !multi && e.useImageFill);
+
     m_elemIconSection->setVisible(!multi && e.type == SlideElement::Icon);
 
     m_eOpacity->setValue(e.opacity);
@@ -987,6 +1002,14 @@ void PropertiesPanel::onElemMeshGradientToggled(bool on) {
         };
     }
     m_eMeshGradientEditBtn->setEnabled(on);
+    if (on && e->useImageFill) {
+        // Mesh gradient and image fill are mutually exclusive; mesh wins
+        // since it was the mode the user just (re-)enabled.
+        e->useImageFill = false;
+        QSignalBlocker blocker(m_eImageFillChk);
+        m_eImageFillChk->setChecked(false);
+        m_eImageFillEditBtn->setEnabled(false);
+    }
     emit elementModified();
 }
 
@@ -997,6 +1020,52 @@ void PropertiesPanel::onElemMeshGradientEditClicked() {
     if (dlg.exec() == QDialog::Accepted) {
         e->meshGradient    = dlg.meshGradient();
         e->useMeshGradient = true;
+        emit elementModified();
+    }
+}
+
+void PropertiesPanel::onElemImageFillToggled(bool on) {
+    if (m_updating) return;
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    e->useImageFill = on;
+    if (on && e->fillImagePath.isEmpty()) {
+        // No image picked yet — walk straight into the picker so the
+        // checkbox never ends up "on" with nothing to show.
+        ImageFillDialog dlg(e->content, e->fillImagePath, e->fillOffsetX, e->fillOffsetY, e->fillScale, this);
+        if (dlg.exec() == QDialog::Accepted && !dlg.imagePath().isEmpty()) {
+            e->fillImagePath = dlg.imagePath();
+            e->fillOffsetX   = dlg.offsetX();
+            e->fillOffsetY   = dlg.offsetY();
+            e->fillScale     = dlg.scale();
+        } else {
+            e->useImageFill = false;
+            QSignalBlocker blocker(m_eImageFillChk);
+            m_eImageFillChk->setChecked(false);
+        }
+    }
+    m_eImageFillEditBtn->setEnabled(e->useImageFill);
+    if (e->useImageFill && e->useMeshGradient) {
+        // Mutually exclusive with mesh gradient; image fill wins since it
+        // was the mode the user just (re-)enabled.
+        e->useMeshGradient = false;
+        QSignalBlocker blocker(m_eMeshGradientChk);
+        m_eMeshGradientChk->setChecked(false);
+        m_eMeshGradientEditBtn->setEnabled(false);
+    }
+    emit elementModified();
+}
+
+void PropertiesPanel::onElemImageFillEditClicked() {
+    auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
+    if (!e) return;
+    ImageFillDialog dlg(e->content, e->fillImagePath, e->fillOffsetX, e->fillOffsetY, e->fillScale, this);
+    if (dlg.exec() == QDialog::Accepted && !dlg.imagePath().isEmpty()) {
+        e->fillImagePath = dlg.imagePath();
+        e->fillOffsetX   = dlg.offsetX();
+        e->fillOffsetY   = dlg.offsetY();
+        e->fillScale     = dlg.scale();
+        e->useImageFill  = true;
         emit elementModified();
     }
 }
