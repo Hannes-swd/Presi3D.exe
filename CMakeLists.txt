@@ -34,6 +34,9 @@ set(SOURCES
     src/rendering/LatexRenderer.cpp
     src/rendering/CodeHighlighter.cpp
     src/export/HtmlExporter.cpp
+    src/export/ImageExporter.cpp
+    src/export/PdfExporter.cpp
+    src/export/SlideRenderer.cpp
     src/import/HtmlImporter.cpp
     src/dialogs/ExportDialog.cpp
     src/dialogs/StartDialog.cpp

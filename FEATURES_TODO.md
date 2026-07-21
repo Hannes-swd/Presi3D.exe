@@ -45,11 +45,8 @@ bilder in formen
 
 | Feature | Beschreibung |
 |---|---|
-| **PDF-Export** | Jede Folie als PDF-Seite rendern |
-| **PNG/JPG-Export** | Einzelne Folien als Bilddateien exportieren |
 | **PowerPoint-Import (.pptx)** | PPTX einlesen und in das interne Format umwandeln |
 | **PowerPoint-Export (.pptx)** | Presentation als PPTX speichern |
-| **Keynote-Import (.key)** | Apple Keynote importieren |
 | **Zip-Export** | HTML + Assets als fertige ZIP-Datei |
 | **Thumbnail-Export** | Alle Folien als kleines Vorschaubild exportieren |
 
