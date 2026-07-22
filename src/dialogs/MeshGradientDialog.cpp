@@ -13,8 +13,9 @@
 
 // ── MeshGradientCanvas ────────────────────────────────────────────────────────
 
-MeshGradientCanvas::MeshGradientCanvas(const QString& shapeType, QWidget* parent)
-    : QWidget(parent), m_shapeType(shapeType)
+MeshGradientCanvas::MeshGradientCanvas(const QString& shapeType, QWidget* parent,
+                                        const QString& customPathData)
+    : QWidget(parent), m_shapeType(shapeType), m_customPathData(customPathData)
 {
     setFocusPolicy(Qt::StrongFocus);
     setMinimumSize(360, 360);
@@ -69,13 +70,14 @@ void MeshGradientCanvas::paintEvent(QPaintEvent*) {
 
     if (m_points.size() >= 3) {
         MeshGradientData mesh{ m_points };
-        QImage img = MeshGradientRenderer::renderMeshGradient(m_shapeType, sr.size().toSize(), mesh);
+        QImage img = MeshGradientRenderer::renderMeshGradient(
+            m_shapeType, sr.size().toSize(), mesh, QSizeF(0, 0), m_customPathData);
         p.drawImage(sr.topLeft(), img);
     }
 
     p.setPen(QPen(QColor(210, 210, 210), 1.5, Qt::DashLine));
     p.setBrush(Qt::NoBrush);
-    p.drawPath(ShapeUtils::shapeToPath(m_shapeType, sr));
+    p.drawPath(ShapeUtils::shapeToPath(m_shapeType, sr, m_customPathData));
 
     // Point handles: mini checkerboard swatch behind the point's own RGBA
     // so alpha is visible even when the point sits over an opaque mesh area.
@@ -166,13 +168,13 @@ void MeshGradientCanvas::keyPressEvent(QKeyEvent* ev) {
 // ── MeshGradientDialog ────────────────────────────────────────────────────────
 
 MeshGradientDialog::MeshGradientDialog(const QString& shapeType, const MeshGradientData& initial,
-                                       QWidget* parent)
+                                       QWidget* parent, const QString& customPathData)
     : QDialog(parent)
 {
     setWindowTitle("Farbverlauf bearbeiten");
     resize(480, 580);
 
-    m_canvas = new MeshGradientCanvas(shapeType, this);
+    m_canvas = new MeshGradientCanvas(shapeType, this, customPathData);
     QVector<MeshGradientPoint> pts = initial.points;
     if (pts.size() < 3) {
         pts = {

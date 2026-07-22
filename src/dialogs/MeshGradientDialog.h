@@ -13,7 +13,8 @@ class QLabel;
 class MeshGradientCanvas : public QWidget {
     Q_OBJECT
 public:
-    explicit MeshGradientCanvas(const QString& shapeType, QWidget* parent = nullptr);
+    explicit MeshGradientCanvas(const QString& shapeType, QWidget* parent = nullptr,
+                                 const QString& customPathData = QString());
 
     void setPoints(const QVector<MeshGradientPoint>& pts) { m_points = pts; update(); }
     const QVector<MeshGradientPoint>& points() const { return m_points; }
@@ -37,6 +38,7 @@ private:
     void   removePoint(int idx);
 
     QString m_shapeType;
+    QString m_customPathData;
     QVector<MeshGradientPoint> m_points;
     int    m_dragIndex     = -1;
     int    m_selectedIndex = -1;
@@ -47,7 +49,8 @@ class MeshGradientDialog : public QDialog {
     Q_OBJECT
 public:
     explicit MeshGradientDialog(const QString& shapeType, const MeshGradientData& initial,
-                                 QWidget* parent = nullptr);
+                                 QWidget* parent = nullptr,
+                                 const QString& customPathData = QString());
 
     MeshGradientData meshGradient() const { return MeshGradientData{ m_canvas->points() }; }
 

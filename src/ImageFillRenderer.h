@@ -21,6 +21,7 @@ namespace ImageFillRenderer {
 // Returns a fully transparent image if imagePath is empty or fails to load.
 QImage renderImageFill(const QString& shapeType, const QSize& pixelSize,
                         const QString& imagePath, float offsetX, float offsetY, float scale,
-                        const QSizeF& cornerRadiusPx = QSizeF(0, 0));
+                        const QSizeF& cornerRadiusPx = QSizeF(0, 0),
+                        const QString& customPathData = QString());
 
 } // namespace ImageFillRenderer

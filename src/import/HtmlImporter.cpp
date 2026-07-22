@@ -1018,6 +1018,9 @@ Presentation* HtmlImporter::importFrom(const QString& folderPath, QString& error
                     QString brad = cssProp(style, "border-radius");
                     if (!brad.isEmpty() && brad != "50%")
                         e.cornerRadius = brad.remove("px").toFloat();
+                    // Boolean-cut result path (see HtmlExporter's data-custom-path)
+                    QString customPath = attrVal(dTag, "data-custom-path");
+                    if (!customPath.isEmpty()) e.customPathData = customPath;
                     // Mesh gradient points (see HtmlExporter's data-mesh, mirrors data-chart)
                     QString meshB64 = attrVal(dTag, "data-mesh");
                     if (!meshB64.isEmpty()) {

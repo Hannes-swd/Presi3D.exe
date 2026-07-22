@@ -119,7 +119,7 @@ QPixmap SlideListPanel::makeThumbnail(const Slide& slide) const {
             if (elem.content == "line")
                 p.drawLine(r.topLeft(), r.bottomRight());
             else
-                p.drawPath(ShapeUtils::shapeToPath(elem.content, r));
+                p.drawPath(ShapeUtils::shapeToPath(elem.content, r, elem.customPathData));
             if (!elem.shapeText.isEmpty()) {
                 p.setPen(elem.color.isValid() ? elem.color : Qt::white);
                 p.drawText(r, Qt::AlignCenter | Qt::TextWordWrap, elem.shapeText);

@@ -31,6 +31,9 @@ public:
     void groupSelectedElements();
     void ungroupSelectedElements();
 
+    // Boolean shape cut ("Ausschneiden") — relayed to the 2D editor
+    void booleanCutSelection();
+
     // Insert-element toolbar (Text/Shapes/Image/Table/...), hosted by
     // MainWindow's ribbon "Einfügen" tab rather than by EditorArea itself.
     QWidget* insertToolbarWidget() const { return m_insertToolbar; }

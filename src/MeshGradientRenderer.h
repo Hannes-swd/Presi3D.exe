@@ -32,6 +32,7 @@ QVector<Triangle> delaunayTriangulate(const QVector<QPointF>& pts);
 // transparent image if mesh.isUsable() is false.
 QImage renderMeshGradient(const QString& shapeType, const QSize& pixelSize,
                           const MeshGradientData& mesh,
-                          const QSizeF& cornerRadiusPx = QSizeF(0, 0));
+                          const QSizeF& cornerRadiusPx = QSizeF(0, 0),
+                          const QString& customPathData = QString());
 
 } // namespace MeshGradientRenderer

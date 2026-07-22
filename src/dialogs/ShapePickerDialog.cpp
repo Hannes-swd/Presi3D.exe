@@ -82,14 +82,35 @@ const QVector<ShapeUtils::ShapeDef>& ShapeUtils::allShapes()
     return list;
 }
 
-QPainterPath ShapeUtils::shapeToPath(const QString& type, const QRectF& r)
+QPainterPath ShapeUtils::shapeToPath(const QString& type, const QRectF& r,
+                                      const QString& customPathData)
 {
     QPainterPath path;
     const double cx = r.center().x(), cy = r.center().y();
     const double w = r.width(),       h  = r.height();
     const double hw = w * 0.5,        hh = h * 0.5;
 
-    if (type == "circle") {
+    if (type == "custom") {
+        // Boolean-cut result baked by ShapeBoolean — see SlideElement::
+        // customPathData for the format. Unit-square coords are mapped back
+        // into r the same way every parametric shape above is fitted into r.
+        const QStringList subpaths = customPathData.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+        for (const QString& sub : subpaths) {
+            const QStringList pts = sub.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+            bool first = true;
+            for (const QString& pt : pts) {
+                const QStringList xy = pt.split(QLatin1Char(','));
+                if (xy.size() != 2) continue;
+                double ux = xy[0].toDouble(), uy = xy[1].toDouble();
+                double x = r.left() + ux * w, y = r.top() + uy * h;
+                if (first) { path.moveTo(x, y); first = false; }
+                else       path.lineTo(x, y);
+            }
+            if (!first) path.closeSubpath();
+        }
+        path.setFillRule(Qt::OddEvenFill);
+
+    } else if (type == "circle") {
         path.addEllipse(r);
 
     } else if (type == "triangle") {

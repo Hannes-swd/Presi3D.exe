@@ -582,13 +582,13 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
 
             if (elem.useMeshGradient && elem.meshGradient.isUsable() && elem.content != "line") {
                 QImage meshImg = MeshGradientRenderer::renderMeshGradient(
-                    elem.content, r.size().toSize(), elem.meshGradient, QSizeF(rx, ry));
+                    elem.content, r.size().toSize(), elem.meshGradient, QSizeF(rx, ry), elem.customPathData);
                 p.drawImage(r.topLeft(), meshImg);
                 p.setBrush(Qt::NoBrush);
             } else if (elem.useImageFill && !elem.fillImagePath.isEmpty() && elem.content != "line") {
                 QImage fillImg = ImageFillRenderer::renderImageFill(
                     elem.content, r.size().toSize(), elem.fillImagePath,
-                    elem.fillOffsetX, elem.fillOffsetY, elem.fillScale, QSizeF(rx, ry));
+                    elem.fillOffsetX, elem.fillOffsetY, elem.fillScale, QSizeF(rx, ry), elem.customPathData);
                 p.drawImage(r.topLeft(), fillImg);
                 p.setBrush(Qt::NoBrush);
             } else {
@@ -603,7 +603,7 @@ QOpenGLTexture* SlideEditor3D::buildSlideTexture(const Slide& slide) {
                 if (rx > 0 || ry > 0) p.drawRoundedRect(r, rx, ry);
                 else                   p.drawRect(r);
             } else {
-                p.drawPath(ShapeUtils::shapeToPath(elem.content, r));
+                p.drawPath(ShapeUtils::shapeToPath(elem.content, r, elem.customPathData));
             }
 
         } else if (elem.type == SlideElement::Icon) {

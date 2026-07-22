@@ -16,8 +16,9 @@
 
 // ── ImageFillCanvas ────────────────────────────────────────────────────────
 
-ImageFillCanvas::ImageFillCanvas(const QString& shapeType, QWidget* parent)
-    : QWidget(parent), m_shapeType(shapeType)
+ImageFillCanvas::ImageFillCanvas(const QString& shapeType, QWidget* parent,
+                                  const QString& customPathData)
+    : QWidget(parent), m_shapeType(shapeType), m_customPathData(customPathData)
 {
     setMinimumSize(360, 360);
 }
@@ -51,13 +52,14 @@ void ImageFillCanvas::paintEvent(QPaintEvent*) {
 
     if (!m_imagePath.isEmpty()) {
         QImage img = ImageFillRenderer::renderImageFill(
-            m_shapeType, sr.size().toSize(), m_imagePath, m_offsetX, m_offsetY, m_scale);
+            m_shapeType, sr.size().toSize(), m_imagePath, m_offsetX, m_offsetY, m_scale,
+            QSizeF(0, 0), m_customPathData);
         p.drawImage(sr.topLeft(), img);
     }
 
     p.setPen(QPen(QColor(210, 210, 210), 1.5, Qt::DashLine));
     p.setBrush(Qt::NoBrush);
-    p.drawPath(ShapeUtils::shapeToPath(m_shapeType, sr));
+    p.drawPath(ShapeUtils::shapeToPath(m_shapeType, sr, m_customPathData));
 }
 
 void ImageFillCanvas::mousePressEvent(QMouseEvent* ev) {
@@ -94,13 +96,14 @@ void ImageFillCanvas::mouseReleaseEvent(QMouseEvent*) {
 // ── ImageFillDialog ───────────────────────────────────────────────────────
 
 ImageFillDialog::ImageFillDialog(const QString& shapeType, const QString& imagePath,
-                                  float offsetX, float offsetY, float scale, QWidget* parent)
+                                  float offsetX, float offsetY, float scale, QWidget* parent,
+                                  const QString& customPathData)
     : QDialog(parent)
 {
     setWindowTitle("Textur bearbeiten");
     resize(480, 620);
 
-    m_canvas = new ImageFillCanvas(shapeType, this);
+    m_canvas = new ImageFillCanvas(shapeType, this, customPathData);
     m_canvas->setImagePath(imagePath);
     m_canvas->setOffset(offsetX, offsetY);
     m_canvas->setScale(scale > 0.f ? scale : 1.f);

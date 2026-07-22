@@ -470,6 +470,10 @@ void EditorArea::groupSelectedElements() {
     m_editor2D->groupSelectedElements();
 }
 
+void EditorArea::booleanCutSelection() {
+    m_editor2D->booleanCutSelection();
+}
+
 void EditorArea::ungroupSelectedElements() {
     m_editor2D->ungroupSelectedElements();
 }

@@ -200,6 +200,37 @@ static QString escapeAndBr(const QString& s) {
     return s.toHtmlEscaped().replace("\n", "<br>");
 }
 
+// Converts a boolean-cut result (SlideElement::customPathData, unit-square
+// coords — see ShapeUtils::shapeToPath's "custom" branch for the reader
+// side) into a CSS `clip-path: path(evenodd, "...")` value. Elements are
+// already positioned with width/height in absolute px, so baking the path's
+// coordinates to widthPx/heightPx here lines up 1:1 with the same box —
+// no percentage handling needed.
+static QString customPathToClipPath(const QString& customPathData, double widthPx, double heightPx) {
+    if (customPathData.isEmpty() || widthPx <= 0 || heightPx <= 0) return QString();
+    QStringList svgSubpaths;
+    const QStringList subpaths = customPathData.split(QLatin1Char('|'), Qt::SkipEmptyParts);
+    for (const QString& sub : subpaths) {
+        const QStringList pts = sub.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+        QString d;
+        bool first = true;
+        for (const QString& pt : pts) {
+            const QStringList xy = pt.split(QLatin1Char(','));
+            if (xy.size() != 2) continue;
+            double x = xy[0].toDouble() * widthPx;
+            double y = xy[1].toDouble() * heightPx;
+            d += QString("%1%2,%3 ").arg(first ? "M" : "L")
+                     .arg(x, 0, 'f', 2).arg(y, 0, 'f', 2);
+            first = false;
+        }
+        if (!first) svgSubpaths << d + "Z";
+    }
+    if (svgSubpaths.isEmpty()) return QString();
+    // Single quotes: this ends up inside an HTML style="..." attribute
+    // (double-quoted), so the CSS path() string literal must use the other kind.
+    return QString("clip-path:path(evenodd,'%1')").arg(svgSubpaths.join(' '));
+}
+
 // Builds a text element's inner HTML, wrapping e.codeSpans in
 // <code class="language-xxx"> for highlight.js. Mirror of HtmlImporter's
 // code-span parsing — keep both in sync.
@@ -1460,7 +1491,10 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         if (e.borderWidth > 0)
             style += QString("border:%1px solid %2;")
                          .arg(int(e.borderWidth)).arg(colorToCss(e.borderColor));
-        {
+        if (e.content == "custom") {
+            QString css = customPathToClipPath(e.customPathData, e.width, e.height);
+            if (!css.isEmpty()) style += css + ";";
+        } else {
             QString css = ShapeUtils::shapeToCssStyle(e.content);
             if (!css.isEmpty())
                 style += css + ";";
@@ -1532,8 +1566,15 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             innerText = QString("<span%1 style=\"%2\">%3</span>")
                             .arg(varAttr, textStyle, e.shapeText.toHtmlEscaped().replace("\n", "<br>"));
         }
-        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2%3%7 style=\"%4\">%5%6</div>")
-                   .arg(e.content, timelineAttr, meshAttr, style, meshCanvas, innerText, fillAttr);
+        // Boolean-cut result path — round-tripped through re-import the same
+        // way data-mesh/data-fill-src are, since the exported HTML is also
+        // this project's save format.
+        QString customPathAttr;
+        if (e.content == "custom" && !e.customPathData.isEmpty())
+            customPathAttr = QString(" data-custom-path=\"%1\"").arg(e.customPathData.toHtmlEscaped());
+
+        return QString("<div data-type=\"shape\" data-shape=\"%1\"%2%3%7%8 style=\"%4\">%5%6</div>")
+                   .arg(e.content, timelineAttr, meshAttr, style, meshCanvas, innerText, fillAttr, customPathAttr);
 
     } else if (e.type == SlideElement::Icon) {
         int iw = qMax(4, int(e.width));

@@ -129,6 +129,8 @@ void MainWindow::setupMenuBar() {
     editMenu->addAction("&Group", this, [this]() { m_editorArea->groupSelectedElements(); }, QKeySequence("Ctrl+G"));
     editMenu->addAction("&Ungroup", this, [this]() { m_editorArea->ungroupSelectedElements(); }, QKeySequence("Ctrl+Shift+G"));
     editMenu->addSeparator();
+    editMenu->addAction("Formen &verschneiden...", this, [this]() { m_editorArea->booleanCutSelection(); }, QKeySequence("Ctrl+Alt+X"));
+    editMenu->addSeparator();
     editMenu->addAction("Manage Icon Package...", this, [this]() {
         auto& mgr = IconPackManager::instance();
         if (mgr.isInstalled()) mgr.uninstallInteractive(this);

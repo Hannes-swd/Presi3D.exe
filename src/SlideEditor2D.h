@@ -83,6 +83,11 @@ public slots:
     void groupSelectedElements();   // needs >= 2 selected elements
     void ungroupSelectedElements(); // clears groupId on the primary element's whole group
 
+    // Boolean shape cut ("Ausschneiden"/Pathfinder): needs >= 2 selected Shape/Text
+    // elements; opens BooleanCutDialog and replaces the selection with one "custom"
+    // Shape element holding the chosen op's result path. See ShapeBoolean.h.
+    void booleanCutSelection();
+
     // Layer / z-order
     void bringToFront();
     void bringForward();

@@ -1016,7 +1016,7 @@ void PropertiesPanel::onElemMeshGradientToggled(bool on) {
 void PropertiesPanel::onElemMeshGradientEditClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    MeshGradientDialog dlg(e->content, e->meshGradient, this);
+    MeshGradientDialog dlg(e->content, e->meshGradient, this, e->customPathData);
     if (dlg.exec() == QDialog::Accepted) {
         e->meshGradient    = dlg.meshGradient();
         e->useMeshGradient = true;
@@ -1032,7 +1032,8 @@ void PropertiesPanel::onElemImageFillToggled(bool on) {
     if (on && e->fillImagePath.isEmpty()) {
         // No image picked yet — walk straight into the picker so the
         // checkbox never ends up "on" with nothing to show.
-        ImageFillDialog dlg(e->content, e->fillImagePath, e->fillOffsetX, e->fillOffsetY, e->fillScale, this);
+        ImageFillDialog dlg(e->content, e->fillImagePath, e->fillOffsetX, e->fillOffsetY, e->fillScale,
+                             this, e->customPathData);
         if (dlg.exec() == QDialog::Accepted && !dlg.imagePath().isEmpty()) {
             e->fillImagePath = dlg.imagePath();
             e->fillOffsetX   = dlg.offsetX();
@@ -1059,7 +1060,8 @@ void PropertiesPanel::onElemImageFillToggled(bool on) {
 void PropertiesPanel::onElemImageFillEditClicked() {
     auto* e = getElem(m_pres, m_slideIdx, m_elemIdx);
     if (!e) return;
-    ImageFillDialog dlg(e->content, e->fillImagePath, e->fillOffsetX, e->fillOffsetY, e->fillScale, this);
+    ImageFillDialog dlg(e->content, e->fillImagePath, e->fillOffsetX, e->fillOffsetY, e->fillScale,
+                         this, e->customPathData);
     if (dlg.exec() == QDialog::Accepted && !dlg.imagePath().isEmpty()) {
         e->fillImagePath = dlg.imagePath();
         e->fillOffsetX   = dlg.offsetX();

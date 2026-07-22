@@ -117,14 +117,14 @@ QVector<Triangle> delaunayTriangulate(const QVector<QPointF>& ptsIn) {
 }
 
 QImage renderMeshGradient(const QString& shapeType, const QSize& pixelSize, const MeshGradientData& mesh,
-                          const QSizeF& cornerRadiusPx) {
+                          const QSizeF& cornerRadiusPx, const QString& customPathData) {
     QImage blank(pixelSize.expandedTo(QSize(1, 1)), QImage::Format_ARGB32_Premultiplied);
     blank.fill(Qt::transparent);
     if (!mesh.isUsable() || pixelSize.width() < 1 || pixelSize.height() < 1) return blank;
 
     static QCache<QString, QImage> cache(32);
-    QString key = QString("%1|%2x%3|%4,%5").arg(shapeType).arg(pixelSize.width()).arg(pixelSize.height())
-                      .arg(cornerRadiusPx.width()).arg(cornerRadiusPx.height());
+    QString key = QString("%1|%2x%3|%4,%5|%6").arg(shapeType).arg(pixelSize.width()).arg(pixelSize.height())
+                      .arg(cornerRadiusPx.width()).arg(cornerRadiusPx.height()).arg(customPathData);
     for (const auto& p : mesh.points)
         key += QString("|%1,%2,%3,%4,%5,%6").arg(p.x).arg(p.y).arg(p.r).arg(p.g).arg(p.b).arg(p.a);
     if (QImage* cached = cache.object(key))
@@ -196,7 +196,7 @@ QImage renderMeshGradient(const QString& shapeType, const QSize& pixelSize, cons
             rr.addRoundedRect(full, cornerRadiusPx.width(), cornerRadiusPx.height());
             mp.drawPath(rr);
         } else {
-            mp.drawPath(ShapeUtils::shapeToPath(shapeType, full));
+            mp.drawPath(ShapeUtils::shapeToPath(shapeType, full, customPathData));
         }
     }
     {

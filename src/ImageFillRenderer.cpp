@@ -9,16 +9,17 @@ namespace ImageFillRenderer {
 
 QImage renderImageFill(const QString& shapeType, const QSize& pixelSize,
                         const QString& imagePath, float offsetX, float offsetY, float scale,
-                        const QSizeF& cornerRadiusPx) {
+                        const QSizeF& cornerRadiusPx, const QString& customPathData) {
     QImage blank(pixelSize.expandedTo(QSize(1, 1)), QImage::Format_ARGB32_Premultiplied);
     blank.fill(Qt::transparent);
     if (imagePath.isEmpty() || pixelSize.width() < 1 || pixelSize.height() < 1) return blank;
 
     static QCache<QString, QImage> resultCache(32);
-    QString key = QString("%1|%2x%3|%4,%5|%6|%7,%8,%9")
+    QString key = QString("%1|%2x%3|%4,%5|%6|%7,%8,%9|%10")
                       .arg(shapeType).arg(pixelSize.width()).arg(pixelSize.height())
                       .arg(cornerRadiusPx.width()).arg(cornerRadiusPx.height())
-                      .arg(imagePath).arg(offsetX).arg(offsetY).arg(scale);
+                      .arg(imagePath).arg(offsetX).arg(offsetY).arg(scale)
+                      .arg(customPathData);
     if (QImage* cached = resultCache.object(key))
         return *cached;
 
@@ -70,7 +71,7 @@ QImage renderImageFill(const QString& shapeType, const QSize& pixelSize,
             rr.addRoundedRect(full, cornerRadiusPx.width(), cornerRadiusPx.height());
             mp.drawPath(rr);
         } else {
-            mp.drawPath(ShapeUtils::shapeToPath(shapeType, full));
+            mp.drawPath(ShapeUtils::shapeToPath(shapeType, full, customPathData));
         }
     }
     {

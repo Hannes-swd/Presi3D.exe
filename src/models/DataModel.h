@@ -108,6 +108,13 @@ struct SlideElement {
     float   rotation  = 0.f;    // degrees clockwise; applied around element center
     QString shapeText;           // text overlaid inside shape (type==Shape only)
 
+    // ── Boolean-cut result path (Shape elements only, content=="custom") ──────
+    // Subpaths separated by '|', points by ';', x/y by ',', coordinates normalized
+    // to [0,1] relative to (width,height) — same convention as the parametric
+    // shapes in ShapeUtils::shapeToPath, just baked from a boolean op result
+    // instead of a formula. See ShapeBoolean.h.
+    QString customPathData;
+
     // ── Mesh gradient fill (Shape elements only) ──────────────────────────────
     bool             useMeshGradient = false; // false → backgroundColor is the fill (unchanged path)
     MeshGradientData meshGradient;             // ignored unless useMeshGradient && isUsable()

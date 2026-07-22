@@ -10,6 +10,8 @@
 #include "dialogs/InsertFormulaDialog.h"
 #include "dialogs/InsertIFrameDialog.h"
 #include "dialogs/InsertButtonDialog.h"
+#include "dialogs/BooleanCutDialog.h"
+#include "ShapeBoolean.h"
 #include "models/VariableEngine.h"
 #include "models/TimelineEngine.h"
 #include <QPainter>
@@ -39,6 +41,7 @@
 #include <QUuid>
 #include <QImageWriter>
 #include <QComboBox>
+#include <QMessageBox>
 #include <algorithm>
 
 QVector<SlideElement> SlideEditor2D::s_clipboard;
@@ -948,13 +951,13 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
 
             if (e.useMeshGradient && e.meshGradient.isUsable() && e.content != "line") {
                 QImage meshImg = MeshGradientRenderer::renderMeshGradient(
-                    e.content, wr.size().toSize(), e.meshGradient, QSizeF(rx, ry));
+                    e.content, wr.size().toSize(), e.meshGradient, QSizeF(rx, ry), e.customPathData);
                 p.drawImage(wr.topLeft(), meshImg);
                 p.setBrush(Qt::NoBrush);
             } else if (e.useImageFill && !e.fillImagePath.isEmpty() && e.content != "line") {
                 QImage fillImg = ImageFillRenderer::renderImageFill(
                     e.content, wr.size().toSize(), e.fillImagePath,
-                    e.fillOffsetX, e.fillOffsetY, e.fillScale, QSizeF(rx, ry));
+                    e.fillOffsetX, e.fillOffsetY, e.fillScale, QSizeF(rx, ry), e.customPathData);
                 p.drawImage(wr.topLeft(), fillImg);
                 p.setBrush(Qt::NoBrush);
             } else {
@@ -967,7 +970,7 @@ void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selecte
                 if (rx > 0 || ry > 0) p.drawRoundedRect(wr, rx, ry);
                 else                   p.drawRect(wr);
             } else {
-                p.drawPath(ShapeUtils::shapeToPath(e.content, wr));
+                p.drawPath(ShapeUtils::shapeToPath(e.content, wr, e.customPathData));
             }
         }
 
@@ -2564,6 +2567,9 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
             menu.addAction("Gruppieren  (Ctrl+G)", this, &SlideEditor2D::groupSelectedElements);
         if (isGrouped)
             menu.addAction("Gruppierung aufheben  (Ctrl+Shift+G)", this, &SlideEditor2D::ungroupSelectedElements);
+        if (m_selectedElems.size() >= 2)
+            menu.addAction(QString::fromUtf8("Formen verschneiden\xE2\x80\xA6  (Ctrl+Alt+X)"),
+                           this, &SlideEditor2D::booleanCutSelection);
         if ((m_selectedElems.size() >= 2 && !isGrouped) || isGrouped)
             menu.addSeparator();
         menu.addAction("Bring to Front",       this, &SlideEditor2D::bringToFront);
@@ -3032,6 +3038,106 @@ void SlideEditor2D::ungroupSelectedElements() {
         if (el.groupId == gid) el.groupId.clear();
     update();
     emit presentationModified();
+}
+
+// ── Boolean shape cut ("Ausschneiden") ──────────────────────────────────────────
+
+void SlideEditor2D::booleanCutSelection() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElems.size() < 2) return;
+
+    QVector<int> sortedIdx = m_selectedElems;
+    std::sort(sortedIdx.begin(), sortedIdx.end());
+
+    for (int idx : sortedIdx) {
+        if (idx < 0 || idx >= s->elements.size()) return;
+        const SlideElement::Type t = s->elements[idx].type;
+        if (t != SlideElement::Shape && t != SlideElement::Text) {
+            QMessageBox::information(this, "Formen verschneiden",
+                "Nur Formen und Text können verschnitten werden.");
+            return;
+        }
+    }
+
+    BooleanCutDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    // Back-to-front == ascending index (paint/z-order), matching how every
+    // other z-order operation in this file treats s->elements.
+    QVector<const SlideElement*> backToFront;
+    backToFront.reserve(sortedIdx.size());
+    for (int idx : sortedIdx) backToFront << &s->elements[idx];
+
+    QPainterPath result = ShapeBoolean::combine(backToFront, dlg.chosenOp());
+    if (result.isEmpty()) {
+        QMessageBox::information(this, "Formen verschneiden",
+            "Die Formen überschneiden sich nicht \xE2\x80\x94 kein Ergebnis.");
+        return;
+    }
+    QRectF bbox = result.boundingRect();
+    if (bbox.width() < 1.0 || bbox.height() < 1.0) {
+        QMessageBox::information(this, "Formen verschneiden",
+            "Das Ergebnis ist zu klein/ungültig.");
+        return;
+    }
+
+    // Serialize into SlideElement::customPathData's unit-square format
+    // (see ShapeUtils::shapeToPath's "custom" branch for the reader side).
+    QStringList subStrs;
+    const QList<QPolygonF> polys = result.toSubpathPolygons();
+    for (const QPolygonF& poly : polys) {
+        int n = poly.size();
+        if (n >= 2 && poly.first() == poly.last()) n -= 1; // drop duplicate closing point
+        if (n < 3) continue;
+        QStringList ptStrs;
+        ptStrs.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            const QPointF& pt = poly[i];
+            double ux = (pt.x() - bbox.left()) / bbox.width();
+            double uy = (pt.y() - bbox.top())  / bbox.height();
+            ptStrs << QString("%1,%2").arg(ux, 0, 'f', 5).arg(uy, 0, 'f', 5);
+        }
+        subStrs << ptStrs.join(';');
+    }
+    if (subStrs.isEmpty()) return;
+
+    // Style (fill/border/image/mesh) is copied from the backmost element —
+    // fields must be read out before s->elements is mutated below, since
+    // backToFront's pointers are into that same vector.
+    const SlideElement& styleSrc = *backToFront.first();
+    SlideElement newElem;
+    newElem.type            = SlideElement::Shape;
+    newElem.content         = "custom";
+    newElem.customPathData  = subStrs.join('|');
+    newElem.x               = float(bbox.left());
+    newElem.y               = float(bbox.top());
+    newElem.width           = float(bbox.width());
+    newElem.height          = float(bbox.height());
+    newElem.rotation        = 0.f; // already baked into the absolute result path
+    newElem.backgroundColor = styleSrc.backgroundColor;
+    newElem.borderColor     = styleSrc.borderColor;
+    newElem.borderWidth     = styleSrc.borderWidth;
+    newElem.opacity         = styleSrc.opacity;
+    newElem.useImageFill    = styleSrc.useImageFill;
+    newElem.fillImagePath   = styleSrc.fillImagePath;
+    newElem.fillOffsetX     = styleSrc.fillOffsetX;
+    newElem.fillOffsetY     = styleSrc.fillOffsetY;
+    newElem.fillScale       = styleSrc.fillScale;
+    newElem.useMeshGradient = styleSrc.useMeshGradient;
+    newElem.meshGradient    = styleSrc.meshGradient;
+
+    if (m_keyframeEditActive) emit keyframeEditDone();
+
+    const int insertPos = sortedIdx.first();
+    for (int i = sortedIdx.size() - 1; i >= 0; --i)
+        s->elements.remove(sortedIdx[i]);
+    const int clampedPos = qBound(0, insertPos, s->elements.size());
+    s->elements.insert(clampedPos, newElem);
+
+    setSingleSelection(clampedPos);
+    update();
+    emit presentationModified();
+    emit elementSelected(m_selectedElem);
 }
 
 // ── Layer / z-order ───────────────────────────────────────────────────────────

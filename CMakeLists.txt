@@ -25,6 +25,7 @@ set(SOURCES
     src/models/MeshGradientData.cpp
     src/MeshGradientRenderer.cpp
     src/ImageFillRenderer.cpp
+    src/ShapeBoolean.cpp
     src/models/VariableModel.cpp
     src/models/VariableEngine.cpp
     src/models/TimelineTrack.cpp
@@ -52,6 +53,7 @@ set(SOURCES
     src/dialogs/MeshGradientDialog.cpp
     src/dialogs/ImageFillDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
+    src/dialogs/BooleanCutDialog.cpp
     src/dialogs/IconPickerDialog.cpp
     src/IconUtils.cpp
     src/IconPackManager.cpp

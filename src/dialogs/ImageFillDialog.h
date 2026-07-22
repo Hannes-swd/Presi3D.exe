@@ -14,7 +14,8 @@ class QSlider;
 class ImageFillCanvas : public QWidget {
     Q_OBJECT
 public:
-    explicit ImageFillCanvas(const QString& shapeType, QWidget* parent = nullptr);
+    explicit ImageFillCanvas(const QString& shapeType, QWidget* parent = nullptr,
+                              const QString& customPathData = QString());
 
     void setImagePath(const QString& path) { m_imagePath = path; update(); emit changed(); }
     const QString& imagePath() const { return m_imagePath; }
@@ -41,6 +42,7 @@ private:
     QRectF shapeRectPx() const; // drawing area inset by a margin
 
     QString m_shapeType;
+    QString m_customPathData;
     QString m_imagePath;
     float   m_offsetX = 0.f;
     float   m_offsetY = 0.f;
@@ -54,7 +56,8 @@ class ImageFillDialog : public QDialog {
 public:
     explicit ImageFillDialog(const QString& shapeType, const QString& imagePath,
                               float offsetX, float offsetY, float scale,
-                              QWidget* parent = nullptr);
+                              QWidget* parent = nullptr,
+                              const QString& customPathData = QString());
 
     QString imagePath() const { return m_canvas->imagePath(); }
     float   offsetX()   const { return m_canvas->offsetX(); }
