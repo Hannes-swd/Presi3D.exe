@@ -108,6 +108,17 @@ struct SlideElement {
     float   rotation  = 0.f;    // degrees clockwise; applied around element center
     QString shapeText;           // text overlaid inside shape (type==Shape only)
 
+    // ── Drop shadow (any element type) ─────────────────────────────────────────
+    bool    hasShadow       = false;
+    bool    shadowUseOffset = false;  // false: shadowAngle/shadowDistance are authoritative; true: shadowOffsetX/Y are
+    float   shadowAngle     = 45.f;   // degrees, UI convenience only (0=+X, 90=+Y, clockwise)
+    float   shadowDistance  = 8.f;    // px, UI convenience only, paired with shadowAngle
+    float   shadowOffsetX   = 5.66f;  // px — canonical value used by rendering/export/keyframes
+    float   shadowOffsetY   = 5.66f;  // px — canonical value used by rendering/export/keyframes
+    float   shadowBlur      = 12.f;   // px
+    float   shadowSpread    = 0.f;    // px, silhouette grows by this before blurring
+    QColor  shadowColor     = QColor(0, 0, 0, 160);
+
     // ── Boolean-cut result path (Shape elements only, content=="custom") ──────
     // Subpaths separated by '|', points by ';', x/y by ',', coordinates normalized
     // to [0,1] relative to (width,height) — same convention as the parametric

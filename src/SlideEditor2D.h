@@ -62,6 +62,7 @@ public slots:
     void addTableElement(int rows, int cols);
     void addChartElement(const QString& chartType);
     void openChartEditor();  // open editor for selected chart element
+    void openShadowDialog(); // open drop-shadow editor for selected element
     void addFormulaElement(const QString& latex);
     void openFormulaEditor(); // open editor for selected formula element
     void addIFrameElement(const QString& url);
@@ -165,6 +166,7 @@ private:
     // Drawing
     void drawElement(QPainter&, const SlideElement&, bool selected, bool isBeingEdited,
                       const QString& currentSlideId) const;
+    void drawElementShadow(QPainter&, const SlideElement&, const QRectF& wr) const;
     QString substituteVars(const QString& raw, const QString& currentSlideId) const;
     // 1-based position of currentSlideId within m_pres->slides, or 0 if not found/no presentation.
     int slideNumberFor(const QString& currentSlideId) const;

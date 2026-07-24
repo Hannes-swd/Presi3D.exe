@@ -2,7 +2,7 @@
 #include <QColor>
 
 bool isColorProperty(const QString& key) {
-    return key == "color" || key == "backgroundColor" || key == "borderColor";
+    return key == "color" || key == "backgroundColor" || key == "borderColor" || key == "shadowColor";
 }
 
 QJsonObject Keyframe::toJson() const {

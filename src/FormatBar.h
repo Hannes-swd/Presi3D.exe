@@ -52,6 +52,8 @@ private slots:
     void onYChanged(double v);
     void onWChanged(double v);
     void onHChanged(double v);
+    void onShadowToggled(bool);
+    void onShadowContextMenu(const QPoint& pos);
 
 private:
     void refresh();
@@ -99,6 +101,12 @@ private:
     QDoubleSpinBox* m_posY  = nullptr;
     QDoubleSpinBox* m_sizeW = nullptr;
     QDoubleSpinBox* m_sizeH = nullptr;
+
+    // Shadow toggle (applies to every element type, not just text/shapes).
+    // A single checkable icon button instead of a checkbox+edit-button pair:
+    // its checked/highlighted look already shows on/off state, left-click
+    // toggles the shadow, right-click opens the detailed editor.
+    QPushButton* m_shadowBtn = nullptr;
 
     QWidget* m_textGroup = nullptr;
     QWidget* m_geomGroup = nullptr;

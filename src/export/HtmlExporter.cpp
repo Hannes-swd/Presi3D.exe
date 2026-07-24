@@ -113,7 +113,7 @@ body {
    script below) ever sets via el.style.*, or that property jumps instantly
    instead of transitioning regardless of the JS-set transition-duration. */
 [data-timeline] { transition-property: opacity, transform, background-color, color, border-color,
-    left, top, width, height, border-radius, border-width, font-size; }
+    left, top, width, height, border-radius, border-width, font-size, filter; }
 
 .step video, .step audio {
     backface-visibility: hidden;
@@ -1021,7 +1021,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  }\n"
         << "  return el._tl;\n"
         << "}\n"
-        << "function tlIsColor(k) { return k === 'color' || k === 'backgroundColor' || k === 'borderColor'; }\n"
+        << "function tlIsColor(k) { return k === 'color' || k === 'backgroundColor' || k === 'borderColor' || k === 'shadowColor'; }\n"
         << "function tlHexToRgba(hex) {\n"
         << "  var h = hex.replace('#', '');\n"
         << "  if (h.length === 8) { // AARRGGBB\n"
@@ -1034,6 +1034,27 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "  var r = Math.round(a.r + (b.r - a.r) * t), g = Math.round(a.g + (b.g - a.g) * t), bl = Math.round(a.b + (b.b - a.b) * t);\n"
         << "  var al = a.a + (b.a - a.a) * t;\n"
         << "  return 'rgba(' + r + ',' + g + ',' + bl + ',' + al.toFixed(3) + ')';\n"
+        << "}\n"
+        << "// filter:drop-shadow(...) is one compound CSS value, so animating a single\n"
+        << "// shadow sub-property (offset/blur/spread/color) can't just set one style\n"
+        << "// property like the others below -- the whole string is rebuilt from\n"
+        << "// el._shadowState, which is seeded from `base` on first touch so any\n"
+        << "// sub-property NOT covered by this particular keyframe keeps its static value.\n"
+        << "function tlEnsureShadowState(el, base) {\n"
+        << "  if (el._shadowState) return;\n"
+        << "  el._shadowState = {\n"
+        << "    shadowOffsetX: (base.shadowOffsetX !== undefined) ? base.shadowOffsetX : 0,\n"
+        << "    shadowOffsetY: (base.shadowOffsetY !== undefined) ? base.shadowOffsetY : 0,\n"
+        << "    shadowBlur: (base.shadowBlur !== undefined) ? base.shadowBlur : 0,\n"
+        << "    shadowSpread: (base.shadowSpread !== undefined) ? base.shadowSpread : 0,\n"
+        << "    shadowColorCss: (base.shadowColor !== undefined) ? base.shadowColor : 'rgba(0,0,0,0.63)'\n"
+        << "  };\n"
+        << "}\n"
+        << "function tlRebuildShadowFilter(el) {\n"
+        << "  var s = el._shadowState;\n"
+        << "  if (!s) return;\n"
+        << "  var blur = (s.shadowBlur || 0) + (s.shadowSpread || 0);\n"
+        << "  el.style.filter = 'drop-shadow(' + s.shadowOffsetX + 'px ' + s.shadowOffsetY + 'px ' + Math.max(0, blur) + 'px ' + s.shadowColorCss + ')';\n"
         << "}\n"
         << "// hasEntry/hasExit with no keyframe authored yet (added by dragging the timeline bar\n"
         << "// directly, never opened via \"Start\\u25B8\"/\"\\u25C2End\") would otherwise interpolate\n"
@@ -1053,6 +1074,7 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "      if (key === 'color') el.style.color = css;\n"
         << "      else if (key === 'backgroundColor') el.style.backgroundColor = css;\n"
         << "      else if (key === 'borderColor') el.style.borderColor = css;\n"
+        << "      else if (key === 'shadowColor') { tlEnsureShadowState(el, base); el._shadowState.shadowColorCss = css; tlRebuildShadowFilter(el); }\n"
         << "      return;\n"
         << "    }\n"
         << "    var v = ov + (bv - ov) * t;\n"
@@ -1065,6 +1087,9 @@ QString HtmlExporter::generateHtml(const Presentation& pres) {
         << "    else if (key === 'fontSize') el.style.fontSize = v + 'px';\n"
         << "    else if (key === 'opacity') el.style.opacity = String(v);\n"
         << "    else if (key === 'rotation') el.style.transform = (v !== 0) ? ('rotate(' + v + 'deg)') : 'none';\n"
+        << "    else if (key === 'shadowOffsetX' || key === 'shadowOffsetY' || key === 'shadowBlur' || key === 'shadowSpread') {\n"
+        << "      tlEnsureShadowState(el, base); el._shadowState[key] = v; tlRebuildShadowFilter(el);\n"
+        << "    }\n"
         << "  });\n"
         << "}\n"
         << "var timelineTimers = [];    // setTimeout ids for the currently active step, cleared on stepleave\n"
@@ -1393,6 +1418,19 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
                     .arg(double(e.rotation), 0, 'f', 2);
     if (e.opacity < 0.999f)
         base += QString("opacity:%1;").arg(double(e.opacity), 0, 'f', 3);
+    if (e.hasShadow) {
+        // filter:drop-shadow follows the element's actual rendered alpha
+        // silhouette (correct for text glyphs and arbitrary shape paths),
+        // unlike box-shadow which only follows the bounding box. spread has
+        // no drop-shadow equivalent, so it's folded into the blur radius —
+        // a documented approximation, exact value is preserved in data-shadow.
+        float cssBlur = e.shadowBlur + e.shadowSpread;
+        base += QString("filter:drop-shadow(%1px %2px %3px %4);")
+                    .arg(double(e.shadowOffsetX), 0, 'f', 2)
+                    .arg(double(e.shadowOffsetY), 0, 'f', 2)
+                    .arg(double(qMax(0.f, cssBlur)), 0, 'f', 2)
+                    .arg(colorToCss(e.shadowColor));
+    }
 
     // Timeline animation (entry/exit/loop/trigger/variable-gated visibility),
     // consumed by the TimelinePlayer JS registered in HtmlExporter::generateHtml().
@@ -1411,6 +1449,16 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
         if ((e.timeline.hasEntry && e.timeline.entryStart.isEmpty()) ||
             (e.timeline.hasExit  && e.timeline.exitEnd.isEmpty()))
             if (!keys.contains("opacity")) keys << "opacity";
+        // filter:drop-shadow() is one compound CSS value (see tlRebuildShadowFilter
+        // in the JS below) — if only SOME shadow sub-properties are keyframed,
+        // the others must still be seeded into `base` together, or the first
+        // rebuild would silently drop the element's static shadow values.
+        static const char* kShadowKeys[] = {"shadowOffsetX", "shadowOffsetY", "shadowBlur", "shadowSpread", "shadowColor"};
+        bool anyShadowKeyed = false;
+        for (const char* k : kShadowKeys) if (keys.contains(k)) { anyShadowKeyed = true; break; }
+        if (e.hasShadow && anyShadowKeyed)
+            for (const char* k : kShadowKeys)
+                if (!keys.contains(k)) keys << k;
         QJsonObject payload;
         payload["track"] = e.timeline.toJson();
         payload["base"]  = TimelineEngine::baseSnapshot(e, keys);
@@ -1425,6 +1473,23 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
     // that string into its returned tag's attribute list.
     if (!e.groupId.isEmpty())
         timelineAttr += QString(" data-group=\"%1\"").arg(e.groupId.toHtmlEscaped());
+
+    // Lossless shadow state (spread + angle/offset UI mode aren't expressible
+    // in CSS filter:drop-shadow(), so the full state round-trips through this
+    // attribute instead of being reverse-engineered from the CSS on import).
+    if (e.hasShadow) {
+        QJsonObject so;
+        so["useOffset"] = e.shadowUseOffset;
+        so["angle"]     = double(e.shadowAngle);
+        so["distance"]  = double(e.shadowDistance);
+        so["offsetX"]   = double(e.shadowOffsetX);
+        so["offsetY"]   = double(e.shadowOffsetY);
+        so["blur"]      = double(e.shadowBlur);
+        so["spread"]    = double(e.shadowSpread);
+        so["color"]     = e.shadowColor.name(QColor::HexArgb);
+        QByteArray shJson = QJsonDocument(so).toJson(QJsonDocument::Compact);
+        timelineAttr += QString(" data-shadow=\"%1\"").arg(QString::fromLatin1(shJson.toBase64()));
+    }
 
     if (e.type == SlideElement::Text) {
         QString justifyContent = "flex-start";

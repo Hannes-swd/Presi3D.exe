@@ -14,6 +14,10 @@ double basePropValue(const SlideElement& e, const QString& key) {
     if (key == "fontSize") return e.fontSize;
     if (key == "cornerRadius") return e.cornerRadius;
     if (key == "borderWidth") return e.borderWidth;
+    if (key == "shadowOffsetX") return e.shadowOffsetX;
+    if (key == "shadowOffsetY") return e.shadowOffsetY;
+    if (key == "shadowBlur") return e.shadowBlur;
+    if (key == "shadowSpread") return e.shadowSpread;
     return 0.0;
 }
 
@@ -27,12 +31,17 @@ void setPropValue(SlideElement& e, const QString& key, double v) {
     else if (key == "fontSize") e.fontSize = int(std::lround(v));
     else if (key == "cornerRadius") e.cornerRadius = float(v);
     else if (key == "borderWidth") e.borderWidth = float(v);
+    else if (key == "shadowOffsetX") e.shadowOffsetX = float(v);
+    else if (key == "shadowOffsetY") e.shadowOffsetY = float(v);
+    else if (key == "shadowBlur") e.shadowBlur = float(v);
+    else if (key == "shadowSpread") e.shadowSpread = float(v);
 }
 
 QColor baseColorValue(const SlideElement& e, const QString& key) {
     if (key == "color") return e.color;
     if (key == "backgroundColor") return e.backgroundColor;
     if (key == "borderColor") return e.borderColor;
+    if (key == "shadowColor") return e.shadowColor;
     return QColor();
 }
 
@@ -40,6 +49,7 @@ void setColorValue(SlideElement& e, const QString& key, const QColor& c) {
     if (key == "color") e.color = c;
     else if (key == "backgroundColor") e.backgroundColor = c;
     else if (key == "borderColor") e.borderColor = c;
+    else if (key == "shadowColor") e.shadowColor = c;
 }
 
 QColor lerpColor(const QColor& a, const QColor& b, double t) {

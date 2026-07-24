@@ -1,7 +1,10 @@
 #include "SlideEditor2D.h"
+#include "TextLayoutUtils.h"
 #include "ShapeUtils.h"
 #include "MeshGradientRenderer.h"
 #include "ImageFillRenderer.h"
+#include "ShadowRenderer.h"
+#include "dialogs/ShadowDialog.h"
 #include "IconUtils.h"
 #include "rendering/ChartRenderer.h"
 #include "rendering/LatexRenderer.h"
@@ -46,26 +49,6 @@
 
 QVector<SlideElement> SlideEditor2D::s_clipboard;
 bool                  SlideEditor2D::s_hasClipboard = false;
-
-// Forward decls (defined further below, near the inline text-edit code) —
-// also used by drawElement()'s code-span rendering path.
-static void buildLayout(QTextLayout& layout, const SlideElement& e,
-                        const QFont& font, float width,
-                        const QString& alignOverride = {});
-static QFont elemFont(const SlideElement& e, float scaleY);
-static float textVOff(const QTextLayout& layout, float elemH, const QString& vAlign);
-
-// QTextLayout lays out a single paragraph and does NOT treat '\n' (LF) as a
-// line break — only QChar::LineSeparator (U+2028) forces one. Our model
-// stores plain '\n' (so export's simple "\n" -> "<br>" replace keeps working),
-// so every QTextLayout built from element text must substitute LineSeparator
-// in first, purely for layout/painting/hit-testing. Both characters are a
-// single QChar, so this never shifts any cursor/selection/span offset.
-static QString layoutText(const QString& s) {
-    QString r = s;
-    r.replace(QLatin1Char('\n'), QChar::LineSeparator);
-    return r;
-}
 
 // Defaults — overridden by m_pres->slideWidth/slideHeight when available
 static constexpr float SLIDE_W_DEFAULT = 1920.f;
@@ -843,11 +826,44 @@ QString SlideEditor2D::substituteVars(const QString& raw, const QString& current
                                        slideNumberFor(currentSlideId), m_pres->slides.size());
 }
 
+// Renders e's configurable drop shadow underneath the element, sharing the
+// same rotation pivot drawElement()'s per-type branches use below, so the
+// shadow rotates together with its element for free.
+void SlideEditor2D::drawElementShadow(QPainter& p, const SlideElement& e, const QRectF& wr) const {
+    if (!e.hasShadow || wr.width() < 1.0 || wr.height() < 1.0) return;
+    QRectF sr = slideRect();
+    float scaleX = sr.width()  / SLIDE_W_DEFAULT;
+    float scaleY = sr.height() / SLIDE_H_DEFAULT;
+
+    QSize localSize = wr.size().toSize();
+    if (localSize.width() < 1 || localSize.height() < 1) return;
+
+    float blurPx   = e.shadowBlur   * scaleY;
+    float spreadPx = e.shadowSpread * scaleY;
+    int pad = ShadowRenderer::padding(blurPx, spreadPx);
+
+    ShadowRenderer::SilhouettePainter silhouette =
+        ShadowRenderer::buildSilhouettePainter(e, QRectF(QPointF(0, 0), QSizeF(localSize)));
+    QImage shadowImg = ShadowRenderer::render(localSize, silhouette, blurPx, spreadPx, e.shadowColor);
+
+    p.save();
+    if (e.rotation != 0.f) {
+        p.translate(wr.center());
+        p.rotate(double(e.rotation));
+        p.translate(-wr.center());
+    }
+    QPointF topLeft = wr.topLeft() + QPointF(e.shadowOffsetX * scaleX - pad, e.shadowOffsetY * scaleY - pad);
+    p.drawImage(topLeft, shadowImg);
+    p.restore();
+}
+
 void SlideEditor2D::drawElement(QPainter& p, const SlideElement& e, bool selected, bool isBeingEdited,
                                  const QString& currentSlideId) const {
     QRectF wr = elemToWidget(e);
     QRectF sr = slideRect();
     float scaleY = sr.height() / SLIDE_H_DEFAULT;
+
+    if (e.hasShadow) drawElementShadow(p, e, wr);
 
     if (e.type == SlideElement::Text) {
         if (e.backgroundColor.isValid() && e.backgroundColor != Qt::transparent)
@@ -2577,6 +2593,9 @@ void SlideEditor2D::contextMenuEvent(QContextMenuEvent* e) {
         menu.addAction("Move One Layer Down",  this, &SlideEditor2D::sendBackward);
         menu.addAction("Send to Back",         this, &SlideEditor2D::sendToBack);
         menu.addSeparator();
+        if (m_selectedElems.size() == 1)
+            menu.addAction(QString::fromUtf8("Shadow\xE2\x80\xA6"), this, &SlideEditor2D::openShadowDialog);
+        menu.addSeparator();
         menu.addAction(isGrouped || m_selectedElems.size() > 1 ? "Delete Group" : "Delete Element",
                        this, &SlideEditor2D::deleteSelectedElement);
         menu.addSeparator();
@@ -2787,6 +2806,27 @@ void SlideEditor2D::openChartEditor() {
     ChartEditorDialog dlg(e.chartData, this);
     if (dlg.exec() == QDialog::Accepted) {
         e.chartData = dlg.chartData();
+        update();
+        emit presentationModified();
+    }
+}
+
+void SlideEditor2D::openShadowDialog() {
+    Slide* s = m_pres ? m_pres->slideAt(m_slideIndex) : nullptr;
+    if (!s || m_selectedElem < 0 || m_selectedElem >= s->elements.size()) return;
+    SlideElement& e = s->elements[m_selectedElem];
+
+    ShadowDialog dlg(e, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        e.hasShadow       = dlg.hasShadow();
+        e.shadowUseOffset = dlg.useOffset();
+        e.shadowAngle     = dlg.angle();
+        e.shadowDistance  = dlg.distance();
+        e.shadowOffsetX   = dlg.offsetX();
+        e.shadowOffsetY   = dlg.offsetY();
+        e.shadowBlur      = dlg.blur();
+        e.shadowSpread    = dlg.spread();
+        e.shadowColor     = dlg.color();
         update();
         emit presentationModified();
     }
@@ -3181,37 +3221,6 @@ void SlideEditor2D::sendToBack() {
 }
 
 // ── Inline text edit (WYSIWYG — direct canvas cursor, no overlay widget) ─────
-
-// Build a QTextLayout for a text element at widget scale and do line layout.
-// The layout origin is at (0,0); add elemToWidget(e).topLeft() to get widget coords.
-static void buildLayout(QTextLayout& layout, const SlideElement& e,
-                        const QFont& font, float width,
-                        const QString& alignOverride) {
-    layout.setFont(font);
-    QTextOption opt;
-    const QString& align = alignOverride.isEmpty() ? e.textAlignment : alignOverride;
-    if      (align == "center") opt.setAlignment(Qt::AlignHCenter);
-    else if (align == "right")  opt.setAlignment(Qt::AlignRight);
-    else                        opt.setAlignment(Qt::AlignLeft);
-    opt.setWrapMode(QTextOption::WordWrap);
-    layout.setTextOption(opt);
-    layout.beginLayout();
-    float y = 0;
-    for (;;) {
-        QTextLine line = layout.createLine();
-        if (!line.isValid()) break;
-        line.setLineWidth(width);
-        line.setPosition(QPointF(0, y));
-        y += line.height();
-    }
-    layout.endLayout();
-}
-
-static QFont elemFont(const SlideElement& e, float scaleY) {
-    QFont f(e.fontFamily, qMax(6, int(e.fontSize * scaleY)));
-    f.setBold(e.bold); f.setItalic(e.italic);
-    return f;
-}
 
 // Keep CodeSpan offsets valid across inline text edits (insert/remove at a
 // cursor position). Called alongside every text.insert()/text.remove() in
@@ -3775,16 +3784,6 @@ void SlideEditor2D::handleTableKey(QKeyEvent* ke) {
         emit presentationModified(); update(); return;
     }
     if (ctrlOnly) QWidget::keyPressEvent(ke);
-}
-
-// Compute vertical offset caused by middle/bottom alignment of text within element rect.
-static float textVOff(const QTextLayout& layout, float elemH, const QString& vAlign) {
-    if (layout.lineCount() == 0 || vAlign.isEmpty() || vAlign == "top") return 0;
-    QTextLine last = layout.lineAt(layout.lineCount() - 1);
-    float totalH = float(last.y() + last.height());
-    if (vAlign == "middle") return qMax(0.f, (elemH - totalH) * 0.5f);
-    if (vAlign == "bottom") return qMax(0.f, elemH - totalH);
-    return 0;
 }
 
 void SlideEditor2D::drawTextCursor(QPainter& p, const SlideElement& e) const {

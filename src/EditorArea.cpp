@@ -478,6 +478,10 @@ void EditorArea::ungroupSelectedElements() {
     m_editor2D->ungroupSelectedElements();
 }
 
+void EditorArea::openShadowDialog() {
+    m_editor2D->openShadowDialog();
+}
+
 void EditorArea::switchTo2D() {
     m_btn2D->setChecked(true);
     m_btn3D->setChecked(false);

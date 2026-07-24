@@ -1,4 +1,5 @@
 #include "FormatBar.h"
+#include "dialogs/ShadowDialog.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGridLayout>
@@ -293,6 +294,19 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     }
 
     row->addWidget(m_geomGroup);
+    row->addWidget(makeSep(this));
+
+    // ── Shadow toggle: one icon button instead of a checkbox+edit-button
+    // pair — its checked/highlighted look already shows on/off state.
+    // Left-click toggles the shadow; right-click opens the detailed editor.
+    m_shadowBtn = new QPushButton(QIcon(":/icons/shadow.svg"), "", this);
+    m_shadowBtn->setIconSize(QSize(16, 16));
+    m_shadowBtn->setCheckable(true);
+    m_shadowBtn->setFixedSize(28, 28);
+    m_shadowBtn->setStyleSheet(ALIGN_BTN);
+    m_shadowBtn->setToolTip("Shadow — click to turn on/off, right-click to edit");
+    m_shadowBtn->setContextMenuPolicy(Qt::CustomContextMenu);
+    row->addWidget(m_shadowBtn);
     row->addStretch();
 
     // ── Signal connections ─────────────────────────────────────────────────
@@ -323,6 +337,8 @@ FormatBar::FormatBar(QWidget* parent) : QWidget(parent) {
     connect(m_posY,  qOverload<double>(&QDoubleSpinBox::valueChanged), this, &FormatBar::onYChanged);
     connect(m_sizeW, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &FormatBar::onWChanged);
     connect(m_sizeH, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &FormatBar::onHChanged);
+    connect(m_shadowBtn, &QPushButton::toggled, this, &FormatBar::onShadowToggled);
+    connect(m_shadowBtn, &QPushButton::customContextMenuRequested, this, &FormatBar::onShadowContextMenu);
 
     setContext(nullptr, -1, -1);
 }
@@ -519,6 +535,11 @@ void FormatBar::refresh() {
         m_posX->setValue(e->x);  m_posY->setValue(e->y);
         m_sizeW->setValue(e->width); m_sizeH->setValue(e->height);
     }
+
+    // Shadow applies to every element type (unlike the groups above, which
+    // are text/shape/cell specific), so it's gated on hasElem alone.
+    m_shadowBtn->setEnabled(hasElem);
+    m_shadowBtn->setChecked(hasElem && e->hasShadow);
 
     m_updating = false;
 }
@@ -781,4 +802,29 @@ void FormatBar::onVAlignBottom() {
     m_updating = true;
     m_vAlignTop->setChecked(false); m_vAlignMiddle->setChecked(false); m_vAlignBottom->setChecked(true);
     m_updating = false; emit modified();
+}
+void FormatBar::onShadowToggled(bool on) {
+    if (m_updating) return;
+    auto* e = currentElem(); if (!e) return;
+    e->hasShadow = on;
+    emit modified();
+}
+void FormatBar::onShadowContextMenu(const QPoint&) {
+    auto* e = currentElem(); if (!e) return;
+    ShadowDialog dlg(*e, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        e->hasShadow       = dlg.hasShadow();
+        e->shadowUseOffset = dlg.useOffset();
+        e->shadowAngle     = dlg.angle();
+        e->shadowDistance  = dlg.distance();
+        e->shadowOffsetX   = dlg.offsetX();
+        e->shadowOffsetY   = dlg.offsetY();
+        e->shadowBlur      = dlg.blur();
+        e->shadowSpread    = dlg.spread();
+        e->shadowColor     = dlg.color();
+        m_updating = true;
+        m_shadowBtn->setChecked(e->hasShadow);
+        m_updating = false;
+        emit modified();
+    }
 }

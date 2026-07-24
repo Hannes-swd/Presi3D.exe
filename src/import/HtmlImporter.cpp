@@ -59,9 +59,32 @@ static QColor parseCssColor(const QString& raw) {
 // HtmlExporter::elementToHtml) and the generic CSS opacity property.
 // Applies to every element type, so every per-type parse branch calls this
 // once its `style` string and element tag are known.
+// Restores the full shadow state from the data-shadow attribute (base64 JSON
+// — see HtmlExporter::elementToHtml). Read from data-shadow rather than the
+// CSS filter:drop-shadow(), since spread and the angle/offset UI mode aren't
+// expressible in that CSS syntax and would be lossy to reverse-engineer.
+static void parseShadow(const QString& tag, SlideElement& e) {
+    QString b64 = attrVal(tag, "data-shadow");
+    if (b64.isEmpty()) return;
+    QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromBase64(b64.toLatin1()));
+    if (!doc.isObject()) return;
+    QJsonObject so = doc.object();
+    e.hasShadow       = true;
+    e.shadowUseOffset = so["useOffset"].toBool();
+    e.shadowAngle     = float(so["angle"].toDouble());
+    e.shadowDistance  = float(so["distance"].toDouble());
+    e.shadowOffsetX   = float(so["offsetX"].toDouble());
+    e.shadowOffsetY   = float(so["offsetY"].toDouble());
+    e.shadowBlur      = float(so["blur"].toDouble());
+    e.shadowSpread    = float(so["spread"].toDouble());
+    e.shadowColor     = QColor(so["color"].toString());
+}
+
 static void parseTimelineAndOpacity(const QString& tag, const QString& style, SlideElement& e) {
     QString opa = cssProp(style, "opacity");
     if (!opa.isEmpty()) e.opacity = opa.toFloat();
+
+    parseShadow(tag, e);
 
     // Editor-only grouping metadata (see FEATURES_TODO.md "Gruppenbildung" and
     // HtmlExporter::elementToHtml's data-group) — no rendering effect, purely

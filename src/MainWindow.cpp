@@ -131,6 +131,8 @@ void MainWindow::setupMenuBar() {
     editMenu->addSeparator();
     editMenu->addAction("Formen &verschneiden...", this, [this]() { m_editorArea->booleanCutSelection(); }, QKeySequence("Ctrl+Alt+X"));
     editMenu->addSeparator();
+    editMenu->addAction("&Shadow...", this, [this]() { m_editorArea->openShadowDialog(); }, QKeySequence("Ctrl+Alt+S"));
+    editMenu->addSeparator();
     editMenu->addAction("Manage Icon Package...", this, [this]() {
         auto& mgr = IconPackManager::instance();
         if (mgr.isInstalled()) mgr.uninstallInteractive(this);
@@ -574,12 +576,17 @@ static Keyframe diffKeyframe(const SlideElement& edited, const SlideElement& bas
     addNum("fontSize", edited.fontSize, baseline.fontSize);
     addNum("cornerRadius", edited.cornerRadius, baseline.cornerRadius);
     addNum("borderWidth", edited.borderWidth, baseline.borderWidth);
+    addNum("shadowOffsetX", edited.shadowOffsetX, baseline.shadowOffsetX);
+    addNum("shadowOffsetY", edited.shadowOffsetY, baseline.shadowOffsetY);
+    addNum("shadowBlur", edited.shadowBlur, baseline.shadowBlur);
+    addNum("shadowSpread", edited.shadowSpread, baseline.shadowSpread);
     auto addColor = [&](const QString& key, const QColor& a, const QColor& b) {
         if (a != b) kf.props[key] = QVariant(a);
     };
     addColor("color", edited.color, baseline.color);
     addColor("backgroundColor", edited.backgroundColor, baseline.backgroundColor);
     addColor("borderColor", edited.borderColor, baseline.borderColor);
+    addColor("shadowColor", edited.shadowColor, baseline.shadowColor);
     return kf;
 }
 
@@ -604,9 +611,14 @@ static void restoreKeyframeableProps(SlideElement& e, const SlideElement& baseli
         else if (key == "fontSize") e.fontSize = baseline.fontSize;
         else if (key == "cornerRadius") e.cornerRadius = baseline.cornerRadius;
         else if (key == "borderWidth") e.borderWidth = baseline.borderWidth;
+        else if (key == "shadowOffsetX") e.shadowOffsetX = baseline.shadowOffsetX;
+        else if (key == "shadowOffsetY") e.shadowOffsetY = baseline.shadowOffsetY;
+        else if (key == "shadowBlur") e.shadowBlur = baseline.shadowBlur;
+        else if (key == "shadowSpread") e.shadowSpread = baseline.shadowSpread;
         else if (key == "color") e.color = baseline.color;
         else if (key == "backgroundColor") e.backgroundColor = baseline.backgroundColor;
         else if (key == "borderColor") e.borderColor = baseline.borderColor;
+        else if (key == "shadowColor") e.shadowColor = baseline.shadowColor;
     }
 }
 

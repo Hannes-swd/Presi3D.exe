@@ -34,6 +34,11 @@ public:
     // Boolean shape cut ("Ausschneiden") — relayed to the 2D editor
     void booleanCutSelection();
 
+    // Opens the drop-shadow editor for the currently selected element —
+    // relayed to the 2D editor. No-op if nothing (or more than one element)
+    // is selected, same as groupSelectedElements()/booleanCutSelection().
+    void openShadowDialog();
+
     // Insert-element toolbar (Text/Shapes/Image/Table/...), hosted by
     // MainWindow's ribbon "Einfügen" tab rather than by EditorArea itself.
     QWidget* insertToolbarWidget() const { return m_insertToolbar; }

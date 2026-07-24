@@ -20,6 +20,8 @@ set(SOURCES
     src/SlideEditor2D.cpp
     src/SlideEditor3D.cpp
     src/PropertiesPanel.cpp
+    src/TextLayoutUtils.cpp
+    src/ShadowRenderer.cpp
     src/models/Presentation.cpp
     src/models/ChartData.cpp
     src/models/MeshGradientData.cpp
@@ -54,6 +56,7 @@ set(SOURCES
     src/dialogs/ChartEditorDialog.cpp
     src/dialogs/MeshGradientDialog.cpp
     src/dialogs/ImageFillDialog.cpp
+    src/dialogs/ShadowDialog.cpp
     src/dialogs/ShapePickerDialog.cpp
     src/dialogs/BooleanCutDialog.cpp
     src/dialogs/IconPickerDialog.cpp
