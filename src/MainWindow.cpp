@@ -116,7 +116,7 @@ void MainWindow::setupMenuBar() {
     fileMenu->addAction("&Open...",           this, &MainWindow::openPresentation,   QKeySequence::Open);
     fileMenu->addSeparator();
     fileMenu->addAction("&Save",              this, &MainWindow::savePresentation,   QKeySequence::Save);
-    fileMenu->addAction("Save &As...",        this, &MainWindow::savePresentationAs, QKeySequence::SaveAs);
+    fileMenu->addAction("&Export...",         this, &MainWindow::savePresentationAs, QKeySequence::SaveAs);
     fileMenu->addSeparator();
     fileMenu->addAction("Open in &Browser",   this, &MainWindow::openInBrowser, QKeySequence("Ctrl+B"));
     fileMenu->addSeparator();

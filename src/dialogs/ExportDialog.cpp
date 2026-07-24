@@ -2,6 +2,7 @@
 #include "export/HtmlExporter.h"
 #include "export/ImageExporter.h"
 #include "export/PdfExporter.h"
+#include "export/HandoutExporter.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -17,6 +18,9 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QFileInfo>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFrame>
 
 // Renders a Material Symbols SVG icon tinted with the given color.
 static QPixmap tintedIcon(const QString& name, const QColor& color, int size) {
@@ -63,9 +67,10 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
 
     m_navList = new QListWidget(this);
     m_navList->setFixedWidth(190);
-    m_navList->addItem("Save Presentation");
+    m_navList->addItem("Export as HTML");
     m_navList->addItem("Export as Images");
     m_navList->addItem("Export as PDF");
+    m_navList->addItem("Export as Handout");
     m_navList->setStyleSheet(
         "QListWidget { background:#f3f4f6; border:none; border-right:1px solid #d1d5db; outline:0; padding-top:8px; font-size:12px; }"
         "QListWidget::item { padding:10px 14px; color:#374151; }"
@@ -77,6 +82,7 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     m_stack->addWidget(buildSavePage(initParent, initName));
     m_stack->addWidget(buildImagesPage(initParent, initName));
     m_stack->addWidget(buildPdfPage(initParent, initName));
+    m_stack->addWidget(buildHandoutPage(initParent, initName));
     body->addWidget(m_stack, 1);
 
     outer->addLayout(body, 1);
@@ -96,23 +102,43 @@ ExportDialog::ExportDialog(Presentation* pres, QWidget* parent)
     updatePreview();
 }
 
-// ── Page: Save Presentation (HTML export) ──────────────────────────────────
+// ── Page: Export as HTML ────────────────────────────────────────────────────
 
 QWidget* ExportDialog::buildSavePage(const QString& initParent, const QString& initName) {
     auto* page = new QWidget(this);
     auto* vbox = new QVBoxLayout(page);
     vbox->setSpacing(10);
 
-    auto* title = new QLabel("<b>Save Presentation As</b>", page);
+    auto* title = new QLabel("<b>Export as HTML</b>", page);
     title->setStyleSheet("font-size:14px;");
     vbox->addWidget(title);
 
     auto* info = new QLabel(
         "Creates a folder with <b>index.html</b>, CSS and assets.\n"
-        "Impress.js is automatically included via CDN – just open index.html in a browser.", page);
+        "Impress.js is automatically included via CDN – just open index.html in a browser.\n"
+        "This is also where File → Save/Export stores your project — the other pages "
+        "(Images, PDF, Handout) only create copies and don't change your save location.", page);
     info->setWordWrap(true);
     info->setStyleSheet("color:#888; font-size:11px;");
     vbox->addWidget(info);
+
+    const bool hasSaveLocation = m_pres && !m_pres->exportPath.isEmpty();
+
+    m_saveLocFrame = new QFrame(page);
+    m_saveLocFrame->setStyleSheet(hasSaveLocation
+        ? "QFrame { border:1px solid #555; border-radius:4px; }"
+        : "QFrame { border:2px solid #e33; border-radius:4px; }");
+    auto* frameLayout = new QVBoxLayout(m_saveLocFrame);
+    frameLayout->setContentsMargins(10, 10, 10, 10);
+
+    if (!hasSaveLocation) {
+        m_saveLocNotice = new QLabel(
+            "No save location chosen yet — pick one below and export to save your project.",
+            m_saveLocFrame);
+        m_saveLocNotice->setWordWrap(true);
+        m_saveLocNotice->setStyleSheet("color:#e33; font-size:11px; font-weight:bold;");
+        frameLayout->addWidget(m_saveLocNotice);
+    }
 
     auto* form = new QFormLayout;
     form->setSpacing(8);
@@ -130,7 +156,8 @@ QWidget* ExportDialog::buildSavePage(const QString& initParent, const QString& i
     row->addWidget(browseBtn);
     form->addRow("Location:", row);
 
-    vbox->addLayout(form);
+    frameLayout->addLayout(form);
+    vbox->addWidget(m_saveLocFrame);
 
     m_previewLbl = new QLabel(page);
     m_previewLbl->setStyleSheet(
@@ -225,6 +252,9 @@ void ExportDialog::doExport() {
     if (result.ok) {
         // Remember the export path on the presentation object
         if (m_pres) m_pres->exportPath = outDir;
+
+        m_saveLocFrame->setStyleSheet("QFrame { border:1px solid #555; border-radius:4px; }");
+        if (m_saveLocNotice) m_saveLocNotice->setVisible(false);
 
         m_statusIcon->setPixmap(tintedIcon("check_circle", QColor("#44cc44"), 16));
         m_status->setStyleSheet("color: #4c4;");
@@ -481,5 +511,152 @@ void ExportDialog::doExportPdf() {
     } else {
         m_pdfStatus->setStyleSheet("color: red;");
         m_pdfStatus->setText("Error: " + result.errorMessage);
+    }
+}
+
+// ── Page: Export as Handout (Word) ────────────────────────────────────────
+
+QWidget* ExportDialog::buildHandoutPage(const QString& initParent, const QString& initName) {
+    auto* page = new QWidget(this);
+    auto* vbox = new QVBoxLayout(page);
+    vbox->setSpacing(10);
+
+    auto* title = new QLabel("<b>Export as Handout (Word)</b>", page);
+    title->setStyleSheet("font-size:14px;");
+    vbox->addWidget(title);
+
+    auto* info = new QLabel(
+        "Creates a .docx handout: per slide, the heading element is styled as a "
+        "heading, everything else follows as body text/images in on-slide order.", page);
+    info->setWordWrap(true);
+    info->setStyleSheet("color:#888; font-size:11px;");
+    vbox->addWidget(info);
+
+    m_handoutSlideList = buildSlideCheckList();
+    vbox->addWidget(m_handoutSlideList, 1);
+
+    auto* selRow = new QHBoxLayout;
+    auto* selAllBtn  = new QPushButton("Select All", page);
+    auto* selNoneBtn = new QPushButton("Select None", page);
+    selRow->addWidget(selAllBtn);
+    selRow->addWidget(selNoneBtn);
+    selRow->addStretch();
+    vbox->addLayout(selRow);
+
+    auto* includeLbl = new QLabel("Include:", page);
+    vbox->addWidget(includeLbl);
+    auto* includeRow = new QHBoxLayout;
+    m_handoutIncludeText      = new QCheckBox("Text", page);
+    m_handoutIncludeShapeText = new QCheckBox("Shape text", page);
+    m_handoutIncludeImages    = new QCheckBox("Images", page);
+    m_handoutIncludeTables    = new QCheckBox("Tables", page);
+    m_handoutIncludeIcons     = new QCheckBox("Icons/Buttons", page);
+    m_handoutIncludeText->setChecked(true);
+    m_handoutIncludeShapeText->setChecked(true);
+    m_handoutIncludeImages->setChecked(true);
+    includeRow->addWidget(m_handoutIncludeText);
+    includeRow->addWidget(m_handoutIncludeShapeText);
+    includeRow->addWidget(m_handoutIncludeImages);
+    includeRow->addWidget(m_handoutIncludeTables);
+    includeRow->addWidget(m_handoutIncludeIcons);
+    includeRow->addStretch();
+    vbox->addLayout(includeRow);
+
+    auto* optForm = new QFormLayout;
+    optForm->setSpacing(8);
+    m_handoutHeadingMode = new QComboBox(page);
+    m_handoutHeadingMode->addItem("Largest font size", int(HandoutExporter::HeadingMode::LargestFont));
+    m_handoutHeadingMode->addItem("Topmost element", int(HandoutExporter::HeadingMode::Topmost));
+    optForm->addRow("Heading is:", m_handoutHeadingMode);
+
+    m_handoutOrderMode = new QComboBox(page);
+    m_handoutOrderMode->addItem("Position (top to bottom)", int(HandoutExporter::OrderMode::ByPosition));
+    m_handoutOrderMode->addItem("Font size (largest to smallest)", int(HandoutExporter::OrderMode::ByFontSize));
+    optForm->addRow("Order by:", m_handoutOrderMode);
+    vbox->addLayout(optForm);
+
+    auto* handoutForm = new QFormLayout;
+    handoutForm->setSpacing(8);
+    auto* handoutLocRow = new QHBoxLayout;
+    m_handoutFileEdit = new QLineEdit(page);
+    m_handoutFileEdit->setText(QDir(initParent).filePath(initName + "-handout.docx"));
+    auto* handoutBrowseBtn = new QPushButton("...", page);
+    handoutBrowseBtn->setFixedWidth(32);
+    handoutLocRow->addWidget(m_handoutFileEdit);
+    handoutLocRow->addWidget(handoutBrowseBtn);
+    handoutForm->addRow("Save to:", handoutLocRow);
+    vbox->addLayout(handoutForm);
+
+    m_handoutStatus = new QLabel("", page);
+    m_handoutStatus->setWordWrap(true);
+    vbox->addWidget(m_handoutStatus);
+
+    m_handoutExportBtn = new QPushButton("Export Handout", page);
+    m_handoutExportBtn->setStyleSheet(kPrimaryButtonStyle);
+    vbox->addWidget(m_handoutExportBtn);
+
+    connect(selAllBtn,          &QPushButton::clicked, this, [this]() { checkAllSlides(m_handoutSlideList, true); });
+    connect(selNoneBtn,         &QPushButton::clicked, this, [this]() { checkAllSlides(m_handoutSlideList, false); });
+    connect(handoutBrowseBtn,   &QPushButton::clicked, this, &ExportDialog::browseHandoutFile);
+    connect(m_handoutExportBtn, &QPushButton::clicked, this, &ExportDialog::doExportHandout);
+
+    return page;
+}
+
+void ExportDialog::browseHandoutFile() {
+    QString file = QFileDialog::getSaveFileName(this, "Choose Word File",
+        m_handoutFileEdit->text().isEmpty() ? QDir::homePath() : m_handoutFileEdit->text(),
+        "Word Documents (*.docx)");
+    if (!file.isEmpty()) {
+        if (!file.endsWith(".docx", Qt::CaseInsensitive)) file += ".docx";
+        m_handoutFileEdit->setText(file);
+    }
+}
+
+void ExportDialog::doExportHandout() {
+    if (!m_pres || m_pres->slides.isEmpty()) {
+        m_handoutStatus->setStyleSheet("color: red;");
+        m_handoutStatus->setText("No slides available.");
+        return;
+    }
+
+    QVector<int> indices = checkedSlideIndices(m_handoutSlideList);
+    if (indices.isEmpty()) {
+        m_handoutStatus->setStyleSheet("color: red;");
+        m_handoutStatus->setText("Please select at least one slide.");
+        return;
+    }
+
+    QString filePath = m_handoutFileEdit->text().trimmed();
+    if (filePath.isEmpty()) {
+        m_handoutStatus->setStyleSheet("color: red;");
+        m_handoutStatus->setText("Please choose a file.");
+        return;
+    }
+    if (!filePath.endsWith(".docx", Qt::CaseInsensitive)) filePath += ".docx";
+
+    HandoutExporter::Options opts;
+    opts.includeText         = m_handoutIncludeText->isChecked();
+    opts.includeShapeText    = m_handoutIncludeShapeText->isChecked();
+    opts.includeImages       = m_handoutIncludeImages->isChecked();
+    opts.includeTables       = m_handoutIncludeTables->isChecked();
+    opts.includeIconsButtons = m_handoutIncludeIcons->isChecked();
+    opts.headingMode = HandoutExporter::HeadingMode(m_handoutHeadingMode->currentData().toInt());
+    opts.orderMode   = HandoutExporter::OrderMode(m_handoutOrderMode->currentData().toInt());
+
+    m_handoutExportBtn->setEnabled(false);
+    m_handoutStatus->setStyleSheet("color: orange;");
+    m_handoutStatus->setText("Exporting handout…");
+    repaint();
+
+    auto result = HandoutExporter::exportSlides(*m_pres, indices, opts, filePath);
+
+    m_handoutExportBtn->setEnabled(true);
+    if (result.ok) {
+        m_handoutStatus->setStyleSheet("color: #4c4;");
+        m_handoutStatus->setText(QString("Exported %1 slide(s) to:\n%2").arg(indices.size()).arg(filePath));
+    } else {
+        m_handoutStatus->setStyleSheet("color: red;");
+        m_handoutStatus->setText("Error: " + result.errorMessage);
     }
 }

@@ -48,7 +48,6 @@ bilder in formen
 | **PowerPoint-Import (.pptx)** | PPTX einlesen und in das interne Format umwandeln |
 | **PowerPoint-Export (.pptx)** | Presentation als PPTX speichern |
 | **Zip-Export** | HTML + Assets als fertige ZIP-Datei |
-| **Thumbnail-Export** | Alle Folien als kleines Vorschaubild exportieren |
 
 ---
 
