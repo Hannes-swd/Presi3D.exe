@@ -231,6 +231,52 @@ static QString customPathToClipPath(const QString& customPathData, double widthP
     return QString("clip-path:path(evenodd,'%1')").arg(svgSubpaths.join(' '));
 }
 
+// Fallback for named shapes with no hand-authored entry in
+// ShapeUtils::shapeToCssStyle() (straight-edge shapes there are baked as
+// plain CSS polygon() strings — cheaper and hand-tuned, so this is only used
+// when that table has nothing for the shape's id). Unlike the polygon table,
+// this walks the ACTUAL QPainterPath from ShapeUtils::shapeToPath() element
+// by element and re-emits it as an SVG path string, so it faithfully
+// reproduces curved shapes (e.g. "heart", built from cubicTo Béziers) that
+// can't be approximated by a straight-edge polygon — CSS clip-path:path()
+// supports C (cubic Bézier) commands natively, same as SVG. Any shape added
+// to ShapeUtils in the future automatically gets a correct (if unoptimized)
+// export this way even before someone hand-tunes a polygon() for it.
+static QString painterPathToClipPath(const QPainterPath& path) {
+    if (path.elementCount() == 0) return QString();
+    QString d;
+    for (int i = 0; i < path.elementCount(); ++i) {
+        const QPainterPath::Element& el = path.elementAt(i);
+        switch (el.type) {
+        case QPainterPath::MoveToElement:
+            if (i > 0) d += "Z ";
+            d += QString("M%1,%2 ").arg(el.x, 0, 'f', 2).arg(el.y, 0, 'f', 2);
+            break;
+        case QPainterPath::LineToElement:
+            d += QString("L%1,%2 ").arg(el.x, 0, 'f', 2).arg(el.y, 0, 'f', 2);
+            break;
+        case QPainterPath::CurveToElement: {
+            // A cubic Bézier is 3 consecutive elements: this control point,
+            // then two CurveToDataElement entries (2nd control point + end).
+            if (i + 2 >= path.elementCount()) break;
+            const QPainterPath::Element& c2  = path.elementAt(i + 1);
+            const QPainterPath::Element& end = path.elementAt(i + 2);
+            d += QString("C%1,%2 %3,%4 %5,%6 ")
+                     .arg(el.x, 0, 'f', 2).arg(el.y, 0, 'f', 2)
+                     .arg(c2.x, 0, 'f', 2).arg(c2.y, 0, 'f', 2)
+                     .arg(end.x, 0, 'f', 2).arg(end.y, 0, 'f', 2);
+            i += 2;
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    if (d.isEmpty()) return QString();
+    d += "Z";
+    return QString("clip-path:path(evenodd,'%1')").arg(d);
+}
+
 // Builds a text element's inner HTML, wrapping e.codeSpans in
 // <code class="language-xxx"> for highlight.js. Mirror of HtmlImporter's
 // code-span parsing — keep both in sync.
@@ -1561,6 +1607,15 @@ QString HtmlExporter::elementToHtml(const SlideElement& e,
             if (!css.isEmpty()) style += css + ";";
         } else {
             QString css = ShapeUtils::shapeToCssStyle(e.content);
+            if (css.isEmpty() && e.content != "rect" && e.content != "line") {
+                // No hand-authored polygon() for this shape id (e.g. "heart",
+                // whose curved outline can't be approximated by one) — fall
+                // back to re-deriving the exact clip from the same QPainterPath
+                // the 2D editor draws, so it can never silently render as an
+                // unclipped rectangle again for any shape ShapeUtils knows about.
+                QPainterPath path = ShapeUtils::shapeToPath(e.content, QRectF(0, 0, e.width, e.height));
+                css = painterPathToClipPath(path);
+            }
             if (!css.isEmpty())
                 style += css + ";";
             else if (e.cornerRadius > 0)
