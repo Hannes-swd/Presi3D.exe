@@ -1,6 +1,6 @@
 bilder in formen
 
-seitenmenü ausblenden
+seite wechseln mit zahlen
 
 ## Priorität 2 – Inhaltselemente
 

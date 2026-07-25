@@ -91,6 +91,13 @@ void MainWindow::setupUI() {
     splitter->setStretchFactor(1, 1);
     splitter->setStretchFactor(2, 0);
     splitter->setSizes({220, 920, 260});
+    // Lets the slide/properties panels be dragged all the way down to 0
+    // width (and back out again) despite their minimum widths above, so
+    // either side can be tucked away for more canvas space without any
+    // extra toggle UI.
+    splitter->setCollapsible(0, true);
+    splitter->setCollapsible(1, false);
+    splitter->setCollapsible(2, true);
 
     // ── Ribbon container: tab bar + one active tab's tools above the
     //    slide/editor/properties splitter. Populated by setupRibbon(), which
@@ -103,6 +110,7 @@ void MainWindow::setupUI() {
     m_ribbon = new QTabWidget(central);
     m_ribbon->setDocumentMode(true);
     m_ribbon->tabBar()->setExpanding(false);
+
     centralLayout->addWidget(m_ribbon);
     centralLayout->addWidget(splitter, 1);
 
