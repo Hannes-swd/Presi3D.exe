@@ -37,6 +37,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QIcon>
+#include <QShortcut>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_presentation = new Presentation();
@@ -218,6 +219,15 @@ void MainWindow::setupRibbon() {
     m_ribbon->addTab(m_editorArea->insertToolbarWidget(), "Insert");
 
     m_ribbon->setCurrentIndex(0);
+
+    // ── Ctrl+1/2/3: jump straight to a ribbon tab without the mouse ──
+    m_ribbon->setTabToolTip(0, "Start (Ctrl+1)");
+    m_ribbon->setTabToolTip(1, "Edit (Ctrl+2)");
+    m_ribbon->setTabToolTip(2, "Insert (Ctrl+3)");
+    for (int i = 0; i < 3; ++i) {
+        auto* tabShortcut = new QShortcut(QKeySequence(QString("Ctrl+%1").arg(i + 1)), this);
+        connect(tabShortcut, &QShortcut::activated, this, [this, i]() { m_ribbon->setCurrentIndex(i); });
+    }
 }
 
 void MainWindow::setupUpdateButton() {
