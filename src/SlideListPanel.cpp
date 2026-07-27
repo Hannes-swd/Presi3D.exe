@@ -214,8 +214,10 @@ void SlideListPanel::onCurrentRowChanged(int row) {
 }
 
 void SlideListPanel::onContextMenu(const QPoint& pos) {
-    int row = m_list->currentRow();
-    if (row < 0 || !m_pres) return;
+    QListWidgetItem* item = m_list->itemAt(pos);
+    if (!item || !m_pres) return;
+    int row = m_list->row(item);
+    m_list->setCurrentItem(item);
 
     QMenu menu(this);
     menu.addAction("Rename", this, [this, row]() {
