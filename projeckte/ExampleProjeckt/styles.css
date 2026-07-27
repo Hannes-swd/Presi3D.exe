@@ -32,7 +32,7 @@ body {
    script below) ever sets via el.style.*, or that property jumps instantly
    instead of transitioning regardless of the JS-set transition-duration. */
 [data-timeline] { transition-property: opacity, transform, background-color, color, border-color,
-    left, top, width, height, border-radius, border-width, font-size; }
+    left, top, width, height, border-radius, border-width, font-size, filter; }
 
 .step video, .step audio {
     backface-visibility: hidden;

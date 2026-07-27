@@ -1,6 +1,4 @@
-bilder in formen
 
-seite wechseln mit zahlen
 
 ## Priorität 2 – Inhaltselemente
 
